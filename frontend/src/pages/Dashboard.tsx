@@ -37,13 +37,14 @@ function AmountTile({
   }
 
   const totalKrw = krwAmount + (fxRate ? usdAmount * fxRate : 0);
+  const smallLine = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
   return (
     <div className="stat-tile">
       <div className="label">{label}</div>
-      <div className="value">{formatKrw(krwAmount)}</div>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{usdFmt.format(usdAmount)}</div>
-      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-        합계(환산) {fxRate ? formatKrw(totalKrw) : '환율 미적용'}
+      <div style={smallLine}>{formatKrw(krwAmount)}</div>
+      <div style={smallLine}>{usdFmt.format(usdAmount)}</div>
+      <div className="value" style={{ marginTop: 2 }}>
+        {fxRate ? formatKrw(totalKrw) : '환율 미적용'}
       </div>
     </div>
   );

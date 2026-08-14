@@ -63,10 +63,11 @@
       {
         "from": "backend",
         "to": "node_modules/@mystock/backend",
-        "filter": ["package.json", "dist/**/*"]
+        "filter": ["package.json", "dist/**/*", "!dist/**/*.d.ts", "!dist/**/*.map"]
       }
     ],
-    "asar": false,
+    "asar": true,
+    "npmRebuild": false,
     "mac": {
       "category": "public.app-category.finance",
       "target": ["dmg"],

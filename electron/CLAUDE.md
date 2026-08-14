@@ -64,10 +64,31 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   `node_modules/@mystock/backend`로 복사해 넣는 매핑을 명시했다(`package.json`의
   `"build".files` 참고). 그래야 `main.ts`의 `import { startServer } from '@mystock/backend'`가
   패키징된 앱 안에서도 평범한 `require` 경로로 풀린다.
-- **`asar: false`.** 압축 안 하고 `Contents/Resources/app/`에 평문 파일 트리로 둔다 —
-  디버깅하기 쉽고(그냥 `find`/`ls`로 들여다볼 수 있음), 이 모노레포 구조에서 asar를 켜면
-  또 다른 경로 문제가 생길 수 있어서 일단 끄고 검증했다. 나중에 켜려면 `asarUnpack`으로
-  `node_modules/@mystock/backend` 같은 걸 풀어줘야 할 가능성이 높다.
+- **`asar: true`.** 처음 이 설정을 만들 땐 디버깅하기 쉽게(그냥 `find`/`ls`로 들여다볼 수
+  있게) `false`로 두고 검증했었는데, 구조가 안정된 뒤 다시 켰다 — 네이티브(`.node`) 모듈이
+  전혀 없어서(`express`/`cors` 체인 전부 순수 JS, `find node_modules -name binding.gyp`
+  결과 0건) `asarUnpack` 없이도 안전하다. 앱 자체 코드(`node_modules`+`frontend`+`electron`)가
+  수천 개의 흩어진 작은 파일 대신 `app.asar` 파일 하나(~1.8MB)로 묶여서, 매 실행마다
+  Node의 모듈 리졸버가 열어야 하는 파일 수가 크게 줄어든다(시작 속도에 실질적으로
+  영향 — Electron 프레임워크 자체 용량(~274MB, 아래 참고)에 비하면 작지만, 이 앱 코드
+  안에서는 가장 눈에 띄는 최적화였다).
+- **`npmRebuild: false`.** electron-builder는 기본적으로 패키징할 때마다
+  `@electron/rebuild`로 네이티브 모듈을 현재 Electron의 ABI에 맞춰 재컴파일하는데, 이
+  프로젝트엔 재컴파일할 네이티브 모듈이 하나도 없어서(위와 동일 이유) 매번 그 단계를
+  통째로 낭비하고 있었다 — 꺼서 패키징 시간을 줄였다(순수 빌드 성능 최적화, 앱
+  런타임과는 무관).
+- **`@mystock/backend` 매핑에 `.d.ts`/`.map` 제외 필터 추가.** 최상위 `files`의
+  `"!**/*.map"`/`"!**/*.ts"` 패턴은 `{from, to}` 매핑에는 안 먹는다(별도 필터 스코프라서) —
+  그래서 `backend/dist`의 타입 선언 파일(`.d.ts`, 23개)이 패키징된 앱에 그대로 딸려가고
+  있었다. 런타임엔 전혀 안 쓰이는 순수 빌드타임 산출물이라(`declaration: true`는 electron
+  워크스페이스의 `tsc` 타입체크가 `@mystock/backend`의 타입을 찾는 데 필요해서 계속
+  켜둬야 하지만, 그 결과물을 배포용 앱에 담을 이유는 없음) 이 매핑에도
+  `"!dist/**/*.d.ts"`/`"!dist/**/*.map"`을 추가해서 뺐다.
+- **패키징 자체 용량은 이미 거의 다 Electron 프레임워크다.** `.app` 293MB 중
+  `Electron Framework.framework`가 274MB — Chromium/V8/Node 런타임 자체 무게라 Electron을
+  쓰는 이상 못 줄인다. 우리 코드(`node_modules`+`frontend`+`electron`)는 asar로 묶은
+  뒤 1.8MB밖에 안 된다 — 여기서 더 짤 게 별로 없다는 뜻. "용량이 너무 크다"고 느껴지면
+  범인은 거의 항상 Electron 자체지 이 앱 코드가 아니다.
 - **코드 서명/공증 안 함** (`mac.identity: null`). Apple Developer ID 인증서가 없어서
   의도적으로 뺐다 — 만든 사람 본인 Mac에서 실행하는 건 문제없지만(첫 실행 시 우클릭 →
   열기 필요, Gatekeeper 경고), 다른 사람에게 배포하면 "손상되었거나 확인할 수 없는
@@ -79,8 +100,9 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   dev와 똑같이 `~/Library/Application Support/@mystock/electron/`을 쓴다 — 기존에 dev에서
   입력해둔 자격증명/배당 기록을 그대로 이어서 쓸 수 있다(별도 마이그레이션 불필요).
 - 산출물은 `release/`(gitignore됨)에 생긴다. 실제로 빌드해서 `.app`을 직접 실행 →
-  백엔드가 4317 포트에 정상 바인딩 → `/api/accounts` 응답 확인 → `.dmg` 마운트까지
-  확인해서 검증했다.
+  백엔드가 4317 포트에 정상 바인딩 → `/api/accounts`/`/api/dividends` 응답 확인 →
+  `.dmg` 마운트까지 확인해서 검증했다(asar 활성화 이후에도 다시 실행해서 재검증함 —
+  `require('@mystock/backend')`와 `loadFile()` 둘 다 asar 안에서 투명하게 잘 풀린다).
 
 ## 자격증명 암호화와의 관계
 

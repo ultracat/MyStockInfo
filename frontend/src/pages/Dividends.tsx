@@ -7,6 +7,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
 
 type YearFilter = 'ALL' | number;
+type BrokerFilter = 'ALL' | BrokerId;
 
 const BROKER_LABELS: Record<BrokerId, string> = { toss: '토스증권', kis: '한국투자증권', kb: 'KB증권' };
 const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'kb'];
@@ -35,6 +36,7 @@ export default function Dividends() {
   const [records, setRecords] = useState<DividendRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState<YearFilter>('ALL');
+  const [chartBroker, setChartBroker] = useState<BrokerFilter>('ALL');
 
   const [broker, setBroker] = useState<BrokerId>('toss');
   const [currency, setCurrency] = useState<DividendCurrency>('KRW');
@@ -164,9 +166,23 @@ export default function Dividends() {
     return records.filter((r) => r.paidDate.startsWith(prefix));
   }, [records, year]);
 
+  // 그래프 전용 증권사 필터 — 연도 필터(visibleRecords)는 표/목록에도 다 적용되지만,
+  // 이 필터는 "월별 배당금" 그래프에만 건다. 옵션은 실제로 기록이 있는 증권사만
+  // 보여준다(연도와 무관하게 records 전체 기준 — 특정 연도로 좁혔을 때 옵션 목록이
+  // 들쭉날쭉 사라졌다 나타났다 하지 않게 하기 위함).
+  const chartBrokerOptions = useMemo(() => {
+    const present = new Set<BrokerId>(records.map((r) => r.broker));
+    return BROKER_ORDER.filter((id) => present.has(id));
+  }, [records]);
+
+  const chartRecords = useMemo(() => {
+    if (chartBroker === 'ALL') return visibleRecords;
+    return visibleRecords.filter((r) => r.broker === chartBroker);
+  }, [visibleRecords, chartBroker]);
+
   const monthlyRows = useMemo<MonthlySummaryRow[]>(() => {
     const byMonth = new Map<string, { totalKrw: number; totalUsd: number; count: number }>();
-    for (const r of visibleRecords) {
+    for (const r of chartRecords) {
       const month = r.paidDate.slice(0, 7);
       const existing = byMonth.get(month) ?? { totalKrw: 0, totalUsd: 0, count: 0 };
       if (r.currency === 'USD') existing.totalUsd += r.amount;
@@ -177,7 +193,7 @@ export default function Dividends() {
     return Array.from(byMonth.entries())
       .map(([month, v]) => ({ month, ...v }))
       .sort((a, b) => (a.month < b.month ? -1 : 1));
-  }, [visibleRecords]);
+  }, [chartRecords]);
 
   const brokerDividendTotals = useMemo(() => {
     const byBroker = new Map<BrokerId, { krw: number; usd: number }>();
@@ -351,7 +367,20 @@ export default function Dividends() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>월별 배당금</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>월별 배당금</h3>
+          <div className="form-row" style={{ margin: 0 }}>
+            <label>증권사</label>
+            <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
+              <option value="ALL">전체</option>
+              {chartBrokerOptions.map((id) => (
+                <option key={id} value={id}>
+                  {BROKER_LABELS[id]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <DividendsChart rows={monthlyRows} fxRate={effectiveFxRate} />
       </div>
 

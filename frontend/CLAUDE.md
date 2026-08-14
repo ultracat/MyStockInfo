@@ -81,6 +81,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   게 목적이라 거기까지 필터링하면 오히려 그 표의 존재 이유가 없어짐). 옵션 목록
   (`chartBrokerOptions`)은 연도로 좁히기 전 `records` 전체 기준으로 계산한다 — 연도를
   바꿀 때마다 드롭다운 옵션 자체가 들쭉날쭉 생겼다 사라졌다 하지 않게 하기 위해서다.
+  하단 "배당 기록" 목록의 페이지네이션(`pageSize`: 10/20/30/전체, `page`)은 **`page`를
+  effect로 되돌리지 않는다** — 연도 필터를 바꾸거나 마지막 페이지의 항목을 삭제해서
+  실제 페이지 수(`pageCount`)가 줄어들면, `page` state는 그대로 두고 매 렌더마다
+  `currentPage = Math.min(page, pageCount)`로 clamp해서 슬라이스에도 "현재 페이지"
+  표시에도 이 값 하나만 쓴다 — 필터가 다시 넓어지면 이전에 보던 페이지로 자연스럽게
+  돌아가고, effect 기반으로 짰을 때 생기는 리셋 타이밍 경쟁도 없다. 연도/표시개수를
+  직접 바꿀 때만 `setPage(1)`을 명시적으로 같이 호출한다.
 - `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
   `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
   YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 **연 단위로 한 번만** 호출한다.

@@ -9,6 +9,9 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 type YearFilter = 'ALL' | number;
 type BrokerFilter = 'ALL' | BrokerId;
+type PageSize = 10 | 20 | 30 | 'ALL';
+
+const PAGE_SIZE_OPTIONS: PageSize[] = [10, 20, 30, 'ALL'];
 
 const BROKER_LABELS: Record<BrokerId, string> = { toss: '토스증권', kis: '한국투자증권', kb: 'KB증권' };
 const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'kb'];
@@ -36,6 +39,8 @@ export default function Dividends() {
   const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState<YearFilter>('ALL');
   const [chartBroker, setChartBroker] = useState<BrokerFilter>('ALL');
+  const [pageSize, setPageSize] = useState<PageSize>(10);
+  const [page, setPage] = useState(1);
 
   const [broker, setBroker] = useState<BrokerId>('toss');
   const [currency, setCurrency] = useState<DividendCurrency>('KRW');
@@ -164,6 +169,18 @@ export default function Dividends() {
     const prefix = String(year);
     return records.filter((r) => r.paidDate.startsWith(prefix));
   }, [records, year]);
+
+  // 하단 배당 기록 목록의 페이지네이션. `page` state가 필터/삭제로 범위를
+  // 벗어나도(예: 마지막 페이지 항목을 지운 경우) 별도 effect로 되돌리지 않고
+  // 매 렌더마다 pageCount 안으로 clamp해서 쓴다 — 그래서 슬라이스에도, "현재
+  // 페이지" 표시에도 항상 이 clamp된 값 하나만 쓴다.
+  const pageCount = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(visibleRecords.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pagedRecords = useMemo(() => {
+    if (pageSize === 'ALL') return visibleRecords;
+    const start = (currentPage - 1) * pageSize;
+    return visibleRecords.slice(start, start + pageSize);
+  }, [visibleRecords, pageSize, currentPage]);
 
   // 그래프 전용 증권사 필터 — 연도 필터(visibleRecords)는 표/목록에도 다 적용되지만,
   // 이 필터는 "월별 배당금" 그래프에만 건다. 옵션은 실제로 기록이 있는 증권사만
@@ -340,7 +357,13 @@ export default function Dividends() {
 
       <div className="form-row">
         <label>연도</label>
-        <select value={year} onChange={(e) => setYear(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}>
+        <select
+          value={year}
+          onChange={(e) => {
+            setYear(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
+            setPage(1);
+          }}
+        >
           <option value="ALL">전체</option>
           {yearOptions.map((y) => (
             <option key={y} value={y}>
@@ -464,6 +487,44 @@ export default function Dividends() {
       </div>
 
       <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+          {pageCount > 1 ? (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
+                <button
+                  key={p}
+                  className="ghost"
+                  style={
+                    p === currentPage
+                      ? { background: 'var(--series-1)', color: '#fff', borderColor: 'var(--series-1)' }
+                      : undefined
+                  }
+                  onClick={() => setPage(p)}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div />
+          )}
+          <div className="form-row" style={{ margin: 0 }}>
+            <label>표시 개수</label>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(e.target.value === 'ALL' ? 'ALL' : (Number(e.target.value) as PageSize));
+                setPage(1);
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s === 'ALL' ? '전체' : `${s}개`}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <table>
           <thead>
             <tr>
@@ -483,7 +544,7 @@ export default function Dividends() {
                 </td>
               </tr>
             )}
-            {visibleRecords.map((r) => (
+            {pagedRecords.map((r) => (
               <tr key={r.id}>
                 <td>{r.paidDate}</td>
                 <td>{BROKER_LABELS[r.broker]}</td>

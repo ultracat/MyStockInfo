@@ -113,6 +113,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   수동 입력 모드(`manualNameEntry`)로 전환할 수 있다 — 그 모드에서는 이 effect가 더
   이상 name을 덮어쓰지 않는다. 배당 기록 표의 "종목"은 종목코드/종목명 두 컬럼으로
   나눠서 보여준다(예전엔 `{name} ({symbol})`로 한 셀에 합쳐서 헷갈린다는 피드백을 받음).
+  기록 목록 카드 위의 "종목명 일괄 갱신" 버튼(`onRefreshNames`)은 `POST
+  /api/dividends/refresh-names`를 호출해 **이미 저장된** 배당 기록의 종목명을 전부
+  API로 얻어온 이름으로 다시 채운다 — 배당 기록 자체에는 여전히 `name`을 스냅샷으로
+  저장한다(정규화해서 심볼로만 저장하고 항상 조인해서 보여주는 방식으로 바꾸지
+  않았다 — 나중에 종목명이 바뀌어도 과거 기록엔 "그 당시 이름"이 남아 있는 게
+  맞다고 판단, backend CLAUDE.md 참고). 결과(`updated`/`resolved`/`failed`)를 버튼
+  옆에 짧게 보여주고, `refresh()`로 목록도 다시 불러온다.
 - `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
   `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
   YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 **연 단위로 한 번만** 호출한다.

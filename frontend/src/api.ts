@@ -62,6 +62,10 @@ export const api = {
   addDividend: (input: Omit<DividendRecord, 'id'>) =>
     request<DividendRecord>('/dividends', { method: 'POST', body: JSON.stringify(input) }),
   deleteDividend: (id: string) => request<void>(`/dividends/${id}`, { method: 'DELETE' }),
+  refreshDividendNames: () =>
+    request<{ updated: number; resolved: number; failed: string[] }>('/dividends/refresh-names', {
+      method: 'POST',
+    }),
 
   getTradeHistory: (broker: BrokerId, accountId: string, from: string, to: string, opts?: { forceRefresh?: boolean }) =>
     request<TradeRecord[]>(

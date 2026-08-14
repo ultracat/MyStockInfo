@@ -60,12 +60,14 @@ export default function Dividends() {
   const [paidDate, setPaidDate] = useState(today());
   const [memo, setMemo] = useState('');
 
-  // 종목명 자동조회 — 백엔드가 심볼별로 로컬 캐시(stockNames.json)를 두므로
-  // 같은 심볼을 다시 입력해도 매번 토스 API를 부르지 않는다. 사용자가
+  // 종목명 자동조회 — 백엔드가 심볼별로 로컬 캐시(SQLite, stockNames.sqlite)를
+  // 두므로 같은 심볼을 다시 입력해도 매번 토스 API를 부르지 않는다. 사용자가
   // "직접 입력"을 누르면 그 뒤로는 자동조회가 name을 덮어쓰지 않는다.
   const [nameStatus, setNameStatus] = useState<'idle' | 'loading' | 'resolved' | 'error'>('idle');
   const [nameError, setNameError] = useState<string | null>(null);
   const [manualNameEntry, setManualNameEntry] = useState(false);
+  const [refreshingNames, setRefreshingNames] = useState(false);
+  const [refreshResult, setRefreshResult] = useState<string | null>(null);
 
   const [investedByBroker, setInvestedByBroker] = useState<Partial<Record<BrokerId, BrokerInvested>>>({});
   const [investedErrors, setInvestedErrors] = useState<Partial<Record<BrokerId, string>>>({});
@@ -211,6 +213,24 @@ export default function Dividends() {
   async function onDelete(id: string) {
     await api.deleteDividend(id);
     await refresh();
+  }
+
+  async function onRefreshNames() {
+    setRefreshingNames(true);
+    setRefreshResult(null);
+    try {
+      const result = await api.refreshDividendNames();
+      setRefreshResult(
+        result.failed.length > 0
+          ? `${result.updated}건 갱신됨 (조회 실패: ${result.failed.join(', ')})`
+          : `${result.updated}건 갱신됨 (${result.resolved}개 종목 조회)`
+      );
+      await refresh();
+    } catch (e) {
+      setRefreshResult((e as Error).message);
+    } finally {
+      setRefreshingNames(false);
+    }
   }
 
   const yearOptions = useMemo(() => {
@@ -586,6 +606,12 @@ export default function Dividends() {
       </div>
 
       <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button className="ghost" onClick={onRefreshNames} disabled={refreshingNames}>
+            {refreshingNames ? '갱신 중...' : '종목명 일괄 갱신'}
+          </button>
+          {refreshResult && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{refreshResult}</span>}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
           {pageCount > 1 ? (
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

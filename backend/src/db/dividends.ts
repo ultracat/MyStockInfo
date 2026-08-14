@@ -64,3 +64,18 @@ export function deleteDividend(id: string): boolean {
   });
   return removed;
 }
+
+/** Overwrites `name` on every record whose `symbol` is a key in `namesBySymbol` — used by
+ *  routes/dividends.ts's 이름 갱신 to bulk-replace manually-typed names with API-resolved ones. */
+export function updateDividendNames(namesBySymbol: Record<string, string>): number {
+  let updated = 0;
+  store().update((current) =>
+    current.map((r) => {
+      const resolved = namesBySymbol[r.symbol];
+      if (resolved === undefined || resolved === r.name) return r;
+      updated += 1;
+      return { ...r, name: resolved };
+    })
+  );
+  return updated;
+}

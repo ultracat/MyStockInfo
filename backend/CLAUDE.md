@@ -123,15 +123,35 @@ rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된�
 
 배당 기록 추가 폼에서 종목코드만 입력하면 종목명을 사용자가 직접 안 쳐도 되게, 토스의
 종목 기본 정보 조회(`GET /api/v1/stocks?symbols=`, `tossClient.ts`의 `fetchTossStockInfo`,
-`STOCK` rate-limit 그룹)로 자동 조회한다. **이 API는 계좌와 무관한 시세 참조 데이터라**
-(공식 문서 확인, checked 2026-08-14) 국내(`005930`)/미국(`AAPL`) 심볼을 한 API로 다 커버하고,
-배당 기록의 브로커가 `kis`여도 그대로 쓸 수 있다(토스 연동이 안 돼 있으면 `GET
-/api/stock-info/:symbol`이 409로 "토스증권 연동 필요"를 응답 — 프론트는 이때 종목명
-직접 입력으로 폴백한다). `stockNames.json`(심볼 → 이름, 브로커 무관하게 심볼 하나로
-키잉)에 한 번 조회한 심볼을 영구 캐시해서, 같은 심볼을 나중에 또 입력해도(다른 배당
-기록이든, 재실행 후든) 두 번째부터는 토스 API를 다시 안 부른다 — `credentials.json`/
-`dividends.json`과 같은 `getDataDir()` 아래 파일이라 dev에서 `backend/data/`, 패키징된
-앱에서 `userData/data/`에 쌓인다.
+`STOCK` rate-limit 그룹, 콤마로 최대 200개 동시 조회)로 자동 조회한다. **이 API는 계좌와
+무관한 시세 참조 데이터라**(공식 문서 확인, checked 2026-08-14) 국내(`005930`)/
+미국(`AAPL`) 심볼을 한 API로 다 커버하고, 배당 기록의 브로커가 `kis`여도 그대로 쓸 수
+있다(토스 연동이 안 돼 있으면 `GET /api/stock-info/:symbol`이 409로 "토스증권 연동
+필요"를 응답 — 프론트는 이때 종목명 직접 입력으로 폴백한다).
+
+한 번 조회한 심볼은 **SQLite**(`node:sqlite`의 `DatabaseSync`, `stockNames.sqlite`,
+심볼 → 이름 · 브로커 무관하게 심볼 하나로 키잉)에 영구 캐시해서, 같은 심볼을 나중에 또
+입력해도(다른 배당 기록이든, 재실행 후든) 두 번째부터는 토스 API를 다시 안 부른다 —
+`credentials.json`/`dividends.json`과 같은 `getDataDir()` 아래 파일이라 dev에서
+`backend/data/`, 패키징된 앱에서 `userData/data/`에 쌓인다. **이 테이블만 SQLite고
+나머지(자격증명/배당 기록/설정)는 전부 `JsonStore`(JSON 파일)다** — 처음엔 이것도
+JSON이었는데 "SQLite로 바꿔달라"는 요청을 받고 이 테이블만 바꿨다.
+- **왜 `better-sqlite3`가 아니라 `node:sqlite`(Node 내장, Node 22.5+ `@experimental`)인가**:
+  이 프로젝트는 네이티브(`.node`) 의존성이 하나도 없다는 전제로 electron-builder를
+  `asar: true` + `npmRebuild: false`로 맞춰뒀다(electron/CLAUDE.md 참고) — `better-sqlite3`
+  같은 네이티브 addon을 넣으면 그 전제가 깨져서 `@electron/rebuild`를 다시 켜야 하고
+  `asarUnpack`도 추가해야 한다. `node:sqlite`는 addon이 아니라 Node/Electron 런타임에
+  내장돼 있어 그런 게 전혀 필요 없다. 다만 여전히 `@experimental`이라 플래그 없이 되는지
+  이 프로젝트가 실제로 쓰는 버전으로 직접 확인했다: `ELECTRON_RUN_AS_NODE=1
+  ./node_modules/.bin/electron -e "require('node:sqlite')"` — Electron 43.4.0(번들 Node
+  24.18.1)과 시스템 `node`(v24.17.0, backend 단독 실행 dev 폴백용) 둘 다 플래그 없이 됨.
+  `@types/node`(현재 22.20.1)에도 `sqlite.d.ts`가 이미 있어 타입도 별도 설치 없이 잡힌다.
+- **일괄 갱신** (`POST /api/dividends/refresh-names`) — 기존 배당 기록의 종목명을
+  전부 API로 얻어온 이름으로 다시 채운다(수동 입력 당시 오타나 트레일링 스페이스 같은
+  걸 정리할 때 씀 — 실제로 한 번 돌려서 31건 중 트레일링 스페이스 등으로 어긋나 있던
+  이름들을 정리했다). `db/dividends.ts`의 `updateDividendNames(symbol→name 맵)`으로
+  일괄 반영하고, 조회 결과는 동시에 SQLite 캐시에도 채워 넣는다. 프론트 Dividends.tsx의
+  "종목명 일괄 갱신" 버튼이 이걸 호출한다.
 
 ## 검증 방식
 

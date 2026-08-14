@@ -257,7 +257,7 @@ export default function Trades() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>{year}년 월별 매수/매도</h3>
-        <TradesChart rows={monthlyRows} fxRate={effectiveFxRate} />
+        <TradesChart rows={monthlyRows} />
       </div>
 
       <div className="card">

@@ -50,9 +50,9 @@ npm run package:mac
   개발자입니다" 경고를 띄웁니다.** 여러 사람에게 배포하려면 유료 Apple Developer Program
   인증서로 서명 + 공증이 추가로 필요합니다.
 - 앱 아이콘은 아직 별도로 만들지 않아 Electron 기본 아이콘이 붙습니다.
-- 패키징된 앱은 자격증명/배당 데이터를 `~/Library/Application Support/mystock-api/`에
-  저장합니다 — `npm run dev`로 띄운 개발용 앱(`~/Library/Application Support/@mystock/`)과는
-  **별개의 데이터**로 시작합니다.
+- 패키징된 앱은 `npm run dev`로 띄운 개발용 앱과 **같은** 자격증명/배당 데이터
+  (`~/Library/Application Support/@mystock/electron/`)를 씁니다 — `main.ts`가 앱 이름을
+  고정해두기 때문에, dev에서 입력해둔 내용을 그대로 이어서 볼 수 있습니다.
 - 설정 상세와 이 모노레포 구조 때문에 필요했던 우회(예: npm workspaces 심볼릭 링크
   처리)는 `electron/CLAUDE.md`의 "Mac 배포용 빌드" 절을 참고하세요.
 

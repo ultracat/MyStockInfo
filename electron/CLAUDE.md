@@ -10,6 +10,19 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   스크립트가 `electron ./src/index.cjs`로 이 파일을 명시적으로 가리킨다 — `package.json`의
   `"main"`(아래 참고)과는 별개다.
 - `src/main.ts` — 실제 로직.
+  - **파일 맨 위에서 `app.setName('@mystock/electron')`을 제일 먼저 호출한다.** Electron은
+    `app.getPath('userData')`(자격증명/배당 기록이 저장되는 곳)를 정할 때 쓰는 기본 앱
+    이름을, "디렉터리로 실행됐을 때만" 그 디렉터리의 `package.json`의 `"name"`에서 가져오고
+    (예: `electron .` → `electron/package.json`의 `"@mystock/electron"`, 슬래시가 그대로
+    경로 구분자가 돼서 `~/Library/Application Support/@mystock/electron/`이라는 중첩
+    폴더가 생김), 스크립트 파일 경로로 실행되면(`electron ./src/index.cjs`, 지금 dev
+    스크립트가 이렇게 함) 이 조회 자체를 안 해서 Electron 기본값 `"Electron"`으로
+    떨어진다 — 즉 dev 스크립트를 `electron .`에서 `electron ./src/index.cjs`로 바꾼
+    시점에 기존 사용자 데이터(`@mystock/electron/`)를 통째로 못 찾게 되는 회귀가 실제로
+    발생했었다(보유 종목·배당 기록이 전부 안 보이는 버그로 나타남). `setName`으로 이름을
+    고정해서 어떻게 실행되든(스크립트 경로든 디렉터리든, dev든 패키징된 빌드든) 항상 같은
+    `userData` 경로를 쓰게 만들어 근본적으로 해결했다 — 새 이름을 고르지 않고 기존 폴더명
+    그대로 쓴 이유는 이미 있는 사용자 데이터를 마이그레이션 없이 계속 쓰기 위해서다.
   - `BACKEND_PORT = 4317` — `frontend/src/api.ts`의 `BASE_URL`과 반드시 일치해야 한다.
   - `app.whenReady()` 안에서 `startServer(BACKEND_PORT)` → `createWindow()` 순서.
   - **`startServer()`가 반환한 서버의 `'error'` 이벤트를 반드시 처리한다** (예:
@@ -62,10 +75,9 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   Program 인증서로 서명 + 공증(`mac.notarize`)이 필요하다.
 - **아이콘 미설정** — 기본 Electron 아이콘이 붙는다. `.icns` 파일을 만들어
   `build.mac.icon`에 지정하면 바뀐다.
-- 패키징된 앱은 `app.getName()`이 루트 `package.json`의 `"name"`(`mystock-api`)을 따라가서,
-  자격증명/배당 데이터가 `~/Library/Application Support/mystock-api/`에 저장된다 — dev에서
-  쓰던 `~/Library/Application Support/@mystock/`와는 **다른 디렉터리**라 데이터가 자동으로
-  이어지지 않는다(의도된 동작: 배포용 앱은 깨끗한 상태로 시작해야 함).
+- `main.ts`가 `app.setName('@mystock/electron')`으로 이름을 고정하므로, 패키징된 앱도
+  dev와 똑같이 `~/Library/Application Support/@mystock/electron/`을 쓴다 — 기존에 dev에서
+  입력해둔 자격증명/배당 기록을 그대로 이어서 쓸 수 있다(별도 마이그레이션 불필요).
 - 산출물은 `release/`(gitignore됨)에 생긴다. 실제로 빌드해서 `.app`을 직접 실행 →
   백엔드가 4317 포트에 정상 바인딩 → `/api/accounts` 응답 확인 → `.dmg` 마운트까지
   확인해서 검증했다.

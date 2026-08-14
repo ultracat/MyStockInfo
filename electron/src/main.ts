@@ -5,6 +5,20 @@ import { startServer } from '@mystock/backend';
 const BACKEND_PORT = 4317;
 const FRONTEND_DEV_URL = 'http://localhost:5173';
 
+// Electron derives the default app name (and therefore
+// `app.getPath('userData')`, where credentials.json/dividends.json/
+// kis-token.json live) from whichever package.json it happens to find
+// near the launched entry point — and it only looks for one when it's
+// launched with a DIRECTORY (`electron .`), not a plain script path
+// (`electron ./src/index.cjs`, what `npm run dev` uses so main.ts changes
+// run via tsx without a separate compile step). Pin the name explicitly so
+// userData is the same regardless of how this process was launched.
+// '@mystock/electron' matches the historical default (from
+// electron/package.json's scoped "name", which Electron used as a literal
+// path segment — hence the nested "@mystock/electron" folder) so existing
+// local data keeps working without migration.
+app.setName('@mystock/electron');
+
 let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {

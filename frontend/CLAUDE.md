@@ -57,11 +57,18 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   표시하고 합산을 생략한다(조용히 틀린 숫자를 보여주지 않기 위함).
 - `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
   `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
-  YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 호출한다. 백엔드가 이미 원시
-  `TradeRecord[]`만 돌려주므로(로컬 DB가 없어 "월별 요약" 같은 걸 백엔드가 미리 계산해둘
-  이유가 없음), 월별 매수/매도 집계(`monthlyRows`)와 총계(`totals`)는 Dividends.tsx의
-  `brokerDividendTotals`처럼 프론트에서 `useMemo`로 계산한다. 상단 스탯 타일(총 매수금액/총
-  매도금액)은 `effectiveFxRate`로 원화 환산해서 하나의 숫자로 보여주지만(Dividends.tsx/
+  YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 **연 단위로 한 번만** 호출한다.
+  "연간/월간" 보기 전환과 월 선택은 서버를 다시 안 부르고, 이미 받아온 그 해 전체
+  `trades`를 `viewMode`/`month`에 따라 `useMemo`로 다르게 집계/필터링한다
+  (`visibleTrades`, `chartRows`) — 월 하나만 보고 싶다고 매번 새로 fetch할 이유가 없어서.
+  `chartRows`는 연간이면 12개월 버킷, 월간이면 그 달의 날짜 수만큼(`daysInMonth`) 일별
+  버킷을 만든다(`TradesChart`의 `TradeSummaryBucket[]`, `label` 필드에 그대로 들어감).
+  백엔드가 원시 `TradeRecord[]`만 돌려주므로(로컬 DB가 없어 "월별/일별 요약" 같은 걸
+  백엔드가 미리 계산해둘 이유가 없음), 이 집계는 전부 프론트 쪽 책임이다(Dividends.tsx의
+  `brokerDividendTotals`와 같은 패턴). 상단 스탯 타일(총 매수금액/총 매도금액)과 거래
+  목록 테이블은 항상 현재 보기 범위(연간이면 그 해 전체, 월간이면 그 달만)인
+  `visibleTrades` 기준으로 계산해서 화면 안 숫자들이 서로 어긋나지 않게 했다. 스탯
+  타일은 `effectiveFxRate`로 원화 환산해서 하나의 숫자로 보여주지만(Dividends.tsx/
   Dashboard.tsx와 같은 패턴), **그래프는 원화·달러를 환산해 합치지 않고 따로 보여준다** —
   아래 `TradesChart.tsx` 참고.
 - `src/components/TradesChart.tsx` — 월별 매수(파랑, `--series-1`)/매도(주황, `--series-2`)

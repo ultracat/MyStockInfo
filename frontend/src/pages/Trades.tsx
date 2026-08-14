@@ -1,15 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { BrokerAccount, BrokerId, BrokerSummary, TradeRecord } from '../types';
-import TradesChart, { type MonthlyTradeSummary } from '../components/TradesChart';
+import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
 
 const krw = new Intl.NumberFormat('ko-KR');
 const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const CURRENT_YEAR = new Date().getFullYear();
+const CURRENT_MONTH = new Date().getMonth() + 1;
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
+const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+type ViewMode = 'year' | 'month';
 
 function formatAmount(amount: number, currency: string) {
   return currency === 'USD' ? usdFmt.format(amount) : `${krw.format(Math.round(amount))}원`;
+}
+
+function daysInMonth(year: number, month: number) {
+  return new Date(year, month, 0).getDate();
+}
+
+function accumulate(row: TradeSummaryBucket, t: TradeRecord) {
+  const isUsd = t.currency === 'USD';
+  if (t.side === 'BUY') {
+    if (isUsd) row.buyUsd += t.amount;
+    else row.buyKrw += t.amount;
+  } else {
+    if (isUsd) row.sellUsd += t.amount;
+    else row.sellKrw += t.amount;
+  }
 }
 
 export default function Trades() {
@@ -20,6 +39,8 @@ export default function Trades() {
   const [accounts, setAccounts] = useState<BrokerAccount[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [year, setYear] = useState(CURRENT_YEAR);
+  const [viewMode, setViewMode] = useState<ViewMode>('year');
+  const [month, setMonth] = useState(CURRENT_MONTH);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
 
   const configuredBrokers = brokers.filter((b) => b.configured);
@@ -121,29 +142,47 @@ export default function Trades() {
     };
   }, [selectedBroker, accountId, year]);
 
-  const monthlyRows = useMemo<MonthlyTradeSummary[]>(() => {
-    const rows: MonthlyTradeSummary[] = Array.from({ length: 12 }, (_, i) => ({
-      month: `${year}-${String(i + 1).padStart(2, '0')}`,
+  // 연간 보기면 트래드 전체를 12개월 버킷으로, 월간 보기면 선택한 달의
+  // 거래만 골라 그 달의 날짜 수만큼 일별 버킷으로 나눈다 — 서버에서 다시
+  // 받아올 필요 없이 이미 받아온 그 해 전체 trades를 그대로 재사용한다.
+  const visibleTrades = useMemo(() => {
+    if (viewMode === 'year') return trades;
+    const prefix = `${year}-${String(month).padStart(2, '0')}`;
+    return trades.filter((t) => t.executedAt.startsWith(prefix));
+  }, [trades, viewMode, year, month]);
+
+  const chartRows = useMemo<TradeSummaryBucket[]>(() => {
+    if (viewMode === 'year') {
+      const rows: TradeSummaryBucket[] = Array.from({ length: 12 }, (_, i) => ({
+        label: String(i + 1).padStart(2, '0'),
+        buyKrw: 0,
+        buyUsd: 0,
+        sellKrw: 0,
+        sellUsd: 0,
+      }));
+      for (const t of trades) {
+        const monthIdx = Number(t.executedAt.slice(5, 7)) - 1;
+        if (monthIdx < 0 || monthIdx > 11) continue;
+        accumulate(rows[monthIdx], t);
+      }
+      return rows;
+    }
+
+    const numDays = daysInMonth(year, month);
+    const rows: TradeSummaryBucket[] = Array.from({ length: numDays }, (_, i) => ({
+      label: String(i + 1),
       buyKrw: 0,
       buyUsd: 0,
       sellKrw: 0,
       sellUsd: 0,
     }));
-    for (const t of trades) {
-      const monthIdx = Number(t.executedAt.slice(5, 7)) - 1;
-      if (monthIdx < 0 || monthIdx > 11) continue;
-      const row = rows[monthIdx];
-      const isUsd = t.currency === 'USD';
-      if (t.side === 'BUY') {
-        if (isUsd) row.buyUsd += t.amount;
-        else row.buyKrw += t.amount;
-      } else {
-        if (isUsd) row.sellUsd += t.amount;
-        else row.sellKrw += t.amount;
-      }
+    for (const t of visibleTrades) {
+      const day = Number(t.executedAt.slice(8, 10));
+      if (day < 1 || day > numDays) continue;
+      accumulate(rows[day - 1], t);
     }
     return rows;
-  }, [trades, year]);
+  }, [trades, visibleTrades, viewMode, year, month]);
 
   const totals = useMemo(() => {
     let buyKrw = 0;
@@ -152,7 +191,7 @@ export default function Trades() {
     let sellUsd = 0;
     let buyCount = 0;
     let sellCount = 0;
-    for (const t of trades) {
+    for (const t of visibleTrades) {
       const isUsd = t.currency === 'USD';
       if (t.side === 'BUY') {
         buyCount += 1;
@@ -165,11 +204,11 @@ export default function Trades() {
       }
     }
     return { buyKrw, buyUsd, sellKrw, sellUsd, buyCount, sellCount };
-  }, [trades]);
+  }, [visibleTrades]);
 
   const sortedTrades = useMemo(
-    () => [...trades].sort((a, b) => (a.executedAt < b.executedAt ? 1 : -1)),
-    [trades]
+    () => [...visibleTrades].sort((a, b) => (a.executedAt < b.executedAt ? 1 : -1)),
+    [visibleTrades]
   );
 
   function amountTileValue(krwAmount: number, usdAmount: number) {
@@ -225,6 +264,14 @@ export default function Trades() {
         )}
 
         <div className="form-row">
+          <label>보기</label>
+          <select value={viewMode} onChange={(e) => setViewMode(e.target.value as ViewMode)}>
+            <option value="year">연간</option>
+            <option value="month">월간</option>
+          </select>
+        </div>
+
+        <div className="form-row">
           <label>연도</label>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
             {YEAR_OPTIONS.map((y) => (
@@ -234,6 +281,19 @@ export default function Trades() {
             ))}
           </select>
         </div>
+
+        {viewMode === 'month' && (
+          <div className="form-row">
+            <label>월</label>
+            <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+              {MONTH_OPTIONS.map((m) => (
+                <option key={m} value={m}>
+                  {m}월
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="summary-row">
@@ -256,8 +316,10 @@ export default function Trades() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>{year}년 월별 매수/매도</h3>
-        <TradesChart rows={monthlyRows} />
+        <h3 style={{ marginTop: 0 }}>
+          {viewMode === 'year' ? `${year}년 월별 매수/매도` : `${year}년 ${month}월 일별 매수/매도`}
+        </h3>
+        <TradesChart rows={chartRows} />
       </div>
 
       <div className="card">
@@ -276,7 +338,7 @@ export default function Trades() {
             {sortedTrades.length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                  {year}년 거래 내역이 없습니다.
+                  {viewMode === 'year' ? `${year}년` : `${year}년 ${month}월`} 거래 내역이 없습니다.
                 </td>
               </tr>
             ) : (

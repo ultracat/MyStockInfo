@@ -35,7 +35,7 @@ export default function DividendsChart({ rows, fxRate }: { rows: MonthlySummaryR
         총 배당금 합계 <strong style={{ color: 'var(--text-primary)' }}>{krw.format(Math.round(total))}원</strong>
         {hasUnconvertedUsd && ' (달러 배당금은 환율 미적용 — 설정에서 환율을 등록해주세요)'}
       </div>
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', overflowX: 'auto' }}>
         <svg
           width={width}
           height={LABEL_SPACE + HEIGHT + AXIS_SPACE}

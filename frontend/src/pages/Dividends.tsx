@@ -399,61 +399,63 @@ export default function Dividends() {
         </div>
       </div>
 
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>월별 배당금</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <div className="form-row" style={{ margin: 0 }}>
-              <label>증권사</label>
-              <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
-                <option value="ALL">전체</option>
-                {chartBrokerOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {BROKER_LABELS[id]}
-                  </option>
-                ))}
-              </select>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div className="card" style={{ flex: '1 1 420px', minWidth: 0, margin: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <h3 style={{ margin: 0 }}>월별 배당금</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div className="form-row" style={{ margin: 0 }}>
+                <label>증권사</label>
+                <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
+                  <option value="ALL">전체</option>
+                  {chartBrokerOptions.map((id) => (
+                    <option key={id} value={id}>
+                      {BROKER_LABELS[id]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <CollapseToggle collapsed={chartCollapsed} onClick={() => setChartCollapsed((c) => !c)} />
             </div>
-            <CollapseToggle collapsed={chartCollapsed} onClick={() => setChartCollapsed((c) => !c)} />
           </div>
+          {!chartCollapsed && <DividendsChart rows={monthlyRows} fxRate={effectiveFxRate} />}
         </div>
-        {!chartCollapsed && <DividendsChart rows={monthlyRows} fxRate={effectiveFxRate} />}
-      </div>
 
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>증권사별 배당금 총계</h3>
-          <CollapseToggle collapsed={brokerTableCollapsed} onClick={() => setBrokerTableCollapsed((c) => !c)} />
-        </div>
-        {!brokerTableCollapsed &&
-          (brokerLines.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>
-              {investedLoading ? '불러오는 중...' : '배당 기록이 없습니다.'}
-            </p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>증권사</th>
-                  <th>투자금</th>
-                  <th>배당금</th>
-                  <th>배당수익률</th>
-                </tr>
-              </thead>
-              <tbody>
-                {brokerLines.map((line, i) => (
-                  <tr key={`${line.broker}-${i}`}>
-                    <td style={line.muted ? { color: 'var(--text-muted)', fontSize: 12 } : undefined}>
-                      {line.label}
-                    </td>
-                    <td>{line.invested}</td>
-                    <td>{line.dividend}</td>
-                    <td>{line.yieldText}</td>
+        <div className="card" style={{ flex: '1 1 420px', minWidth: 0, margin: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+            <h3 style={{ margin: 0 }}>증권사별 배당금 총계</h3>
+            <CollapseToggle collapsed={brokerTableCollapsed} onClick={() => setBrokerTableCollapsed((c) => !c)} />
+          </div>
+          {!brokerTableCollapsed &&
+            (brokerLines.length === 0 ? (
+              <p style={{ color: 'var(--text-muted)' }}>
+                {investedLoading ? '불러오는 중...' : '배당 기록이 없습니다.'}
+              </p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>증권사</th>
+                    <th>투자금</th>
+                    <th>배당금</th>
+                    <th>배당수익률</th>
                   </tr>
-                ))}
+                </thead>
+                <tbody>
+                  {brokerLines.map((line, i) => (
+                    <tr key={`${line.broker}-${i}`}>
+                      <td style={line.muted ? { color: 'var(--text-muted)', fontSize: 12 } : undefined}>
+                        {line.label}
+                      </td>
+                      <td>{line.invested}</td>
+                      <td>{line.dividend}</td>
+                      <td>{line.yieldText}</td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           ))}
+        </div>
       </div>
 
       <div className="card">

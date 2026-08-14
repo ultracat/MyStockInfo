@@ -1,232 +1,125 @@
 # frontend
 
 React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.tsx`가 `useState`로
-페이지 상태를 직접 관리하는 단순 구조 — 페이지가 늘어나도 라우터를 도입하기보다 이 패턴을
-유지한다.
+페이지 상태를 직접 관리한다 — 페이지가 늘어나도 라우터를 도입하지 않는다.
 
 ## 구조
 
-- `src/format.ts` — 공용 `Intl.NumberFormat` 인스턴스(`krw`, `krw2dp`, `krwCompact`,
-  `usdFmt`, `usdCompact`, `formatKrw`)를 모아둔 곳. **`Intl.NumberFormat` 생성자는 로케일
-  데이터 조회가 있어서 공짜가 아니다** — `HoldingsTable.tsx`의 `formatMoney`가 행마다(컬럼당
-  1번씩, 한 행에 6번) 새로 생성하고 있어서 포지션 30~50개짜리 포트폴리오 렌더 한 번에
-  수백 번 생성되던 걸 여기로 옮기며 고쳤다(`Dashboard.tsx`의 `formatKrw`와 인라인
-  환율 표시도 같은 문제였음). 새 페이지/컴포넌트에서 숫자 포맷이 필요하면 직접
-  `new Intl.NumberFormat(...)`를 쓰지 말고 여기서 가져다 쓴다 — 렌더 바디나 행마다 호출되는
-  함수 안에서 새로 만들면 똑같은 문제가 재발한다.
-- `src/App.tsx` — 좌측 사이드바 네비게이션 + `page` 상태(`'dashboard' | 'dividends' |
-  'trades' | 'settings'`)로 페이지 전환. 새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목 추가.
-- `src/pages/Dashboard.tsx` — 보유 종목 화면. 브로커 선택 드롭다운 → 해당 브로커 계좌/환율
-  조회 → 선택 계좌 포트폴리오 조회, 3단계 `useEffect` 체인. 환율은 `selectedBroker ===
-  'toss'`일 때만 조회한다(토스만 환율 API 제공). **브로커 전환 시 `accountId`는 브로커
-  `<select>`의 `onChange`에서 `selectedBroker`와 같은 커밋에 동기적으로 `null`로 리셋한다**
-  — effect2(계좌 목록 재조회)의 비동기 본문 안에서 리셋하면, `selectedBroker`는 이미 새
-  브로커인데 `accountId`는 아직 이전 브로커 것인 렌더가 한 번 존재하게 되고, 그 조합으로
-  effect3(`[selectedBroker, accountId]` 의존, 보유종목 조회)가 즉시 실행돼 예를 들어 KIS
-  계좌번호를 토스 accountSeq인 것처럼 실어 `/api/v1/holdings`를 호출한다 — 토스는 이를
-  `account-not-found`(400)로 정확히 거부하고, 이 요청은 실제로는 곧 cancelled 처리되어
-  화면엔 안 보이지만 백엔드 로그엔 에러로 남는다(실제로 한 번 발생해서 고침). 반대 방향
-  (토스→KIS)이 무해했던 건 `kisAdapter.getPortfolio`가 `accountId` 인자를 아예 안 쓰고
-  자격증명에 저장된 계좌로만 조회하기 때문 — 이 비대칭성이 이 버그가 한쪽 방향에서만
-  나타난 이유였다. 네 개 스탯 타일(총 매입금액/총 평가금액/총 손익금액은 `AmountTile`,
-  손익률은 `RateTile`)은 모두 같은 시각 언어를 쓴다 — 포트폴리오에 달러 보유분이 있으면
-  (`hasUsdHoldings = !!portfolio.totalPurchaseAmountUsd`, 현재는 토스 해외주식만 해당)
-  원화/달러/합계(환산) 3줄로 보여주고, 없으면 기존처럼 한 줄만 보여준다. **굵은 글씨
-  (`.value`)는 항상 합계(환산) 한 줄에만 쓴다** — 원화/달러 개별 줄은 작은 글씨(12px,
-  일반 굵기)로 내려서 "이 타일의 대표 숫자는 총 합계"라는 게 한눈에 보이게 한다(처음엔
-  원화 줄이 굵고 달러/합계가 작았는데, 그러면 원화 금액이 대표값처럼 보여서 반대로
-  바꿨다). `hasUsd` 판단을 타일 자신의 값(예: 손익금액이 우연히 0)이 아니라 포트폴리오
-  전체의 달러 투자금 여부로 넘기는 이유는, 그래야 손익금액이 0이거나 부호가 바뀌어도
-  3줄 구조가 안 깨지기 때문. `RateTile`의 "합계" 손익률은 브로커가 내려주는
-  `profitLossRate`(단일 값)를 재사용하지 않고 `AmountTile`과 같은 `effectiveFxRate`로
-  직접 계산한다 — 그래야 이 화면의 금액 타일들과 같은 환율 가정을 쓰게 되어 숫자가
-  서로 어긋나지 않는다(원화/달러 개별 손익률은 같은 통화끼리 나눈 값이라 환율 없이도
-  정확함). 환율은 이미 비중 계산에 쓰던 `effectiveFxRate`를 그대로 재사용한다(새로
-  조회하지 않음).
-- `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회. 두 브로커 모두 개인 배당 지급
-  내역 API가 없어서 수동 입력 방식임을 화면에 안내한다 — 이 사실이 바뀌지 않는 한 안내
-  문구를 지우지 않는다. 배당 기록마다 `currency`(KRW/USD)와 그 통화 기준 `amount`를
-  저장한다(backend/CLAUDE.md 참고) — 예전엔 입력 시 무조건 원화로 수동 환산해서 저장했지만
-  지금은 원본 통화 그대로 저장하고 화면에서 환산한다. "증권사별 배당금 총계" 표는 브로커에
-  달러 투자금/배당금이 하나라도 있으면 **원화 / 달러 / 합계(환산)** 3행으로 나눠서 통화별
-  실제 수익률과 환산 합계를 각각 보여준다(하나로 합치면 통화별 수익률을 알 수 없어서). 이
-  3행은 별도의 "구분" `<th>`를 두지 않는다 — 한 번 그렇게 만들었다가 "증권사"/"구분" 두
-  컬럼으로 보인다는 피드백을 받고, 첫 컬럼(증권사) 안에 첫 줄엔 증권사명·나머지 줄엔 들여쓴
-  구분 라벨(`　달러`, `　합계(환산)`)만 넣는 방식으로 바꿨다 — 컬럼 수를 늘리지 않으면서
-  3행 구조는 유지. 투자금(총 매입금액,
-  `totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없는 값이라 마운트 시 별도 effect에서
-  `listBrokers` → 브로커별 `listAccounts` → 계좌별 `getPortfolio`를 호출해 합산한다 —
-  배당금 합계(로컬 DB)와 투자금(실시간 브로커 API)은 출처와 신선도가 다른 값임을 유의.
-  브로커 하나가 미연동/레이트리밋 등으로 실패해도 나머지 행은 계속 보여야 하므로 브로커별로
-  개별 try/catch로 감싼다(Dashboard.tsx의 목록형 엔드포인트 방침과 동일한 이유). 달러→원화
-  환산 환율은 Dashboard.tsx와 동일한 우선순위(설정에서 직접 입력한 값 > 토스 실시간
-  환율, 토스만 환율 API 제공)로 별도 effect에서 가져와 `effectiveFxRate`로 "합계(환산)"
-  행과 `DividendsChart`(월별 그래프)에 전달한다 — 환율을 못 가져오면 "환율 미적용"으로
-  표시하고 합산을 생략한다(조용히 틀린 숫자를 보여주지 않기 위함).
-  **연도 필터(`year: 'ALL' | number`)**는 서버에 다시 안 물어보고 `listDividends()`로
-  받아온 전체 `records`를 `visibleRecords`로 클라이언트에서 걸러서 월별 집계
-  (`monthlyRows`)·증권사별 집계(`brokerDividendTotals`)·하단 기록 목록까지 전부 이걸
-  기준으로 다시 계산한다 — Trades.tsx의 `visibleTrades`와 같은 패턴. 그래서 백엔드의
-  `monthlySummary()`(연도 개념 없이 항상 전체 기간)는 통째로 지웠다(backend/CLAUDE.md
-  참고). **투자금(`investedByBroker`)만 연도 필터를 안 탄다** — 이건 "지금 시점에
-  실제로 들고 있는 투자 원금"이라 애초에 연도별로 나뉘는 값이 아니고, 배당 DB가 아니라
-  실시간 브로커 API에서 오기 때문. 전체 상단에 있는 "총 배당금/총 투자금/총
-  배당수익률" 스탯 타일(`grandTotal`)은 모든 브로커를 합친 환산 단일 숫자만 보여준다 —
-  통화별 상세는 이미 그 아래 "증권사별 배당금 총계" 표에 있어서 중복 표시하지 않는다.
-  브로커 중 하나라도 투자금 조회가 실패/로딩 중이면 총 투자금·총 배당수익률을 부분합으로
-  조용히 보여주지 않고 "일부 조회 실패"/"불러오는 중..."이라고 명시한다. "월별 배당금"
-  그래프에는 연도 필터와 별개로 **그래프 전용** 증권사 필터(`chartBroker`)가 카드 안에
-  따로 있다 — 연도 필터(`year`)는 표/목록까지 전부 같이 좁히는 페이지 전역 필터인 반면,
-  이건 그래프 하나만 좁힌다(증권사별 표는 이미 모든 증권사를 나란히 비교해서 보여주는
-  게 목적이라 거기까지 필터링하면 오히려 그 표의 존재 이유가 없어짐). 옵션 목록
-  (`brokerOptions`)은 연도로 좁히기 전 `records` 전체 기준으로 계산한다 — 연도를
-  바꿀 때마다 드롭다운 옵션 자체가 들쭉날쭉 생겼다 사라졌다 하지 않게 하기 위해서다.
-  하단 "배당 기록" 목록에도 별도의 목록 전용 증권사 필터(`listBroker`)가 있다 —
-  `chartBroker`(그래프 전용)와는 완전히 독립된 state로, 카드 안 "종목명 일괄 갱신"
-  버튼 옆에 `marginLeft: 'auto'`로 오른쪽에 붙인 `<select>`다. 옵션 목록은
-  `brokerOptions`를 그래프 필터와 그대로 같이 쓴다. `visibleRecords`(연도 필터까지만
-  적용)를 `listBroker`로 한 번 더 좁힌 `listFilteredRecords`가 페이지네이션
-  (`pageCount`/`currentPage`/`pagedRecords`)과 목록 렌더링의 기준이 된다 — "증권사별
-  배당금 총계" 표는 여기서도 필터링하지 않는다(비교가 목적인 표라 그대로 유지). 연도·
-  표시개수와 마찬가지로 `listBroker`를 바꿀 때도 `setPage(1)`을 같이 호출한다.
-  하단 "배당 기록" 목록의 페이지네이션(`pageSize`: 10/20/30/전체, `page`)은 **`page`를
-  effect로 되돌리지 않는다** — 연도 필터를 바꾸거나 마지막 페이지의 항목을 삭제해서
-  실제 페이지 수(`pageCount`)가 줄어들면, `page` state는 그대로 두고 매 렌더마다
-  `currentPage = Math.min(page, pageCount)`로 clamp해서 슬라이스에도 "현재 페이지"
-  표시에도 이 값 하나만 쓴다 — 필터가 다시 넓어지면 이전에 보던 페이지로 자연스럽게
-  돌아가고, effect 기반으로 짰을 때 생기는 리셋 타이밍 경쟁도 없다. 연도/표시개수를
-  직접 바꿀 때만 `setPage(1)`을 명시적으로 같이 호출한다. 페이지 번호 버튼은 전체
-  `pageCount`를 다 그리지 않고 `currentPage`가 속한 10개(`PAGE_GROUP_SIZE`) 그룹만
-  그린다(`pageGroupStart`/`pageGroupEnd` = `currentPage` 기준으로 매 렌더 계산 —
-  `page`처럼 별도 state로 안 둔다) — 기록이 몇 백 건이라 `pageCount`가 커지면 숫자
-  버튼이 한 줄에 다 안 들어가서, 그룹 양 끝에 "◀ 이전 10개"/"다음 10개 ▶" 버튼을 두어
-  그룹 자체를 `pageGroupStart ± PAGE_GROUP_SIZE`로 점프시킨다(그룹의 첫 페이지로
-  이동). 그룹 경계에서는 버튼을 `disabled`로 막는다(첫 그룹에서 "이전", 마지막
-  그룹에서 "다음"). "월별 배당금"과 "증권사별
-  배당금 총계"는 **카드 하나**를 공유한다(처음엔 카드 두 개로 나란히 놓았다가, "따로
-  접혔다 펴지지 말고 한 번에 같이"라는 피드백을 받고 합쳤다) — `dividendPanelsCollapsed`
-  하나로 둘 다 같이 접고 펴며, `CollapseToggle`(`src/components/CollapseToggle.tsx` —
-  처음엔 이 파일 내부 컴포넌트였다가 Trades.tsx의 매수/매도 그래프 카드에도 같은
-  접기/펼치기가 필요해져서 공용 컴포넌트로 뺐다)도 카드 헤더 행에 하나만 둔다. 카드
-  헤더 행엔 "월별 배당금 제목 + 증권사 `<select>`"만 있고 토글은
-  그 행 **맨 오른쪽**에 온다 — "증권사별 배당금 총계" 제목은 처음엔 이 헤더 행에
-  같이 두었는데, 그러면 왼쪽에 붙어 있어서 어느 쪽 내용에 대한 라벨인지 헷갈린다는
-  피드백을 받고 표 컬럼 바로 위(자기 내용 바로 위)로 옮겼다 — **섹션 라벨은 그
-  섹션의 콘텐츠 바로 위에 둔다**는 원칙. 본문(그래프+표)은 `!dividendPanelsCollapsed`일
-  때만 렌더링하고, 내부에서 `flex-wrap: wrap`인 행(그래프 `flex: '1 1 420px'` 왼쪽,
-  폭 1px `--border`색 세로선 구분자, "증권사별 배당금 총계" 제목 + 표 `flex: '1 1
-  420px'` 오른쪽)으로 나눈다 — `alignItems: 'stretch'`라 표 행 개수가 달라져도
-  구분선이 항상 그래프와 같은 높이로 이어진다. 카드 폭이 줄어드는 만큼
-  `DividendsChart`도 `overflowX: auto`로 감싸서(`TradesChart`와 동일한 이유) 달이
-  많을 때 카드 밖으로 넘치지 않고 그래프 자체가 가로 스크롤되게 했다. "월별 배당금"
-  옆 증권사 `<select>`는 `.form-row`(라벨-위/셀렉트-아래 세로 배치용 클래스)를 안
-  쓴다 — 제목 `<h3>` 바로 옆, 라벨과 셀렉트가 한 줄에 나란히 오도록 얕은 flex row로
-  직접 짰다(이 화면에서만 쓰는 예외적 레이아웃 — 폼 입력 필드는 계속 `.form-row`를
-  쓴다). "배당 기록 추가" 폼의 종목명은 더 이상 직접 입력이 기본이 아니다 — 종목코드를
-  입력하고 500ms 동안 추가 입력이 없으면(`useEffect` + `setTimeout` 디바운스)
-  `api.getStockInfo(symbol)`을 불러 자동으로 채운다(백엔드 CLAUDE.md의 "종목명
-  자동조회" 참고). 조회 상태(`nameStatus`: idle/loading/resolved/error)를 이름 자리에
-  그대로 보여주고, 실패하거나(토스 미연동, 못 찾음) 사용자가 원하면 "직접 입력" 버튼으로
-  수동 입력 모드(`manualNameEntry`)로 전환할 수 있다 — 그 모드에서는 이 effect가 더
-  이상 name을 덮어쓰지 않는다. 배당 기록 표의 "종목"은 종목코드/종목명 두 컬럼으로
-  나눠서 보여준다(예전엔 `{name} ({symbol})`로 한 셀에 합쳐서 헷갈린다는 피드백을 받음).
-  기록 목록 카드 위의 "종목명 일괄 갱신" 버튼(`onRefreshNames`)은 `POST
-  /api/dividends/refresh-names`를 호출해 **이미 저장된** 배당 기록의 종목명을 전부
-  API로 얻어온 이름으로 다시 채운다 — 배당 기록 자체에는 여전히 `name`을 스냅샷으로
-  저장한다(정규화해서 심볼로만 저장하고 항상 조인해서 보여주는 방식으로 바꾸지
-  않았다 — 나중에 종목명이 바뀌어도 과거 기록엔 "그 당시 이름"이 남아 있는 게
-  맞다고 판단, backend CLAUDE.md 참고). 결과(`updated`/`resolved`/`failed`)를 버튼
-  옆에 짧게 보여주고, `refresh()`로 목록도 다시 불러온다.
-  **CSV 내보내기/가져오기**는 별도 UI를 새로 만들지 않고 기존 요소를 재사용한다 —
-  "내보내기"는 이미 있던 목록 필터 `listBroker`를 그대로 범위로 쓴다(`전체`면 전체,
-  특정 증권사면 그 증권사만 — 버튼 라벨도 `CSV 내보내기 (전체)`/`CSV 내보내기
-  (한국투자증권)`처럼 현재 필터를 그대로 보여줘서 "지금 보이는 목록이 아니라 전체가
-  나가는 거 아닌가" 하는 혼동을 없앤다). "가져오기"는 목적이 달라서(화면에 뭘
-  보여줄지가 아니라 가져올 대상을 고르는 것) 독립된 `importBroker` state와 `<select>`를
-  둔다 — 옵션도 `brokerOptions`(기존 기록이 있는 증권사만)가 아니라 `BROKER_ORDER`
-  전체를 쓴다(가져오기는 아직 기록이 하나도 없는 증권사의 첫 데이터를 넣는 경우가
-  당연히 있어서). CSV 파싱/직렬화는 `src/csv.ts`(RFC4180 최소 구현 — 라이브러리 없이
-  직접 짬, 필드 몇 개짜리라 이 편이 가볍다고 판단)가 하고, 컬럼 헤더는 `DividendRecord`
-  필드명 그대로(`broker,symbol,name,currency,amount,paidDate,memo`) 써서 내보낸 파일을
-  그대로 다시 가져올 때 왕복이 되게 했다(한글 헤더 대신 필드명을 쓴 이유). 가져오기는
-  헤더 이름으로 컬럼을 찾아 인덱싱하므로(`colIndex`) 컬럼 순서가 바뀐 파일도 그대로
-  읽는다. `importBroker !== 'ALL'`이면 파싱된 행을 클라이언트에서 먼저 걸러서(같은
-  파일 안에 여러 증권사가 섞여 있어도 원하는 증권사분만) 보낸다 — 검증 자체는
-  프론트에서 하지 않고 그대로 `POST /api/dividends/import`에 배열로 보내 백엔드가
-  행별로 검증/저장하고 `{ added, failed: [{row, error}] }`를 돌려준다(백엔드
-  CLAUDE.md의 "CSV 가져오기" 참고) — 실패한 행이 있어도 나머지는 저장되고, 결과
-  메시지에 실패 행 번호와 사유를 그대로 붙여 보여준다(`refreshResult`와 같은 패턴의
-  `importResult`). 내보내기는 `downloadCsv()`(`csv.ts`)가 UTF-8 BOM을 붙인 Blob을
-  `<a download>`로 트리거한다 — BOM이 없으면 엑셀/한글 스프레드시트가 UTF-8로 안
-  열어서 한글이 깨진다.
-- `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
-  `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
-  YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 **연 단위로 한 번만** 호출한다.
-  "연간/월간" 보기 전환과 월 선택은 서버를 다시 안 부르고, 이미 받아온 그 해 전체
-  `trades`를 `viewMode`/`month`에 따라 `useMemo`로 다르게 집계/필터링한다
-  (`visibleTrades`, `chartRows`) — 월 하나만 보고 싶다고 매번 새로 fetch할 이유가 없어서.
-  `chartRows`는 연간이면 12개월 버킷, 월간이면 그 달의 날짜 수만큼(`daysInMonth`) 일별
-  버킷을 만든다(`TradesChart`의 `TradeSummaryBucket[]`, `label` 필드에 그대로 들어감).
-  백엔드가 원시 `TradeRecord[]`만 돌려주므로(로컬 DB가 없어 "월별/일별 요약" 같은 걸
-  백엔드가 미리 계산해둘 이유가 없음), 이 집계는 전부 프론트 쪽 책임이다(Dividends.tsx의
-  `brokerDividendTotals`와 같은 패턴). 상단 스탯 타일(총 매수금액/총 매도금액)과 거래
-  목록 테이블은 항상 현재 보기 범위(연간이면 그 해 전체, 월간이면 그 달만)인
-  `visibleTrades` 기준으로 계산해서 화면 안 숫자들이 서로 어긋나지 않게 했다. 스탯
-  타일은 `effectiveFxRate`로 원화 환산해서 하나의 숫자로 보여주지만(Dividends.tsx/
-  Dashboard.tsx와 같은 패턴), **그래프는 원화·달러를 환산해 합치지 않고 따로 보여준다** —
-  아래 `TradesChart.tsx` 참고. 거래 목록 테이블은 Dividends.tsx의 배당 기록 목록과
-  동일한 페이지네이션 UI/로직을 그대로 쓴다(`pageSize`: 10/20/30/전체, `page`를
-  effect로 안 되돌리고 매 렌더 `currentPage = Math.min(page, pageCount)`로 clamp,
-  페이지 번호 버튼은 `PAGE_GROUP_SIZE`(10) 단위 그룹만 그리고 그룹 양 끝에 "이전
-  10개"/"다음 10개" 버튼) — `sortedTrades`를 페이지네이션 기준으로 삼는다
-  (`pagedTrades`). 보기(연/월)·연도·월 선택이 바뀌면 `visibleTrades`가 통째로
-  바뀌므로 그 세 `<select>` 모두 `onChange`에서 `setPage(1)`을 같이 호출한다.
-  "월별 매수/매도" 그래프 카드도 Dividends.tsx와 같은 `CollapseToggle`로 접기/펼치기가
-  된다(`chartCollapsed`) — 카드 헤더 행(제목 + 토글)만 항상 보이고, `TradesChart`는
-  `!chartCollapsed`일 때만 렌더링한다.
-- `src/components/TradesChart.tsx` — 월별 매수(파랑, `--series-1`)/매도(주황, `--series-2`)
-  그룹형 막대 그래프. **원화와 달러를 환율로 합쳐서 하나의 막대로 그리지 않는다** — 둘은
-  단위/스케일 자체가 달라서(dataviz 스킬: "Two measures of different scale → 두 차트 또는
-  스몰 멀티플로 나눈다") 그 해에 달러 거래가 하나라도 있으면 원화 패널·달러 패널을
-  위아래로 따로 그리는 `Panel` 내부 컴포넌트를 하나 또는 둘 렌더링한다(없으면 원화
-  패널만). 처음엔 fxRate로 환산해 하나로 합치고 막대마다 라벨도 안 달았는데(24개 막대라
-  DividendsChart.tsx처럼 다 라벨링하면 빽빽해질까봐 호버 툴팁만 썼다), "달러 내역은
-  따로 보여달라" + "막대가 크면 금액이 잘려 안 보인다"는 피드백을 받고 지금 구조로
-  바꿨다 — 막대 위에 금액 라벨을 항상 표시하되(compact 표기), `LABEL_SPACE`를
-  DividendsChart.tsx(18px)보다 더 키워서(24px) 최댓값에 가까운 막대의 라벨도 위로 안
-  잘리게 했다. 호버 상태는 각 `Panel`이 자기 SVG 안에서 독립적으로 관리한다 — 패널을
-  위아래로 쌓았을 때 툴팁 좌표를 상위 컴포넌트와 공유하면 패널마다 다른 세로 오프셋을
-  더해줘야 해서 좌표 버그가 나기 쉽다(실제로 한 번 겪고 각 패널 로컬 상태로 바꿨다).
-  `--series-2`(주황, `#eb6834`/`#d95926`)는 이 차트 때문에 `styles.css`에 새로 추가했다 —
-  dataviz 스킬 팔레트의 카테고리 슬롯 1(파랑) 다음 순서인 슬롯 2를 그대로 썼다(문서화된
-  순서라 인접 쌍 CVD 검증을 통과한 상태 — 임의로 다른 슬롯을 고르지 않는다). 매수/매도는
-  손익의 좋음/나쁨이 아니므로 `--good`/`--critical`(상태色)을 재사용하지 않는다 — 거래
-  목록 테이블의 "구분" 열도 텍스트 색이 아니라 이 카테고리 색의 작은 사각형 마커로
-  구분한다("텍스트는 항상 텍스트 색, 색은 마커가 담당" 원칙).
-- `src/pages/Settings.tsx` — 브로커별 자격증명 입력 폼. **하드코딩된 필드가 아니라
-  백엔드의 `GET /api/settings/credential-fields`(=`CREDENTIAL_FIELDS`)를 읽어 동적으로
-  렌더링한다.** 새 브로커/필드는 백엔드의 `credentialFields.ts`만 고치면 여기는 자동
-  반영됨 — 프론트에 브로커별 폼을 새로 만들지 않는다.
+- `src/format.ts` — 공용 `Intl.NumberFormat` 인스턴스(`krw`, `usdFmt`, `formatKrw` 등).
+  **렌더 바디나 행마다 호출되는 함수 안에서 `new Intl.NumberFormat(...)`을 직접 만들지
+  않는다** — 로케일 데이터 조회가 있어 공짜가 아니라서, 행마다 새로 만들면 포지션
+  30~50개짜리 렌더 한 번에 수백 번 생성된다(과거 `HoldingsTable.tsx`에서 실제 발생).
+- `src/App.tsx` — 좌측 네비 + `page` 상태(`'dashboard'|'dividends'|'trades'|'settings'`).
+  새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목 추가.
+- `src/api.ts` — 백엔드 호출 레이어. `BASE_URL`이 `electron/src/main.ts`의
+  `BACKEND_PORT`와 일치해야 한다. 에러 응답은 `{error, detail?}`을 기대.
+- `src/types.ts` — 백엔드 응답 타입 미러링(`brokers/types.ts`와 형태 유지). CSV 관련
+  로컬 저장소 타입은 `StoredHolding`/`StoredTrade`.
+- `src/csv.ts` — RFC4180 최소 파서/직렬화(`parseCsv`/`toCsv`/`downloadCsv`, 라이브러리
+  없이 직접 구현). `downloadCsv`는 UTF-8 BOM을 붙인다(없으면 엑셀/한글 스프레드시트가
+  UTF-8로 안 열림). 배당금/보유종목/매매내역 세 화면이 공용으로 쓴다.
+- `src/components/CollapseToggle.tsx` — 카드 헤더 우측 접기/펼치기 토글(공용, 처음엔
+  Dividends.tsx 안에 있다가 Trades.tsx도 필요해져서 공용 컴포넌트로 뺌).
 - `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트.
-- `src/api.ts` — 백엔드 호출 레이어. `BASE_URL = 'http://127.0.0.1:4317/api'` —
-  `electron/src/main.ts`의 `BACKEND_PORT`와 반드시 일치해야 한다. 에러 응답은
-  `{error, detail?}` 형태를 기대하고 `detail`이 있으면 메시지에 이어 붙인다 (백엔드 원본
-  에러 바디를 그대로 보여주기 위함).
-- `src/types.ts` — 백엔드 응답 타입 미러링 (`BrokerAccount`, `PortfolioOverview`,
-  `TradeRecord`, `StockInfo`, `CredentialFieldSpec` 등). 백엔드 `brokers/types.ts`와
-  형태를 맞춰 유지한다.
+- `src/pages/Settings.tsx` — 브로커별 자격증명 폼. **하드코딩이 아니라 백엔드의
+  `GET /api/settings/credential-fields`를 읽어 동적 렌더링** — 새 브로커/필드는
+  백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨.
+
+## 공용 패턴 (여러 페이지가 공유)
+
+이 프로젝트 화면 대부분(Dashboard/Dividends/Trades)이 아래 패턴을 반복해서 쓴다 —
+페이지별 절에서는 그 패턴을 벗어나는 부분만 적는다.
+
+- **브로커/계좌 선택 + `accountId` 동기 리셋**: 브로커 `<select>`의 `onChange`에서
+  `accountId`를 **같은 커밋에 동기적으로** `null`로 리셋한다. 계좌 재조회 effect의
+  비동기 본문 안에서 리셋하면, `selectedBroker`는 새 값인데 `accountId`는 이전 브로커
+  것인 렌더가 한 번 존재해서, 포트폴리오/매매내역 조회 effect가 그 잘못된 조합으로
+  즉시 실행된다(과거 실제로 KIS 계좌번호를 토스 accountSeq로 보내는 버그가 있었음 —
+  토스는 `account-not-found`로 거부하지만 요청 자체는 그대로 나간다).
+- **페이지네이션**: `pageSize`(10/20/30/전체) + `page`. `page`를 effect로 되돌리지
+  않고 매 렌더 `currentPage = Math.min(page, pageCount)`로 clamp — 필터가 좁아져
+  `pageCount`가 줄어도 이 값 하나로 슬라이스/표시를 다 처리한다. 필터/표시개수를 바꿀
+  때만 명시적으로 `setPage(1)`. 페이지 번호 버튼은 `PAGE_GROUP_SIZE`(10) 단위로만
+  그리고 그룹 양 끝에 "이전 10개"/"다음 10개" 버튼으로 그룹 자체를 점프시킨다.
+- **환율 처리**: `manualFxRate`(설정에서 직접 입력) > `liveFxRate`(토스 실시간 조회,
+  토스만 환율 API 제공)를 `effectiveFxRate`로 합친다. 환율을 못 가져오면 "환율
+  미적용"으로 표시하고 합산을 생략한다(조용히 틀린 숫자를 보여주지 않기 위함).
+- **CSV 내보내기/가져오기**(배당금/보유종목/매매내역 공통): 컬럼 헤더는 백엔드 필드명
+  그대로 써서 내보낸 파일을 그대로 다시 가져올 수 있게 한다(헤더 이름으로 컬럼을
+  찾으므로 순서가 바뀐 파일도 읽음). **`name`(종목명)은 어느 CSV에도 없다** — 배당금/
+  보유종목은 백엔드가 심볼로 자동조회하고, 매매내역은 애초에 표시가 심볼 폴백이라
+  자동조회 자체가 불필요. 가져오기는 백엔드에 그대로 배열로 보내고, 백엔드가 행별로
+  검증해 `{ added, failed: [{row, error}] }`를 돌려주면 그 메시지를 그대로 보여준다
+  (실패 행이 있어도 나머지는 저장됨 — backend/CLAUDE.md의 "CSV 가져오기" 참고).
+
+## 페이지
+
+- `src/pages/Dashboard.tsx` — 보유 종목. 브로커 선택 → 계좌/환율 조회 → 포트폴리오
+  조회, 3단계 `useEffect` 체인(환율은 토스일 때만). 네 스탯 타일(`AmountTile`/
+  `RateTile`)은 달러 보유분이 있으면(`hasUsdHoldings`) 원화/달러/합계(환산) 3줄,
+  없으면 한 줄만 보여준다 — **굵은 글씨는 항상 합계(환산) 한 줄에만** 쓴다.
+  `hasUsd` 판단은 개별 타일 값이 아니라 포트폴리오 전체의 달러 투자금 여부로 넘겨서,
+  손익금액이 우연히 0이어도 3줄 구조가 안 깨지게 한다. `RateTile`의 합계 손익률은
+  브로커가 주는 단일 `profitLossRate`를 안 쓰고 `AmountTile`과 같은 `effectiveFxRate`로
+  직접 계산한다(같은 환율 가정을 써야 화면 숫자들이 안 어긋남).
+  **1분 자동 새로고침**: 초기 조회 + `setInterval(60_000)`을 한 effect에서 관리
+  (`fetchPortfolio` 함수를 초기 호출과 인터벌이 공유). 보유종목 조회는 초당 4~5건
+  한도라(backend/CLAUDE.md) 분당 한 번은 여유가 크다. **수동 새로고침 버튼**은 이제
+  진짜로 `forceRefresh: true`를 보내되(예전엔 StrictMode 이중요청이 KIS 레이트리밋을
+  건드린 전례 때문에 항상 5초 캐시를 타게 해뒀었음), `lastFetchedAt` 기준
+  `MANUAL_REFRESH_COOLDOWN_MS`(10초) 이내 재클릭은 실제 호출 없이 "N초 후 다시
+  시도해주세요" 메시지만 보여준다 — 자동 갱신이 방금 라이브 호출을 했어도
+  `lastFetchedAt`을 같이 갱신하므로 직후 수동 클릭도 이 쿨다운을 탄다.
+  **CSV 내보내기**는 현재 화면의 브로커/계좌 하나가 아니라 `GET /api/holdings-store`
+  전체(모든 브로커/계좌)를 대상으로 한다 — 컬럼에 `accountId`가 있어서 대상을 고르는
+  UI가 따로 필요 없다(배당금과 다른 점: 배당금은 계좌 개념이 없어 목록 필터를 그대로
+  내보내기 범위로 재사용했지만, 보유종목은 행 자체에 이미 범위 정보가 있음).
+- `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회(두 브로커 다 개인 배당 지급
+  내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
+  그대로 저장(backend/CLAUDE.md 참고). "증권사별 배당금 총계" 표는 달러 투자금/배당금이
+  있으면 원화/달러/합계(환산) 3행(별도 "구분" 컬럼 없이 첫 컬럼 안에 들여쓴 라벨로
+  표현). 투자금(`totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없어 마운트 시
+  `listBrokers`→`listAccounts`→`getPortfolio`로 별도 조회(브로커 하나 실패해도 나머지는
+  보여야 하므로 개별 try/catch) — **연도 필터를 안 탄다**(지금 시점의 실제 투자 원금이라
+  연도별로 안 나뉨). 연도 필터(`year`)는 서버에 다시 안 묻고 클라이언트에서 걸러
+  월별/증권사별 집계·목록까지 전부 다시 계산한다. 그래프 전용 증권사 필터
+  (`chartBroker`)와 목록 전용 필터(`listBroker`)는 완전히 독립된 state — 후자가
+  페이지네이션 대상(`listFilteredRecords`)의 기준이다. "월별 배당금"+"증권사별 배당금
+  총계"는 카드 하나를 공유하며 `CollapseToggle` 하나로 같이 접힌다. 종목코드 입력 후
+  500ms 디바운스로 `api.getStockInfo`를 불러 종목명을 자동으로 채운다(실패/사용자
+  선택 시 "직접 입력"으로 폴백, 그 이후엔 자동조회가 name을 안 덮어씀). "종목명 일괄
+  갱신" 버튼은 이미 저장된 기록의 이름을 다시 채운다(`POST
+  /api/dividends/refresh-names`) — 기록 자체엔 여전히 `name`을 그 당시 스냅샷으로
+  저장한다(정규화해서 항상 조인하는 방식으로 안 바꿈 — 나중에 종목명이 바뀌어도 과거
+  기록엔 그 당시 이름이 남는 게 맞다고 판단). **CSV 내보내기**는 `listBroker`(목록
+  필터)를 그대로 범위로 쓰고, **가져오기**는 화면 표시 범위와 무관한 별도
+  `importBroker` state로 대상을 고른다(옵션은 `BROKER_ORDER` 전체 — 아직 기록이 없는
+  증권사의 첫 데이터를 넣는 경우가 있어서).
+- `src/pages/Trades.tsx` — 매매내역. 연도 `<select>`(최근 5개년)로 `[YYYY-01-01,
+  YYYY-12-31]`(올해면 오늘까지) 범위를 **연 단위로 한 번만** 조회하고, "연간/월간"
+  보기 전환·월 선택은 서버를 다시 안 부르고 이미 받아온 `trades`를 `useMemo`로
+  집계/필터링한다(`visibleTrades`, `chartRows`). 상단 스탯 타일은 `effectiveFxRate`로
+  환산한 단일 숫자를 보여주지만 **그래프는 원화·달러를 합치지 않고 따로 보여준다**
+  (`TradesChart.tsx` 참고). "월별 매수/매도" 그래프 카드도 `CollapseToggle`로 접힌다.
+  **CSV 내보내기**는 Dashboard.tsx와 같은 이유로 `GET /api/trades-store` 전체를
+  대상으로 하고, **가져오기**도 대상 선택 없이 CSV 행 자체의 `broker`/`accountId`를
+  그대로 쓴다.
+- `src/components/TradesChart.tsx` — 월별 매수(`--series-1`)/매도(`--series-2`) 그룹형
+  막대 그래프. **원화·달러를 환율로 합쳐서 하나의 막대로 그리지 않는다**(단위/스케일이
+  달라서 — dataviz 스킬의 "두 측정값은 두 차트로" 원칙) — 달러 거래가 있으면 원화
+  패널·달러 패널을 위아래로 따로 그린다. 막대 위 금액 라벨을 항상 표시(compact 표기).
+  호버 상태는 각 패널이 자기 SVG 안에서 독립적으로 관리한다(공유하면 패널별 세로
+  오프셋 계산이 필요해 좌표 버그가 나기 쉬움). 매수/매도는 손익의 좋음/나쁨이 아니므로
+  `--good`/`--critical`(상태色)을 재사용하지 않고 카테고리 색(마커)으로 구분한다.
 
 ## 개발
 
-- `npm run dev` (frontend 워크스페이스) → Vite dev 서버, `localhost:5173`. 보통은 루트의
-  `npm run dev`로 electron과 함께 띄운다.
-- HMR 자동 반영 — 백엔드와 달리 재빌드/재시작 불필요.
-- `npm run build` → `tsc` 타입체크 후 `vite build` (프로덕션 패키징 시 electron이 이
-  결과물을 로드).
+- `npm run dev`(frontend 워크스페이스) → Vite `localhost:5173`. 보통 루트의
+  `npm run dev`로 electron과 함께 띄운다. HMR 자동 반영(백엔드와 달리 재빌드 불필요).
+- `npm run build` → `tsc` 타입체크 후 `vite build`.
 
 ## 차트/시각화
 
-새 차트를 추가하거나 기존 차트(`DividendsChart.tsx` 등)를 수정할 때는 dataviz 스킬의
-절차(폼 선택 → 색상 배정 → 팔레트 검증 → 마크 스펙 → 인터랙션 → 접근성 점검)를 따른다.
-색상은 카테고리/시퀀셜/다이버징/상태 중 용도에 맞게 고정 순서로 배정하고, 임의로 순환시키지
-않는다.
+새 차트 추가/수정 시 dataviz 스킬 절차(폼 선택 → 색상 배정 → 팔레트 검증 → 마크 스펙 →
+인터랙션 → 접근성 점검)를 따른다. 색상은 카테고리/시퀀셜/다이버징/상태 중 용도에 맞게
+고정 순서로 배정하고 임의로 순환시키지 않는다.

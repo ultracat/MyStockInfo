@@ -8,8 +8,9 @@ import { downloadCsv, parseCsv } from '../csv';
 
 // export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
 // 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
-// 헤더 매칭이 대소문자만 다르면 되게 하기 위함).
-const DIVIDEND_CSV_HEADER = ['broker', 'symbol', 'name', 'currency', 'amount', 'paidDate', 'memo'];
+// 헤더 매칭이 대소문자만 다르면 되게 하기 위함). name(종목명)은 없다 — 심볼로부터
+// 서버가 자동조회하므로 CSV에 넣을 필요가 없다(가져오기도 마찬가지).
+const DIVIDEND_CSV_HEADER = ['broker', 'symbol', 'currency', 'amount', 'paidDate', 'memo'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
@@ -244,7 +245,7 @@ export default function Dividends() {
   function onExportCsv() {
     const rows: string[][] = [
       DIVIDEND_CSV_HEADER,
-      ...listFilteredRecords.map((r) => [r.broker, r.symbol, r.name, r.currency, String(r.amount), r.paidDate, r.memo ?? '']),
+      ...listFilteredRecords.map((r) => [r.broker, r.symbol, r.currency, String(r.amount), r.paidDate, r.memo ?? '']),
     ];
     const scope = listBroker === 'ALL' ? 'all' : listBroker;
     downloadCsv(`dividends-${scope}-${today()}.csv`, rows);
@@ -275,13 +276,12 @@ export default function Dividends() {
       const colIndex = (name: string) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
       const iBroker = colIndex('broker');
       const iSymbol = colIndex('symbol');
-      const iName = colIndex('name');
       const iCurrency = colIndex('currency');
       const iAmount = colIndex('amount');
       const iPaidDate = colIndex('paidDate');
       const iMemo = colIndex('memo');
 
-      if ([iBroker, iSymbol, iName, iCurrency, iAmount, iPaidDate].some((i) => i === -1)) {
+      if ([iBroker, iSymbol, iCurrency, iAmount, iPaidDate].some((i) => i === -1)) {
         setImportResult(`CSV 헤더가 올바르지 않습니다. 다음 컬럼이 필요합니다: ${DIVIDEND_CSV_HEADER.join(', ')}`);
         return;
       }
@@ -291,7 +291,6 @@ export default function Dividends() {
         .map((r) => ({
           broker: (r[iBroker] ?? '').trim() as BrokerId,
           symbol: (r[iSymbol] ?? '').trim(),
-          name: (r[iName] ?? '').trim(),
           currency: (r[iCurrency] ?? '').trim() as DividendCurrency,
           amount: Number((r[iAmount] ?? '').trim()),
           paidDate: (r[iPaidDate] ?? '').trim(),

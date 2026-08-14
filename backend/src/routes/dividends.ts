@@ -4,15 +4,15 @@ import { cacheStockName } from '../db/stockNames';
 import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
 import type { BrokerId } from '../brokers/types';
+import { resolveStockNames } from '../stockNameResolver';
 
 export const dividendsRouter = Router();
 
 const BROKER_IDS: BrokerId[] = ['toss', 'kis', 'kb'];
 
-// CSV 가져오기(POST /import)와 단건 추가(POST /)가 같은 검증 로직을 쓴다 — 필드
-// 하나가 바뀌면 두 곳 다 놓치지 않게 여기 하나로 모아둔다. 단건 추가와 달리
-// broker는 알려진 증권사 코드인지까지 확인한다(CSV로 들어온 임의의 문자열이
-// 그대로 저장되면 화면의 BROKER_LABELS 조회에서 빈 값으로 표시되기 때문).
+// 단건 추가(POST /)용 검증 — 종목명 자동조회는 프론트가 이미 하고 그 결과를 같이
+// 보내므로 name을 그대로 요구한다. CSV 가져오기(POST /import)는 name 없이 심볼만
+// 받고 서버가 자동조회한다 — 아래 `parseImportRowShape` 참고.
 function parseDividendInput(body: unknown): { input: NewDividendInput } | { error: string } {
   const { broker, symbol, name, currency, amount, paidDate, memo } = (body ?? {}) as Record<string, unknown>;
 
@@ -40,6 +40,40 @@ function parseDividendInput(body: unknown): { input: NewDividendInput } | { erro
       broker: broker as BrokerId,
       symbol,
       name,
+      currency,
+      amount,
+      paidDate,
+      memo: typeof memo === 'string' && memo ? memo : null,
+    },
+  };
+}
+
+type ImportRowShape = Omit<NewDividendInput, 'name'>;
+
+function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error: string } {
+  const { broker, symbol, currency, amount, paidDate, memo } = (body ?? {}) as Record<string, unknown>;
+
+  if (
+    typeof broker !== 'string' ||
+    !BROKER_IDS.includes(broker as BrokerId) ||
+    typeof symbol !== 'string' ||
+    !symbol ||
+    (currency !== 'KRW' && currency !== 'USD') ||
+    typeof amount !== 'number' ||
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    typeof paidDate !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(paidDate)
+  ) {
+    return {
+      error: `broker(${BROKER_IDS.join('|')}), symbol, currency(KRW|USD), amount(양수), paidDate(YYYY-MM-DD)가 필요합니다.`,
+    };
+  }
+
+  return {
+    input: {
+      broker: broker as BrokerId,
+      symbol,
       currency,
       amount,
       paidDate,
@@ -108,25 +142,44 @@ dividendsRouter.post('/', (req, res) => {
 // 파싱해 레코드 배열로 보내면 여기서 한 번에 검증/저장한다. 행 하나가 잘못돼도
 // 전체를 막지 않고(수동 입력 CSV라 오타 가능성이 높음) 행별로 성공/실패를
 // 나눠 보고한다 — 그래야 몇백 건짜리 파일에서 실패한 몇 건만 골라 고칠 수 있다.
-dividendsRouter.post('/import', (req, res) => {
+// name은 CSV에 없다(종목명은 자동조회 대상이라 사용자가 직접 입력할 필요가
+// 없음) — 형태 검증을 통과한 행들의 고유 심볼을 모아 한 번에 자동조회하고,
+// 조회 실패한 심볼의 행만 failed로 보고한다.
+dividendsRouter.post('/import', async (req, res) => {
   const records = (req.body as { records?: unknown })?.records;
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
   }
 
-  let added = 0;
-  const failed: Array<{ row: number; error: string }> = [];
+  const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
+  const validRows = shapeResults.filter(
+    (r): r is { row: number; input: ImportRowShape } => 'input' in r
+  );
+  const failed: Array<{ row: number; error: string }> = shapeResults
+    .filter((r): r is { row: number; error: string } => 'error' in r)
+    .map(({ row, error }) => ({ row, error }));
 
-  for (let i = 0; i < records.length; i++) {
-    const parsed = parseDividendInput(records[i]);
-    if ('error' in parsed) {
-      failed.push({ row: i + 1, error: parsed.error });
+  const uniqueSymbols = Array.from(new Set(validRows.map((r) => r.input.symbol)));
+  const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
+
+  let added = 0;
+  for (const { row, input } of validRows) {
+    const key = input.symbol.toUpperCase();
+    const name = namesBySymbol[key];
+    if (!name) {
+      failed.push({
+        row,
+        error: unresolved.has(key) && !isTossConfigured()
+          ? `종목명 자동조회 실패: 토스증권 연동이 필요합니다. ('${input.symbol}')`
+          : `종목명 자동조회 실패: '${input.symbol}' 종목을 찾을 수 없습니다.`,
+      });
       continue;
     }
-    addDividend(parsed.input);
+    addDividend({ ...input, name });
     added += 1;
   }
 
+  failed.sort((a, b) => a.row - b.row);
   res.json({ added, failed });
 });
 

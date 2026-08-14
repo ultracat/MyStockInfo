@@ -1,9 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import type { BrokerAccount, BrokerId, BrokerSummary, TradeRecord } from '../types';
 import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
+import { downloadCsv, parseCsv } from '../csv';
+
+// name·id 둘 다 없다 — name은 TradeRecord가 원래도 선택적이고 화면이 이미 심볼로
+// 폴백 표시하므로 자동조회가 불필요(배당금/보유종목과 다른 점), id는 브로커 고유
+// 체결번호라 CSV 입력행엔 없고 없으면 서버가 새로 발급한다.
+const TRADES_CSV_HEADER = [
+  'broker',
+  'accountId',
+  'symbol',
+  'side',
+  'quantity',
+  'price',
+  'amount',
+  'currency',
+  'executedAt',
+  'commission',
+  'tax',
+];
 
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth() + 1;
@@ -49,6 +67,10 @@ export default function Trades() {
   const [pageSize, setPageSize] = useState<PageSize>(10);
   const [page, setPage] = useState(1);
   const [chartCollapsed, setChartCollapsed] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
 
   const configuredBrokers = brokers.filter((b) => b.configured);
 
@@ -149,6 +171,108 @@ export default function Trades() {
     };
   }, [selectedBroker, accountId, year]);
 
+  // 로컬 저장소(trades-store)는 실시간 조회가 성공할 때마다 write-through로
+  // 갱신되고, CSV로도 채울 수 있다(API 연동이 없는 KB증권 등) — 내보내기는 현재
+  // 화면에 보이는 연도/브로커 하나가 아니라 저장소에 쌓인 전체를 대상으로 한다.
+  async function onExportCsv() {
+    const stored = await api.listTradesStore();
+    const rows: string[][] = [
+      TRADES_CSV_HEADER,
+      ...stored.map((t) => [
+        t.broker,
+        t.accountId,
+        t.symbol,
+        t.side,
+        String(t.quantity),
+        String(t.price),
+        String(t.amount),
+        t.currency,
+        t.executedAt,
+        t.commission === null ? '' : String(t.commission),
+        t.tax === null ? '' : String(t.tax),
+      ]),
+    ];
+    downloadCsv(`trades-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  }
+
+  function onImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length === 0) {
+        setImportResult('CSV 파일이 비어 있습니다.');
+        return;
+      }
+
+      const [header, ...dataRows] = rows;
+      const colIndex = (name: string) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
+      const iBroker = colIndex('broker');
+      const iAccountId = colIndex('accountId');
+      const iSymbol = colIndex('symbol');
+      const iSide = colIndex('side');
+      const iQuantity = colIndex('quantity');
+      const iPrice = colIndex('price');
+      const iAmount = colIndex('amount');
+      const iCurrency = colIndex('currency');
+      const iExecutedAt = colIndex('executedAt');
+      const iCommission = colIndex('commission');
+      const iTax = colIndex('tax');
+
+      if (
+        [iBroker, iAccountId, iSymbol, iSide, iQuantity, iPrice, iAmount, iCurrency, iExecutedAt].some(
+          (i) => i === -1
+        )
+      ) {
+        setImportResult(`CSV 헤더가 올바르지 않습니다. 다음 컬럼이 필요합니다: ${TRADES_CSV_HEADER.join(', ')}`);
+        return;
+      }
+
+      const num = (v: string | undefined) => {
+        const trimmed = (v ?? '').trim();
+        return trimmed === '' ? null : Number(trimmed);
+      };
+
+      const records = dataRows
+        .filter((r) => r.some((v) => v.trim() !== ''))
+        .map((r) => ({
+          broker: (r[iBroker] ?? '').trim() as BrokerId,
+          accountId: (r[iAccountId] ?? '').trim(),
+          symbol: (r[iSymbol] ?? '').trim(),
+          side: (r[iSide] ?? '').trim() as 'BUY' | 'SELL',
+          quantity: Number((r[iQuantity] ?? '').trim()),
+          price: Number((r[iPrice] ?? '').trim()),
+          amount: Number((r[iAmount] ?? '').trim()),
+          currency: (r[iCurrency] ?? '').trim(),
+          executedAt: (r[iExecutedAt] ?? '').trim(),
+          commission: iCommission !== -1 ? num(r[iCommission]) : null,
+          tax: iTax !== -1 ? num(r[iTax]) : null,
+        }));
+
+      const result = await api.importTradesStore(records);
+      setImportResult(
+        result.failed.length > 0
+          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
+              .map((f) => `${f.row}행 - ${f.error}`)
+              .join('; ')})`
+          : `${result.added}건 추가됨`
+      );
+    } catch (e) {
+      setImportResult((e as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   // 연간 보기면 트래드 전체를 12개월 버킷으로, 월간 보기면 선택한 달의
   // 거래만 골라 그 달의 날짜 수만큼 일별 버킷으로 나눈다 — 서버에서 다시
   // 받아올 필요 없이 이미 받아온 그 해 전체 trades를 그대로 재사용한다.
@@ -247,7 +371,24 @@ export default function Trades() {
 
   return (
     <div>
-      <h2 className="page-title">매매내역</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <h2 className="page-title">매매내역</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button className="ghost" onClick={onExportCsv}>
+            CSV 내보내기 (전체)
+          </button>
+          <button className="ghost" onClick={onImportClick} disabled={importing}>
+            {importing ? '가져오는 중...' : 'CSV 가져오기'}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
+        </div>
+      </div>
+
+      {importResult && (
+        <div className="notice" style={{ fontSize: 13 }}>
+          {importResult}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         {configuredBrokers.length > 1 && (

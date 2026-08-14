@@ -3,9 +3,11 @@ import cors from 'cors';
 import { settingsRouter } from './routes/settings';
 import { accountsRouter } from './routes/accounts';
 import { holdingsRouter } from './routes/holdings';
+import { holdingsStoreRouter } from './routes/holdingsStore';
 import { dividendsRouter } from './routes/dividends';
 import { marketInfoRouter } from './routes/marketInfo';
 import { tradesRouter } from './routes/trades';
+import { tradesStoreRouter } from './routes/tradesStore';
 import { stockInfoRouter } from './routes/stockInfo';
 
 export function createApp() {
@@ -20,9 +22,11 @@ export function createApp() {
   app.use('/api/settings', settingsRouter);
   app.use('/api/accounts', accountsRouter);
   app.use('/api/holdings', holdingsRouter);
+  app.use('/api/holdings-store', holdingsStoreRouter);
   app.use('/api/dividends', dividendsRouter);
   app.use('/api/market-info', marketInfoRouter);
   app.use('/api/trades', tradesRouter);
+  app.use('/api/trades-store', tradesStoreRouter);
   app.use('/api/stock-info', stockInfoRouter);
 
   // Last-resort safety net: any route that throws without its own

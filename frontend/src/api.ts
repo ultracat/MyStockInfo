@@ -8,6 +8,8 @@ import type {
   ExchangeRate,
   PortfolioOverview,
   StockInfo,
+  StoredHolding,
+  StoredTrade,
   TradeRecord,
 } from './types';
 
@@ -66,7 +68,7 @@ export const api = {
     request<{ updated: number; resolved: number; failed: string[] }>('/dividends/refresh-names', {
       method: 'POST',
     }),
-  importDividends: (records: Omit<DividendRecord, 'id'>[]) =>
+  importDividends: (records: Omit<DividendRecord, 'id' | 'name'>[]) =>
     request<{ added: number; failed: { row: number; error: string }[] }>('/dividends/import', {
       method: 'POST',
       body: JSON.stringify({ records }),
@@ -78,4 +80,66 @@ export const api = {
     ),
 
   getStockInfo: (symbol: string) => request<StockInfo>(`/stock-info/${encodeURIComponent(symbol)}`),
+
+  // 로컬 저장소(write-through로 실시간 조회 성공 시마다 갱신되거나, CSV 가져오기로
+  // 채워짐) — CSV 내보내기, API 연동이 없는 브로커(KB증권 등)의 데이터 확인용.
+  listHoldingsStore: (filter?: { broker?: BrokerId; accountId?: string }) =>
+    request<StoredHolding[]>(
+      `/holdings-store${
+        filter?.broker || filter?.accountId
+          ? `?${new URLSearchParams({ ...(filter.broker ? { broker: filter.broker } : {}), ...(filter.accountId ? { accountId: filter.accountId } : {}) })}`
+          : ''
+      }`
+    ),
+  importHoldingsStore: (
+    records: {
+      broker: BrokerId;
+      accountId: string;
+      symbol: string;
+      currency: 'KRW' | 'USD';
+      quantity: number;
+      averagePurchasePrice: number;
+      lastPrice?: number;
+      purchaseAmount?: number;
+      marketValue?: number;
+      profitLossAmount?: number;
+      profitLossRate?: number;
+      commission?: number | null;
+      tax?: number | null;
+      market?: string | null;
+    }[]
+  ) =>
+    request<{ added: number; failed: { row: number; error: string }[] }>('/holdings-store/import', {
+      method: 'POST',
+      body: JSON.stringify({ records }),
+    }),
+
+  listTradesStore: (filter?: { broker?: BrokerId; accountId?: string }) =>
+    request<StoredTrade[]>(
+      `/trades-store${
+        filter?.broker || filter?.accountId
+          ? `?${new URLSearchParams({ ...(filter.broker ? { broker: filter.broker } : {}), ...(filter.accountId ? { accountId: filter.accountId } : {}) })}`
+          : ''
+      }`
+    ),
+  importTradesStore: (
+    records: {
+      broker: BrokerId;
+      accountId: string;
+      id?: string;
+      symbol: string;
+      side: 'BUY' | 'SELL';
+      quantity: number;
+      price: number;
+      amount: number;
+      currency: string;
+      commission?: number | null;
+      tax?: number | null;
+      executedAt: string;
+    }[]
+  ) =>
+    request<{ added: number; failed: { row: number; error: string }[] }>('/trades-store/import', {
+      method: 'POST',
+      body: JSON.stringify({ records }),
+    }),
 };

@@ -1,10 +1,35 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import type { BrokerAccount, BrokerId, BrokerSummary, PortfolioOverview } from '../types';
 import HoldingsTable from '../components/HoldingsTable';
 import { formatKrw, krw, usdFmt } from '../format';
+import { downloadCsv, parseCsv } from '../csv';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
+
+// 1분마다 자동 새로고침 — 보유종목 조회(ASSET/kisLimiter)는 초당 4~5건 한도라 분당
+// 한 번은 여유가 매우 크다(backend/CLAUDE.md 참고). 수동 새로고침 버튼은 이 자동
+// 갱신과 별개로 그때그때 강제 조회할 수 있게 하되, 너무 잦은 클릭이 레이트리밋을
+// 건드리지 않도록 쿨다운을 둔다.
+const AUTO_REFRESH_MS = 60_000;
+const MANUAL_REFRESH_COOLDOWN_MS = 10_000;
+
+const HOLDINGS_CSV_HEADER = [
+  'broker',
+  'accountId',
+  'symbol',
+  'quantity',
+  'averagePurchasePrice',
+  'lastPrice',
+  'purchaseAmount',
+  'marketValue',
+  'profitLossAmount',
+  'profitLossRate',
+  'commission',
+  'tax',
+  'currency',
+  'market',
+];
 
 /**
  * 원화 전용이면 기존과 동일하게 한 줄만 보여준다. 달러 보유분이 섞여 있을 때만(현재는
@@ -213,49 +238,185 @@ export default function Dashboard() {
     };
   }, [selectedBroker]);
 
+  // 초기 조회 + 1분마다 자동 새로고침을 한 effect에서 같이 관리한다 — 둘 다 같은
+  // "이 브로커/계좌의 최신 스냅샷을 받아온다"는 동작이라 별도 effect로 나누면
+  // fetchPortfolio 로직이 중복된다. lastFetchedAt은 실제로 라이브 호출이 성공한
+  // 시각을 기록해서, 수동 새로고침 버튼의 쿨다운 판단 기준으로도 같이 쓴다.
+  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
+
   useEffect(() => {
     if (!selectedBroker || !accountId) return;
     let cancelled = false;
 
-    (async () => {
+    async function fetchPortfolio(opts?: { forceRefresh?: boolean }) {
       try {
         setLoading(true);
         setError(null);
-        const data = await api.getPortfolio(selectedBroker, accountId);
-        if (!cancelled) setPortfolio(data);
+        const data = await api.getPortfolio(selectedBroker!, accountId!, opts);
+        if (cancelled) return;
+        setPortfolio(data);
+        setLastFetchedAt(Date.now());
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
         if (!cancelled) setLoading(false);
       }
-    })();
+    }
+
+    fetchPortfolio();
+    const interval = setInterval(() => fetchPortfolio(), AUTO_REFRESH_MS);
 
     return () => {
       cancelled = true;
+      clearInterval(interval);
     };
   }, [selectedBroker, accountId]);
 
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
 
   async function handleRefresh() {
     if (!selectedBroker || !accountId) return;
+    setRefreshNotice(null);
+
+    // API 호출 제한 보호용 쿨다운 — 직전 라이브 조회(초기 로드/자동 갱신/이전 수동
+    // 새로고침 무엇이든)로부터 MANUAL_REFRESH_COOLDOWN_MS가 안 지났으면 강제
+    // 재조회를 하지 않는다. 예전엔 이 버튼이 아예 forceRefresh를 안 넘겨서 항상
+    // 5초 캐시를 타게 했는데(StrictMode 이중요청이 KIS 레이트리밋을 건드린 전례
+    // 때문), 이제는 진짜로 강제 갱신하되 그 문제를 이 쿨다운으로 대신 막는다.
+    if (lastFetchedAt !== null) {
+      const elapsed = Date.now() - lastFetchedAt;
+      if (elapsed < MANUAL_REFRESH_COOLDOWN_MS) {
+        const waitSec = Math.ceil((MANUAL_REFRESH_COOLDOWN_MS - elapsed) / 1000);
+        setRefreshNotice(`API 호출 제한 보호를 위해 ${waitSec}초 후 다시 시도해주세요.`);
+        return;
+      }
+    }
+
     setRefreshing(true);
     setError(null);
     try {
-      // Deliberately NOT forceRefresh: without it, this still goes through
-      // the backend's 5s response cache (see backend/src/brokers/responseCache.ts).
-      // A forced bypass here reproduced the exact StrictMode-double-fetch
-      // problem the cache exists to prevent — a user clicking refresh more
-      // than once within a few seconds (or a stray double-click) would fire
-      // a second real KIS call and immediately re-trip EGW00201. Respecting
-      // the cache means "refresh" reflects data at most 5s old, which is
-      // close enough for a portfolio view and safe to click repeatedly.
-      const data = await api.getPortfolio(selectedBroker, accountId);
+      const data = await api.getPortfolio(selectedBroker, accountId, { forceRefresh: true });
       setPortfolio(data);
+      setLastFetchedAt(Date.now());
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
+
+  // 로컬 저장소(holdings-store)는 실시간 조회가 성공할 때마다 write-through로
+  // 갱신되고, CSV로도 채울 수 있다(API 연동이 없는 KB증권 등) — 내보내기는 현재
+  // 화면의 브로커/계좌 하나가 아니라 저장소에 쌓인 전체를 대상으로 한다(여러
+  // 브로커/계좌를 한 파일로 오가려는 용도).
+  async function onExportCsv() {
+    const holdings = await api.listHoldingsStore();
+    const rows: string[][] = [
+      HOLDINGS_CSV_HEADER,
+      ...holdings.map((h) => [
+        h.broker,
+        h.accountId,
+        h.symbol,
+        String(h.quantity),
+        String(h.averagePurchasePrice),
+        String(h.lastPrice),
+        String(h.purchaseAmount),
+        String(h.marketValue),
+        String(h.profitLossAmount),
+        String(h.profitLossRate),
+        h.commission === null ? '' : String(h.commission),
+        h.tax === null ? '' : String(h.tax),
+        h.currency ?? '',
+        h.market ?? '',
+      ]),
+    ];
+    downloadCsv(`holdings-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  }
+
+  function onImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length === 0) {
+        setImportResult('CSV 파일이 비어 있습니다.');
+        return;
+      }
+
+      const [header, ...dataRows] = rows;
+      const colIndex = (name: string) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
+      const iBroker = colIndex('broker');
+      const iAccountId = colIndex('accountId');
+      const iSymbol = colIndex('symbol');
+      const iQuantity = colIndex('quantity');
+      const iAvgPrice = colIndex('averagePurchasePrice');
+      const iLastPrice = colIndex('lastPrice');
+      const iPurchaseAmount = colIndex('purchaseAmount');
+      const iMarketValue = colIndex('marketValue');
+      const iProfitLossAmount = colIndex('profitLossAmount');
+      const iProfitLossRate = colIndex('profitLossRate');
+      const iCommission = colIndex('commission');
+      const iTax = colIndex('tax');
+      const iCurrency = colIndex('currency');
+      const iMarket = colIndex('market');
+
+      if ([iBroker, iAccountId, iSymbol, iQuantity, iAvgPrice, iCurrency].some((i) => i === -1)) {
+        setImportResult(
+          `CSV 헤더가 올바르지 않습니다. 최소 broker,accountId,symbol,quantity,averagePurchasePrice,currency 컬럼이 필요합니다.`
+        );
+        return;
+      }
+
+      const num = (v: string | undefined) => {
+        const trimmed = (v ?? '').trim();
+        return trimmed === '' ? undefined : Number(trimmed);
+      };
+
+      const records = dataRows
+        .filter((r) => r.some((v) => v.trim() !== ''))
+        .map((r) => ({
+          broker: (r[iBroker] ?? '').trim() as BrokerId,
+          accountId: (r[iAccountId] ?? '').trim(),
+          symbol: (r[iSymbol] ?? '').trim(),
+          quantity: Number((r[iQuantity] ?? '').trim()),
+          averagePurchasePrice: Number((r[iAvgPrice] ?? '').trim()),
+          lastPrice: iLastPrice !== -1 ? num(r[iLastPrice]) : undefined,
+          purchaseAmount: iPurchaseAmount !== -1 ? num(r[iPurchaseAmount]) : undefined,
+          marketValue: iMarketValue !== -1 ? num(r[iMarketValue]) : undefined,
+          profitLossAmount: iProfitLossAmount !== -1 ? num(r[iProfitLossAmount]) : undefined,
+          profitLossRate: iProfitLossRate !== -1 ? num(r[iProfitLossRate]) : undefined,
+          commission: iCommission !== -1 ? (num(r[iCommission]) ?? null) : null,
+          tax: iTax !== -1 ? (num(r[iTax]) ?? null) : null,
+          currency: (r[iCurrency] ?? '').trim() as 'KRW' | 'USD',
+          market: iMarket !== -1 && (r[iMarket] ?? '').trim() ? r[iMarket].trim() : null,
+        }));
+
+      const result = await api.importHoldingsStore(records);
+      setImportResult(
+        result.failed.length > 0
+          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
+              .map((f) => `${f.row}행 - ${f.error}`)
+              .join('; ')})`
+          : `${result.added}건 추가됨`
+      );
+    } catch (e) {
+      setImportResult((e as Error).message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -301,12 +462,32 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <h2 className="page-title">보유 종목</h2>
-        <button className="ghost" onClick={handleRefresh} disabled={refreshing}>
-          {refreshing ? '새로고침 중...' : '새로고침'}
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <button className="ghost" onClick={onExportCsv}>
+            CSV 내보내기 (전체)
+          </button>
+          <button className="ghost" onClick={onImportClick} disabled={importing}>
+            {importing ? '가져오는 중...' : 'CSV 가져오기'}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
+          <button className="ghost" onClick={handleRefresh} disabled={refreshing}>
+            {refreshing ? '새로고침 중...' : '새로고침'}
+          </button>
+        </div>
       </div>
+
+      {refreshNotice && (
+        <div className="notice" style={{ fontSize: 13 }}>
+          {refreshNotice}
+        </div>
+      )}
+      {importResult && (
+        <div className="notice" style={{ fontSize: 13 }}>
+          {importResult}
+        </div>
+      )}
 
       {configuredBrokers.length > 1 && (
         <div className="form-row">

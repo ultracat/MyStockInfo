@@ -41,6 +41,44 @@ export interface PortfolioOverview {
   positions: HoldingPosition[];
 }
 
+/** 로컬 저장소(backend/src/db/holdingsStore.ts)에 저장된 보유종목 스냅샷 한 줄 —
+ *  실시간 조회(`GET /api/holdings/:broker/:accountId`) 성공 시 write-through로
+ *  갱신되거나, CSV 가져오기로 채워진다. */
+export interface StoredHolding {
+  broker: BrokerId;
+  accountId: string;
+  symbol: string;
+  name: string;
+  market: string | null;
+  currency: string | null;
+  quantity: number;
+  lastPrice: number;
+  averagePurchasePrice: number;
+  purchaseAmount: number;
+  marketValue: number;
+  profitLossAmount: number;
+  profitLossRate: number;
+  commission: number | null;
+  tax: number | null;
+  updatedAt: string;
+}
+
+/** 로컬 저장소(backend/src/db/tradesStore.ts)에 저장된 매매내역 한 줄. */
+export interface StoredTrade {
+  broker: BrokerId;
+  accountId: string;
+  id: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  amount: number;
+  currency: string;
+  commission: number | null;
+  tax: number | null;
+  executedAt: string;
+}
+
 export type DividendCurrency = 'KRW' | 'USD';
 
 export interface DividendRecord {

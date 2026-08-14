@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { BrokerAccount, BrokerId, BrokerSummary, TradeRecord } from '../types';
 import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
+import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -10,6 +11,10 @@ const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 type ViewMode = 'year' | 'month';
+type PageSize = 10 | 20 | 30 | 'ALL';
+
+const PAGE_SIZE_OPTIONS: PageSize[] = [10, 20, 30, 'ALL'];
+const PAGE_GROUP_SIZE = 10;
 
 function formatAmount(amount: number, currency: string) {
   return currency === 'USD' ? usdFmt.format(amount) : `${krw.format(Math.round(amount))}원`;
@@ -41,6 +46,9 @@ export default function Trades() {
   const [viewMode, setViewMode] = useState<ViewMode>('year');
   const [month, setMonth] = useState(CURRENT_MONTH);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
+  const [pageSize, setPageSize] = useState<PageSize>(10);
+  const [page, setPage] = useState(1);
+  const [chartCollapsed, setChartCollapsed] = useState(false);
 
   const configuredBrokers = brokers.filter((b) => b.configured);
 
@@ -210,6 +218,19 @@ export default function Trades() {
     [visibleTrades]
   );
 
+  // Dividends.tsx의 배당 기록 목록과 같은 페이지네이션 패턴 — `page`를 effect로
+  // 되돌리지 않고 매 렌더마다 pageCount 안으로 clamp해서 쓴다. 페이지 번호 버튼도
+  // 동일하게 10개(PAGE_GROUP_SIZE) 그룹 단위로만 그린다.
+  const pageCount = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(sortedTrades.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pagedTrades = useMemo(() => {
+    if (pageSize === 'ALL') return sortedTrades;
+    const start = (currentPage - 1) * pageSize;
+    return sortedTrades.slice(start, start + pageSize);
+  }, [sortedTrades, pageSize, currentPage]);
+  const pageGroupStart = Math.floor((currentPage - 1) / PAGE_GROUP_SIZE) * PAGE_GROUP_SIZE + 1;
+  const pageGroupEnd = Math.min(pageGroupStart + PAGE_GROUP_SIZE - 1, pageCount);
+
   function amountTileValue(krwAmount: number, usdAmount: number) {
     if (!usdAmount) return `${krw.format(Math.round(krwAmount))}원`;
     const total = krwAmount + (effectiveFxRate ? usdAmount * effectiveFxRate : 0);
@@ -264,7 +285,13 @@ export default function Trades() {
 
         <div className="form-row">
           <label>보기</label>
-          <select value={viewMode} onChange={(e) => setViewMode(e.target.value as ViewMode)}>
+          <select
+            value={viewMode}
+            onChange={(e) => {
+              setViewMode(e.target.value as ViewMode);
+              setPage(1);
+            }}
+          >
             <option value="year">연간</option>
             <option value="month">월간</option>
           </select>
@@ -272,7 +299,13 @@ export default function Trades() {
 
         <div className="form-row">
           <label>연도</label>
-          <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
+          <select
+            value={year}
+            onChange={(e) => {
+              setYear(Number(e.target.value));
+              setPage(1);
+            }}
+          >
             {YEAR_OPTIONS.map((y) => (
               <option key={y} value={y}>
                 {y}년
@@ -284,7 +317,13 @@ export default function Trades() {
         {viewMode === 'month' && (
           <div className="form-row">
             <label>월</label>
-            <select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+            <select
+              value={month}
+              onChange={(e) => {
+                setMonth(Number(e.target.value));
+                setPage(1);
+              }}
+            >
               {MONTH_OPTIONS.map((m) => (
                 <option key={m} value={m}>
                   {m}월
@@ -315,13 +354,64 @@ export default function Trades() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>
-          {viewMode === 'year' ? `${year}년 월별 매수/매도` : `${year}년 ${month}월 일별 매수/매도`}
-        </h3>
-        <TradesChart rows={chartRows} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>
+            {viewMode === 'year' ? `${year}년 월별 매수/매도` : `${year}년 ${month}월 일별 매수/매도`}
+          </h3>
+          <CollapseToggle collapsed={chartCollapsed} onClick={() => setChartCollapsed((c) => !c)} />
+        </div>
+        {!chartCollapsed && (
+          <div style={{ marginTop: 12 }}>
+            <TradesChart rows={chartRows} />
+          </div>
+        )}
       </div>
 
       <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+          {pageCount > 1 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <button className="ghost" disabled={pageGroupStart === 1} onClick={() => setPage(pageGroupStart - PAGE_GROUP_SIZE)}>
+                ◀ 이전 10개
+              </button>
+              {Array.from({ length: pageGroupEnd - pageGroupStart + 1 }, (_, i) => pageGroupStart + i).map((p) => (
+                <button
+                  key={p}
+                  className="ghost"
+                  style={
+                    p === currentPage
+                      ? { background: 'var(--series-1)', color: '#fff', borderColor: 'var(--series-1)' }
+                      : undefined
+                  }
+                  onClick={() => setPage(p)}
+                >
+                  {p}
+                </button>
+              ))}
+              <button className="ghost" disabled={pageGroupEnd === pageCount} onClick={() => setPage(pageGroupEnd + 1)}>
+                다음 10개 ▶
+              </button>
+            </div>
+          ) : (
+            <div />
+          )}
+          <div className="form-row" style={{ margin: 0 }}>
+            <label>표시 개수</label>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(e.target.value === 'ALL' ? 'ALL' : (Number(e.target.value) as PageSize));
+                setPage(1);
+              }}
+            >
+              {PAGE_SIZE_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s === 'ALL' ? '전체' : `${s}개`}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <table>
           <thead>
             <tr>
@@ -341,7 +431,7 @@ export default function Trades() {
                 </td>
               </tr>
             ) : (
-              sortedTrades.map((t) => (
+              pagedTrades.map((t) => (
                 <tr key={t.id}>
                   <td>{t.executedAt}</td>
                   <td>{t.name ? `${t.name} (${t.symbol})` : t.symbol}</td>

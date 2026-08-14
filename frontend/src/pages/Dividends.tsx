@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow } from '../types';
 import DividendsChart from '../components/DividendsChart';
+import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -33,15 +34,6 @@ interface BrokerLine {
   invested: string;
   dividend: string;
   yieldText: string;
-}
-
-/** Always placed as the last (rightmost) element of a card's header row. */
-function CollapseToggle({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
-  return (
-    <button className="ghost" onClick={onClick}>
-      {collapsed ? '펼치기 ▸' : '접기 ▾'}
-    </button>
-  );
 }
 
 export default function Dividends() {

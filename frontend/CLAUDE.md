@@ -105,8 +105,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   그룹에서 "다음"). "월별 배당금"과 "증권사별
   배당금 총계"는 **카드 하나**를 공유한다(처음엔 카드 두 개로 나란히 놓았다가, "따로
   접혔다 펴지지 말고 한 번에 같이"라는 피드백을 받고 합쳤다) — `dividendPanelsCollapsed`
-  하나로 둘 다 같이 접고 펴며, `CollapseToggle`(파일 내부 컴포넌트)도 카드 헤더 행에
-  하나만 둔다. 카드 헤더 행엔 "월별 배당금 제목 + 증권사 `<select>`"만 있고 토글은
+  하나로 둘 다 같이 접고 펴며, `CollapseToggle`(`src/components/CollapseToggle.tsx` —
+  처음엔 이 파일 내부 컴포넌트였다가 Trades.tsx의 매수/매도 그래프 카드에도 같은
+  접기/펼치기가 필요해져서 공용 컴포넌트로 뺐다)도 카드 헤더 행에 하나만 둔다. 카드
+  헤더 행엔 "월별 배당금 제목 + 증권사 `<select>`"만 있고 토글은
   그 행 **맨 오른쪽**에 온다 — "증권사별 배당금 총계" 제목은 처음엔 이 헤더 행에
   같이 두었는데, 그러면 왼쪽에 붙어 있어서 어느 쪽 내용에 대한 라벨인지 헷갈린다는
   피드백을 받고 표 컬럼 바로 위(자기 내용 바로 위)로 옮겼다 — **섹션 라벨은 그
@@ -150,7 +152,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `visibleTrades` 기준으로 계산해서 화면 안 숫자들이 서로 어긋나지 않게 했다. 스탯
   타일은 `effectiveFxRate`로 원화 환산해서 하나의 숫자로 보여주지만(Dividends.tsx/
   Dashboard.tsx와 같은 패턴), **그래프는 원화·달러를 환산해 합치지 않고 따로 보여준다** —
-  아래 `TradesChart.tsx` 참고.
+  아래 `TradesChart.tsx` 참고. 거래 목록 테이블은 Dividends.tsx의 배당 기록 목록과
+  동일한 페이지네이션 UI/로직을 그대로 쓴다(`pageSize`: 10/20/30/전체, `page`를
+  effect로 안 되돌리고 매 렌더 `currentPage = Math.min(page, pageCount)`로 clamp,
+  페이지 번호 버튼은 `PAGE_GROUP_SIZE`(10) 단위 그룹만 그리고 그룹 양 끝에 "이전
+  10개"/"다음 10개" 버튼) — `sortedTrades`를 페이지네이션 기준으로 삼는다
+  (`pagedTrades`). 보기(연/월)·연도·월 선택이 바뀌면 `visibleTrades`가 통째로
+  바뀌므로 그 세 `<select>` 모두 `onChange`에서 `setPage(1)`을 같이 호출한다.
+  "월별 매수/매도" 그래프 카드도 Dividends.tsx와 같은 `CollapseToggle`로 접기/펼치기가
+  된다(`chartCollapsed`) — 카드 헤더 행(제목 + 토글)만 항상 보이고, `TradesChart`는
+  `!chartCollapsed`일 때만 렌더링한다.
 - `src/components/TradesChart.tsx` — 월별 매수(파랑, `--series-1`)/매도(주황, `--series-2`)
   그룹형 막대 그래프. **원화와 달러를 환율로 합쳐서 하나의 막대로 그리지 않는다** — 둘은
   단위/스케일 자체가 달라서(dataviz 스킬: "Two measures of different scale → 두 차트 또는

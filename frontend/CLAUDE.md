@@ -137,6 +137,28 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   않았다 — 나중에 종목명이 바뀌어도 과거 기록엔 "그 당시 이름"이 남아 있는 게
   맞다고 판단, backend CLAUDE.md 참고). 결과(`updated`/`resolved`/`failed`)를 버튼
   옆에 짧게 보여주고, `refresh()`로 목록도 다시 불러온다.
+  **CSV 내보내기/가져오기**는 별도 UI를 새로 만들지 않고 기존 요소를 재사용한다 —
+  "내보내기"는 이미 있던 목록 필터 `listBroker`를 그대로 범위로 쓴다(`전체`면 전체,
+  특정 증권사면 그 증권사만 — 버튼 라벨도 `CSV 내보내기 (전체)`/`CSV 내보내기
+  (한국투자증권)`처럼 현재 필터를 그대로 보여줘서 "지금 보이는 목록이 아니라 전체가
+  나가는 거 아닌가" 하는 혼동을 없앤다). "가져오기"는 목적이 달라서(화면에 뭘
+  보여줄지가 아니라 가져올 대상을 고르는 것) 독립된 `importBroker` state와 `<select>`를
+  둔다 — 옵션도 `brokerOptions`(기존 기록이 있는 증권사만)가 아니라 `BROKER_ORDER`
+  전체를 쓴다(가져오기는 아직 기록이 하나도 없는 증권사의 첫 데이터를 넣는 경우가
+  당연히 있어서). CSV 파싱/직렬화는 `src/csv.ts`(RFC4180 최소 구현 — 라이브러리 없이
+  직접 짬, 필드 몇 개짜리라 이 편이 가볍다고 판단)가 하고, 컬럼 헤더는 `DividendRecord`
+  필드명 그대로(`broker,symbol,name,currency,amount,paidDate,memo`) 써서 내보낸 파일을
+  그대로 다시 가져올 때 왕복이 되게 했다(한글 헤더 대신 필드명을 쓴 이유). 가져오기는
+  헤더 이름으로 컬럼을 찾아 인덱싱하므로(`colIndex`) 컬럼 순서가 바뀐 파일도 그대로
+  읽는다. `importBroker !== 'ALL'`이면 파싱된 행을 클라이언트에서 먼저 걸러서(같은
+  파일 안에 여러 증권사가 섞여 있어도 원하는 증권사분만) 보낸다 — 검증 자체는
+  프론트에서 하지 않고 그대로 `POST /api/dividends/import`에 배열로 보내 백엔드가
+  행별로 검증/저장하고 `{ added, failed: [{row, error}] }`를 돌려준다(백엔드
+  CLAUDE.md의 "CSV 가져오기" 참고) — 실패한 행이 있어도 나머지는 저장되고, 결과
+  메시지에 실패 행 번호와 사유를 그대로 붙여 보여준다(`refreshResult`와 같은 패턴의
+  `importResult`). 내보내기는 `downloadCsv()`(`csv.ts`)가 UTF-8 BOM을 붙인 Blob을
+  `<a download>`로 트리거한다 — BOM이 없으면 엑셀/한글 스프레드시트가 UTF-8로 안
+  열어서 한글이 깨진다.
 - `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
   `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
   YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 **연 단위로 한 번만** 호출한다.

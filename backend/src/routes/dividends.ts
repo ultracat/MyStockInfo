@@ -1,10 +1,52 @@
 import { Router } from 'express';
-import { addDividend, deleteDividend, listDividends, updateDividendNames } from '../db/dividends';
+import { addDividend, deleteDividend, listDividends, updateDividendNames, type NewDividendInput } from '../db/dividends';
 import { cacheStockName } from '../db/stockNames';
 import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
+import type { BrokerId } from '../brokers/types';
 
 export const dividendsRouter = Router();
+
+const BROKER_IDS: BrokerId[] = ['toss', 'kis', 'kb'];
+
+// CSV 가져오기(POST /import)와 단건 추가(POST /)가 같은 검증 로직을 쓴다 — 필드
+// 하나가 바뀌면 두 곳 다 놓치지 않게 여기 하나로 모아둔다. 단건 추가와 달리
+// broker는 알려진 증권사 코드인지까지 확인한다(CSV로 들어온 임의의 문자열이
+// 그대로 저장되면 화면의 BROKER_LABELS 조회에서 빈 값으로 표시되기 때문).
+function parseDividendInput(body: unknown): { input: NewDividendInput } | { error: string } {
+  const { broker, symbol, name, currency, amount, paidDate, memo } = (body ?? {}) as Record<string, unknown>;
+
+  if (
+    typeof broker !== 'string' ||
+    !BROKER_IDS.includes(broker as BrokerId) ||
+    typeof symbol !== 'string' ||
+    !symbol ||
+    typeof name !== 'string' ||
+    !name ||
+    (currency !== 'KRW' && currency !== 'USD') ||
+    typeof amount !== 'number' ||
+    !Number.isFinite(amount) ||
+    amount <= 0 ||
+    typeof paidDate !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(paidDate)
+  ) {
+    return {
+      error: `broker(${BROKER_IDS.join('|')}), symbol, name, currency(KRW|USD), amount(양수), paidDate(YYYY-MM-DD)가 필요합니다.`,
+    };
+  }
+
+  return {
+    input: {
+      broker: broker as BrokerId,
+      symbol,
+      name,
+      currency,
+      amount,
+      paidDate,
+      memo: typeof memo === 'string' && memo ? memo : null,
+    },
+  };
+}
 
 dividendsRouter.get('/', (_req, res) => {
   res.json(listDividends());
@@ -55,35 +97,37 @@ dividendsRouter.post('/refresh-names', async (_req, res) => {
 });
 
 dividendsRouter.post('/', (req, res) => {
-  const { broker, symbol, name, currency, amount, paidDate, memo } = req.body ?? {};
+  const parsed = parseDividendInput(req.body);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
 
-  if (
-    typeof broker !== 'string' ||
-    typeof symbol !== 'string' ||
-    !symbol ||
-    typeof name !== 'string' ||
-    !name ||
-    (currency !== 'KRW' && currency !== 'USD') ||
-    typeof amount !== 'number' ||
-    amount <= 0 ||
-    typeof paidDate !== 'string' ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(paidDate)
-  ) {
-    return res.status(400).json({
-      error: 'broker, symbol, name, currency(KRW|USD), amount(양수), paidDate(YYYY-MM-DD)가 필요합니다.',
-    });
+  const record = addDividend(parsed.input);
+  res.status(201).json(record);
+});
+
+// CSV 내보내기/가져오기(전체 또는 증권사별)의 "가져오기" 쪽 — 프론트가 CSV를
+// 파싱해 레코드 배열로 보내면 여기서 한 번에 검증/저장한다. 행 하나가 잘못돼도
+// 전체를 막지 않고(수동 입력 CSV라 오타 가능성이 높음) 행별로 성공/실패를
+// 나눠 보고한다 — 그래야 몇백 건짜리 파일에서 실패한 몇 건만 골라 고칠 수 있다.
+dividendsRouter.post('/import', (req, res) => {
+  const records = (req.body as { records?: unknown })?.records;
+  if (!Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
   }
 
-  const record = addDividend({
-    broker: broker as any,
-    symbol,
-    name,
-    currency,
-    amount,
-    paidDate,
-    memo: typeof memo === 'string' ? memo : null,
-  });
-  res.status(201).json(record);
+  let added = 0;
+  const failed: Array<{ row: number; error: string }> = [];
+
+  for (let i = 0; i < records.length; i++) {
+    const parsed = parseDividendInput(records[i]);
+    if ('error' in parsed) {
+      failed.push({ row: i + 1, error: parsed.error });
+      continue;
+    }
+    addDividend(parsed.input);
+    added += 1;
+  }
+
+  res.json({ added, failed });
 });
 
 dividendsRouter.delete('/:id', (req, res) => {

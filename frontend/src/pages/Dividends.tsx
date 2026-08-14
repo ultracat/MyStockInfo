@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import type { BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow } from '../types';
 import DividendsChart from '../components/DividendsChart';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
+import { downloadCsv, parseCsv } from '../csv';
+
+// export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
+// 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
+// 헤더 매칭이 대소문자만 다르면 되게 하기 위함).
+const DIVIDEND_CSV_HEADER = ['broker', 'symbol', 'name', 'currency', 'amount', 'paidDate', 'memo'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
@@ -62,6 +68,11 @@ export default function Dividends() {
   const [manualNameEntry, setManualNameEntry] = useState(false);
   const [refreshingNames, setRefreshingNames] = useState(false);
   const [refreshResult, setRefreshResult] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importBroker, setImportBroker] = useState<BrokerFilter>('ALL');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
 
   const [investedByBroker, setInvestedByBroker] = useState<Partial<Record<BrokerId, BrokerInvested>>>({});
   const [investedErrors, setInvestedErrors] = useState<Partial<Record<BrokerId, string>>>({});
@@ -224,6 +235,93 @@ export default function Dividends() {
       setRefreshResult((e as Error).message);
     } finally {
       setRefreshingNames(false);
+    }
+  }
+
+  // listBroker(하단 목록 필터)를 그대로 내보내기 범위로 쓴다 — "전체"면 전체,
+  // 특정 증권사를 골라두면 그 증권사만. 화면에 이미 있는 필터를 재사용하는 것뿐이라
+  // 내보내기 전용 UI를 따로 둘 필요가 없다.
+  function onExportCsv() {
+    const rows: string[][] = [
+      DIVIDEND_CSV_HEADER,
+      ...listFilteredRecords.map((r) => [r.broker, r.symbol, r.name, r.currency, String(r.amount), r.paidDate, r.memo ?? '']),
+    ];
+    const scope = listBroker === 'ALL' ? 'all' : listBroker;
+    downloadCsv(`dividends-${scope}-${today()}.csv`, rows);
+  }
+
+  function onImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  // CSV 헤더에서 필요한 컬럼 인덱스를 찾는다 — 컬럼 순서가 바뀐 파일도(예: 사용자가
+  // 스프레드시트에서 열 순서를 바꿔 저장한 경우) 헤더 이름만 맞으면 그대로 읽는다.
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      if (rows.length === 0) {
+        setImportResult('CSV 파일이 비어 있습니다.');
+        return;
+      }
+
+      const [header, ...dataRows] = rows;
+      const colIndex = (name: string) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
+      const iBroker = colIndex('broker');
+      const iSymbol = colIndex('symbol');
+      const iName = colIndex('name');
+      const iCurrency = colIndex('currency');
+      const iAmount = colIndex('amount');
+      const iPaidDate = colIndex('paidDate');
+      const iMemo = colIndex('memo');
+
+      if ([iBroker, iSymbol, iName, iCurrency, iAmount, iPaidDate].some((i) => i === -1)) {
+        setImportResult(`CSV 헤더가 올바르지 않습니다. 다음 컬럼이 필요합니다: ${DIVIDEND_CSV_HEADER.join(', ')}`);
+        return;
+      }
+
+      let parsedRecords = dataRows
+        .filter((r) => r.some((v) => v.trim() !== ''))
+        .map((r) => ({
+          broker: (r[iBroker] ?? '').trim() as BrokerId,
+          symbol: (r[iSymbol] ?? '').trim(),
+          name: (r[iName] ?? '').trim(),
+          currency: (r[iCurrency] ?? '').trim() as DividendCurrency,
+          amount: Number((r[iAmount] ?? '').trim()),
+          paidDate: (r[iPaidDate] ?? '').trim(),
+          memo: iMemo !== -1 && (r[iMemo] ?? '').trim() ? r[iMemo] : null,
+        }));
+
+      // "가져오기 대상" 선택이 전체가 아니면 해당 증권사 행만 골라서 보낸다 —
+      // 여러 증권사가 섞인 CSV에서 특정 증권사분만 가져오고 싶을 때 쓴다.
+      if (importBroker !== 'ALL') {
+        parsedRecords = parsedRecords.filter((r) => r.broker === importBroker);
+      }
+
+      if (parsedRecords.length === 0) {
+        setImportResult('가져올 행이 없습니다.');
+        return;
+      }
+
+      const result = await api.importDividends(parsedRecords);
+      setImportResult(
+        result.failed.length > 0
+          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
+              .map((f) => `${f.row}행 - ${f.error}`)
+              .join('; ')})`
+          : `${result.added}건 추가됨`
+      );
+      await refresh();
+    } catch (e) {
+      setImportResult((e as Error).message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -638,6 +736,29 @@ export default function Dividends() {
               ))}
             </select>
           </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+          <button className="ghost" onClick={onExportCsv} disabled={listFilteredRecords.length === 0}>
+            CSV 내보내기 ({listBroker === 'ALL' ? '전체' : BROKER_LABELS[listBroker]})
+          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>가져오기 대상</label>
+            <select value={importBroker} onChange={(e) => setImportBroker(e.target.value as BrokerFilter)}>
+              <option value="ALL">전체</option>
+              {BROKER_ORDER.map((id) => (
+                <option key={id} value={id}>
+                  {BROKER_LABELS[id]}
+                </option>
+              ))}
+            </select>
+            <button className="ghost" onClick={onImportClick} disabled={importing}>
+              {importing ? '가져오는 중...' : 'CSV 가져오기'}
+            </button>
+            <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
+          </div>
+          {importResult && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{importResult}</span>
+          )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
           {pageCount > 1 ? (

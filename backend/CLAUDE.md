@@ -134,6 +134,18 @@ rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된�
 (원래는 `monthlySummary()`란 백엔드 집계 함수가 있었는데, Trades.tsx가 애초에 그런 백엔드
 집계 없이 클라이언트에서 다 하는 걸 보고 통일했다 — 연도 필터 추가하면서 이 함수를 지웠다).
 
+**CSV 가져오기** (`POST /api/dividends/import`, `routes/dividends.ts`) — 단건 추가(`POST /`)와
+같은 검증 로직(`parseDividendInput`)을 공유한다. 필드 하나 바뀌면 두 곳 다 놓치지 않게 하려는
+목적이고, 단건 추가와 달리 `broker`가 `toss|kis|kb` 중 하나인지까지 확인한다(CSV로 들어온
+임의 문자열이 그대로 저장되면 프론트 `BROKER_LABELS` 조회에서 빈 값으로 표시됨). 요청 바디는
+`{ records: NewDividendInput[] }`이고, 행 하나가 검증에 실패해도 나머지는 계속 저장한다
+(`{ added, failed: [{ row, error }] }`으로 응답) — 수동 작성/편집한 CSV라 오타 가능성이 높아서,
+몇백 건짜리 파일에서 실패한 몇 건만 골라 고칠 수 있게. CSV 파싱/직렬화 자체(따옴표로 감싸기,
+콤마·줄바꿈 이스케이프)는 프론트(`frontend/src/csv.ts`)가 하고, 백엔드는 이미 파싱된 레코드
+배열만 받는다 — "증권사별 vs 전체" 내보내기/가져오기는 백엔드에 별도 파라미터가 없고, 프론트가
+이미 있던 목록 필터(`listBroker`)로 내보낼 레코드를 추리고, 가져오기는 파싱된 행을 선택한
+증권사로 클라이언트에서 걸러서 보내는 방식으로 처리한다(`Dividends.tsx` 참고).
+
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/routes/stockInfo.ts`)
 
 배당 기록 추가 폼에서 종목코드만 입력하면 종목명을 사용자가 직접 안 쳐도 되게, 토스의

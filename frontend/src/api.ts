@@ -66,6 +66,11 @@ export const api = {
     request<{ updated: number; resolved: number; failed: string[] }>('/dividends/refresh-names', {
       method: 'POST',
     }),
+  importDividends: (records: Omit<DividendRecord, 'id'>[]) =>
+    request<{ added: number; failed: { row: number; error: string }[] }>('/dividends/import', {
+      method: 'POST',
+      body: JSON.stringify({ records }),
+    }),
 
   getTradeHistory: (broker: BrokerId, accountId: string, from: string, to: string, opts?: { forceRefresh?: boolean }) =>
     request<TradeRecord[]>(

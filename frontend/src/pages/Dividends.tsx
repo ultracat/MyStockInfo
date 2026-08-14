@@ -399,24 +399,22 @@ export default function Dividends() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', flexWrap: 'wrap', marginBottom: 16 }}>
         <div className="card" style={{ flex: '1 1 420px', minWidth: 0, margin: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-            <h3 style={{ margin: 0 }}>월별 배당금</h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div className="form-row" style={{ margin: 0 }}>
-                <label>증권사</label>
-                <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
-                  <option value="ALL">전체</option>
-                  {chartBrokerOptions.map((id) => (
-                    <option key={id} value={id}>
-                      {BROKER_LABELS[id]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <CollapseToggle collapsed={chartCollapsed} onClick={() => setChartCollapsed((c) => !c)} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0 }}>월별 배당금</h3>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
+              <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
+                <option value="ALL">전체</option>
+                {chartBrokerOptions.map((id) => (
+                  <option key={id} value={id}>
+                    {BROKER_LABELS[id]}
+                  </option>
+                ))}
+              </select>
             </div>
+            <CollapseToggle collapsed={chartCollapsed} onClick={() => setChartCollapsed((c) => !c)} />
           </div>
           {!chartCollapsed && <DividendsChart rows={monthlyRows} fxRate={effectiveFxRate} />}
         </div>

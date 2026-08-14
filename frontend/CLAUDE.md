@@ -55,6 +55,18 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   환율, 토스만 환율 API 제공)로 별도 effect에서 가져와 `effectiveFxRate`로 "합계(환산)"
   행과 `DividendsChart`(월별 그래프)에 전달한다 — 환율을 못 가져오면 "환율 미적용"으로
   표시하고 합산을 생략한다(조용히 틀린 숫자를 보여주지 않기 위함).
+  **연도 필터(`year: 'ALL' | number`)**는 서버에 다시 안 물어보고 `listDividends()`로
+  받아온 전체 `records`를 `visibleRecords`로 클라이언트에서 걸러서 월별 집계
+  (`monthlyRows`)·증권사별 집계(`brokerDividendTotals`)·하단 기록 목록까지 전부 이걸
+  기준으로 다시 계산한다 — Trades.tsx의 `visibleTrades`와 같은 패턴. 그래서 백엔드의
+  `monthlySummary()`(연도 개념 없이 항상 전체 기간)는 통째로 지웠다(backend/CLAUDE.md
+  참고). **투자금(`investedByBroker`)만 연도 필터를 안 탄다** — 이건 "지금 시점에
+  실제로 들고 있는 투자 원금"이라 애초에 연도별로 나뉘는 값이 아니고, 배당 DB가 아니라
+  실시간 브로커 API에서 오기 때문. 전체 상단에 있는 "총 배당금/총 투자금/총
+  배당수익률" 스탯 타일(`grandTotal`)은 모든 브로커를 합친 환산 단일 숫자만 보여준다 —
+  통화별 상세는 이미 그 아래 "증권사별 배당금 총계" 표에 있어서 중복 표시하지 않는다.
+  브로커 중 하나라도 투자금 조회가 실패/로딩 중이면 총 투자금·총 배당수익률을 부분합으로
+  조용히 보여주지 않고 "일부 조회 실패"/"불러오는 중..."이라고 명시한다.
 - `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
   `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
   YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 **연 단위로 한 번만** 호출한다.

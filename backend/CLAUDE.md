@@ -112,10 +112,12 @@ rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된�
 
 `DividendRecord`는 `currency`(`'KRW'|'USD'`)와 그 통화 기준 `amount`를 저장한다 — 이 모듈은
 환율을 모르므로 **크로스 통화 환산을 하지 않는다**(달러 배당을 원화로 합산해 보여주는 건
-프론트엔드가 Dashboard.tsx와 같은 방식으로 환율을 가져와서 함). `monthlySummary()`도 같은
-이유로 `totalKrw`/`totalUsd`를 분리해서 반환한다. 예전엔 `amountKrw` 하나였고 입력 시 수동으로
-원화 환산해서 저장하는 방식이었는데, 그 히스토리 데이터(`dividends.json`)는 전부
-`currency: "KRW"`로 마이그레이션해뒀다.
+프론트엔드가 Dashboard.tsx와 같은 방식으로 환율을 가져와서 함). 예전엔 `amountKrw` 하나였고
+입력 시 수동으로 원화 환산해서 저장하는 방식이었는데, 그 히스토리 데이터(`dividends.json`)는
+전부 `currency: "KRW"`로 마이그레이션해뒀다. 월별/연도별 집계는 여기 없다 — `listDividends()`가
+전체 레코드를 그대로 돌려주고, 연도 필터링·월별 합산은 프론트(Dividends.tsx)가 다 한다
+(원래는 `monthlySummary()`란 백엔드 집계 함수가 있었는데, Trades.tsx가 애초에 그런 백엔드
+집계 없이 클라이언트에서 다 하는 걸 보고 통일했다 — 연도 필터 추가하면서 이 함수를 지웠다).
 
 ## 검증 방식
 

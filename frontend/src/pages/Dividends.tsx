@@ -4,6 +4,9 @@ import type { BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow } fr
 import DividendsChart from '../components/DividendsChart';
 
 const today = () => new Date().toISOString().slice(0, 10);
+const CURRENT_YEAR = new Date().getFullYear();
+
+type YearFilter = 'ALL' | number;
 
 const BROKER_LABELS: Record<BrokerId, string> = { toss: '토스증권', kis: '한국투자증권', kb: 'KB증권' };
 const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'kb'];
@@ -30,8 +33,8 @@ interface BrokerLine {
 
 export default function Dividends() {
   const [records, setRecords] = useState<DividendRecord[]>([]);
-  const [summary, setSummary] = useState<MonthlySummaryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [year, setYear] = useState<YearFilter>('ALL');
 
   const [broker, setBroker] = useState<BrokerId>('toss');
   const [currency, setCurrency] = useState<DividendCurrency>('KRW');
@@ -53,9 +56,7 @@ export default function Dividends() {
   const effectiveFxRate = manualFxRate ?? liveFxRate;
 
   async function refresh() {
-    const [r, s] = await Promise.all([api.listDividends(), api.monthlyDividendSummary()]);
-    setRecords(r);
-    setSummary(s);
+    setRecords(await api.listDividends());
   }
 
   useEffect(() => {
@@ -149,16 +150,45 @@ export default function Dividends() {
     await refresh();
   }
 
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>([CURRENT_YEAR]);
+    for (const r of records) years.add(Number(r.paidDate.slice(0, 4)));
+    return Array.from(years).sort((a, b) => b - a);
+  }, [records]);
+
+  // 연도 선택은 배당 기록(과거 데이터)에만 적용된다 — investedByBroker는
+  // "지금 시점의 보유 투자금"이라 연도별로 나뉘는 값이 아니어서 그대로 둔다.
+  const visibleRecords = useMemo(() => {
+    if (year === 'ALL') return records;
+    const prefix = String(year);
+    return records.filter((r) => r.paidDate.startsWith(prefix));
+  }, [records, year]);
+
+  const monthlyRows = useMemo<MonthlySummaryRow[]>(() => {
+    const byMonth = new Map<string, { totalKrw: number; totalUsd: number; count: number }>();
+    for (const r of visibleRecords) {
+      const month = r.paidDate.slice(0, 7);
+      const existing = byMonth.get(month) ?? { totalKrw: 0, totalUsd: 0, count: 0 };
+      if (r.currency === 'USD') existing.totalUsd += r.amount;
+      else existing.totalKrw += r.amount;
+      existing.count += 1;
+      byMonth.set(month, existing);
+    }
+    return Array.from(byMonth.entries())
+      .map(([month, v]) => ({ month, ...v }))
+      .sort((a, b) => (a.month < b.month ? -1 : 1));
+  }, [visibleRecords]);
+
   const brokerDividendTotals = useMemo(() => {
     const byBroker = new Map<BrokerId, { krw: number; usd: number }>();
-    for (const r of records) {
+    for (const r of visibleRecords) {
       const existing = byBroker.get(r.broker) ?? { krw: 0, usd: 0 };
       if (r.currency === 'USD') existing.usd += r.amount;
       else existing.krw += r.amount;
       byBroker.set(r.broker, existing);
     }
     return byBroker;
-  }, [records]);
+  }, [visibleRecords]);
 
   function investedPlaceholder(brokerError: string | null | undefined) {
     if (investedLoading) return '불러오는 중...';
@@ -234,6 +264,56 @@ export default function Dividends() {
     return lines;
   }, [brokerDividendTotals, investedByBroker, investedErrors, investedLoading, effectiveFxRate]);
 
+  // "총합계" 스탯 타일 — 증권사별 표는 이미 통화별 상세를 보여주므로, 여기서는
+  // 환산된 단일 숫자만 보여준다(중복 표시 방지). 브로커 하나라도 투자금 조회가
+  // 안 됐으면(로딩/에러) 부분합을 총합처럼 보여주지 않고 그 사실을 그대로 알린다.
+  const grandTotal = useMemo(() => {
+    const ids = new Set<BrokerId>([
+      ...brokerDividendTotals.keys(),
+      ...(Object.keys(investedByBroker) as BrokerId[]),
+    ]);
+    let dividendKrw = 0;
+    let dividendUsd = 0;
+    let investedKrw = 0;
+    let investedUsd = 0;
+    let missingInvested = false;
+
+    for (const id of ids) {
+      const div = brokerDividendTotals.get(id);
+      if (div) {
+        dividendKrw += div.krw;
+        dividendUsd += div.usd;
+      }
+      const inv = investedByBroker[id];
+      if (inv) {
+        investedKrw += inv.krw;
+        investedUsd += inv.usd;
+      } else {
+        missingInvested = true;
+      }
+    }
+
+    const dividendTotal = dividendKrw + (effectiveFxRate ? dividendUsd * effectiveFxRate : 0);
+    const investedTotal = investedKrw + (effectiveFxRate ? investedUsd * effectiveFxRate : 0);
+    const fxMissing = !effectiveFxRate && (dividendUsd > 0 || investedUsd > 0);
+
+    return {
+      hasAny: ids.size > 0,
+      dividendText: fxMissing ? '환율 미적용' : `${krw.format(Math.round(dividendTotal))}원`,
+      investedText: investedLoading
+        ? '불러오는 중...'
+        : missingInvested
+          ? '일부 조회 실패'
+          : fxMissing
+            ? '환율 미적용'
+            : `${krw.format(Math.round(investedTotal))}원`,
+      yieldText:
+        !missingInvested && !fxMissing && investedTotal > 0
+          ? `${((dividendTotal / investedTotal) * 100).toFixed(2)}%`
+          : '-',
+    };
+  }, [brokerDividendTotals, investedByBroker, investedLoading, effectiveFxRate]);
+
   return (
     <div>
       <h2 className="page-title">배당금</h2>
@@ -243,9 +323,36 @@ export default function Dividends() {
         계좌의 배당 지급 내역은 없습니다), 배당금은 지급 시 직접 입력해 관리합니다.
       </div>
 
+      <div className="form-row">
+        <label>연도</label>
+        <select value={year} onChange={(e) => setYear(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}>
+          <option value="ALL">전체</option>
+          {yearOptions.map((y) => (
+            <option key={y} value={y}>
+              {y}년
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="summary-row">
+        <div className="stat-tile">
+          <div className="label">총 배당금</div>
+          <div className="value">{grandTotal.dividendText}</div>
+        </div>
+        <div className="stat-tile">
+          <div className="label">총 투자금</div>
+          <div className="value">{grandTotal.investedText}</div>
+        </div>
+        <div className="stat-tile">
+          <div className="label">총 배당수익률</div>
+          <div className="value">{grandTotal.yieldText}</div>
+        </div>
+      </div>
+
       <div className="card">
         <h3 style={{ marginTop: 0 }}>월별 배당금</h3>
-        <DividendsChart rows={summary} fxRate={effectiveFxRate} />
+        <DividendsChart rows={monthlyRows} fxRate={effectiveFxRate} />
       </div>
 
       <div className="card">
@@ -341,7 +448,14 @@ export default function Dividends() {
             </tr>
           </thead>
           <tbody>
-            {records.map((r) => (
+            {visibleRecords.length === 0 && (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                  {year === 'ALL' ? '배당 기록이 없습니다.' : `${year}년 배당 기록이 없습니다.`}
+                </td>
+              </tr>
+            )}
+            {visibleRecords.map((r) => (
               <tr key={r.id}>
                 <td>{r.paidDate}</td>
                 <td>{BROKER_LABELS[r.broker]}</td>

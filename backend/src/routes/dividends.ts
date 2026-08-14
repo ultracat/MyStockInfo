@@ -1,14 +1,10 @@
 import { Router } from 'express';
-import { addDividend, deleteDividend, listDividends, monthlySummary } from '../db/dividends';
+import { addDividend, deleteDividend, listDividends } from '../db/dividends';
 
 export const dividendsRouter = Router();
 
 dividendsRouter.get('/', (_req, res) => {
   res.json(listDividends());
-});
-
-dividendsRouter.get('/monthly-summary', (_req, res) => {
-  res.json(monthlySummary());
 });
 
 dividendsRouter.post('/', (req, res) => {

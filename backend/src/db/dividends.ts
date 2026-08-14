@@ -64,28 +64,3 @@ export function deleteDividend(id: string): boolean {
   });
   return removed;
 }
-
-export interface MonthlySummaryRow {
-  month: string; // YYYY-MM
-  /** Sum of that month's KRW-denominated dividend records. */
-  totalKrw: number;
-  /** Sum of that month's USD-denominated dividend records — kept separate
-   *  since this module has no FX rate to convert with (see DividendRecord). */
-  totalUsd: number;
-  count: number;
-}
-
-export function monthlySummary(): MonthlySummaryRow[] {
-  const byMonth = new Map<string, { totalKrw: number; totalUsd: number; count: number }>();
-  for (const record of listDividends()) {
-    const month = record.paidDate.slice(0, 7);
-    const existing = byMonth.get(month) ?? { totalKrw: 0, totalUsd: 0, count: 0 };
-    if (record.currency === 'USD') existing.totalUsd += record.amount;
-    else existing.totalKrw += record.amount;
-    existing.count += 1;
-    byMonth.set(month, existing);
-  }
-  return Array.from(byMonth.entries())
-    .map(([month, v]) => ({ month, ...v }))
-    .sort((a, b) => (a.month < b.month ? -1 : 1));
-}

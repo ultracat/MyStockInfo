@@ -6,7 +6,6 @@ import type {
   CredentialStatus,
   DividendRecord,
   ExchangeRate,
-  MonthlySummaryRow,
   PortfolioOverview,
   TradeRecord,
 } from './types';
@@ -59,7 +58,6 @@ export const api = {
     ),
 
   listDividends: () => request<DividendRecord[]>('/dividends'),
-  monthlyDividendSummary: () => request<MonthlySummaryRow[]>('/dividends/monthly-summary'),
   addDividend: (input: Omit<DividendRecord, 'id'>) =>
     request<DividendRecord>('/dividends', { method: 'POST', body: JSON.stringify(input) }),
   deleteDividend: (id: string) => request<void>(`/dividends/${id}`, { method: 'DELETE' }),

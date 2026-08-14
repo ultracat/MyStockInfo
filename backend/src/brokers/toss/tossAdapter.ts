@@ -5,8 +5,35 @@ import type {
   FetchOpts,
   HoldingPosition,
   PortfolioOverview,
+  TradeRecord,
 } from '../types';
-import { fetchTossAccounts, fetchTossExchangeRate, fetchTossHoldings, isTossConfigured } from './tossClient';
+import {
+  fetchTossAccounts,
+  fetchTossExchangeRate,
+  fetchTossHoldings,
+  fetchTossOrders,
+  isTossConfigured,
+  type TossOrder,
+} from './tossClient';
+
+function mapOrder(o: TossOrder): TradeRecord {
+  return {
+    id: o.orderId,
+    symbol: o.symbol,
+    // Toss's Order schema has no display name field — the UI falls back to symbol.
+    name: null,
+    side: o.side,
+    quantity: o.execution.filledQuantity,
+    price: o.execution.averageFilledPrice ?? o.price ?? 0,
+    amount: o.execution.filledAmount ?? 0,
+    currency: o.currency,
+    commission: o.execution.commission,
+    tax: o.execution.tax,
+    // filledAt is null if execution never happened (0 fills, already filtered
+    // out below) — orderedAt is always present, used as a same-day fallback.
+    executedAt: (o.execution.filledAt ?? o.orderedAt).slice(0, 10),
+  };
+}
 
 function mapPosition(item: Awaited<ReturnType<typeof fetchTossHoldings>>['items'][number]): HoldingPosition {
   return {
@@ -81,5 +108,17 @@ export const tossAdapter: BrokerAdapter = {
       midRate: data.midRate ?? null,
       asOf: data.validFrom ?? null,
     };
+  },
+
+  async getTradeHistory(
+    accountId: string,
+    range: { from: string; to: string },
+    opts?: FetchOpts
+  ): Promise<TradeRecord[]> {
+    const accountSeq = Number(accountId);
+    const orders = await fetchTossOrders(accountSeq, range.from, range.to, opts);
+    // status=CLOSED also includes CANCELED/REJECTED orders — only ones with
+    // an actual fill are a real buy/sell.
+    return orders.filter((o) => o.execution.filledQuantity > 0).map(mapOrder);
   },
 };

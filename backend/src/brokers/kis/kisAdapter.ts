@@ -1,10 +1,35 @@
-import type { BrokerAccount, BrokerAdapter, FetchOpts, HoldingPosition, PortfolioOverview } from '../types';
+import type {
+  BrokerAccount,
+  BrokerAdapter,
+  FetchOpts,
+  HoldingPosition,
+  PortfolioOverview,
+  TradeRecord,
+} from '../types';
 import { getCredentialFields } from '../../credentials';
-import { fetchKisBalance, isKisConfigured } from './kisClient';
+import { fetchKisBalance, fetchKisTradeHistory, isKisConfigured, type KisDailyCcldItem } from './kisClient';
 
 function num(value: unknown): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function mapTrade(item: KisDailyCcldItem): TradeRecord {
+  const orderDate = String(item.ord_dt);
+  return {
+    id: String(item.odno),
+    symbol: String(item.pdno),
+    name: String(item.prdt_name),
+    // sll_buy_dvsn_cd: 01 매도(SELL) / 02 매수(BUY), per the API's SLL_BUY_DVSN_CD param docs.
+    side: item.sll_buy_dvsn_cd === '02' ? 'BUY' : 'SELL',
+    quantity: num(item.tot_ccld_qty),
+    price: num(item.avg_prvs),
+    amount: num(item.tot_ccld_amt),
+    currency: 'KRW',
+    commission: null,
+    tax: null,
+    executedAt: `${orderDate.slice(0, 4)}-${orderDate.slice(4, 6)}-${orderDate.slice(6, 8)}`,
+  };
 }
 
 function mapPosition(item: Awaited<ReturnType<typeof fetchKisBalance>>['items'][number]): HoldingPosition {
@@ -85,5 +110,16 @@ export const kisAdapter: BrokerAdapter = {
           '백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
       );
     }
+  },
+
+  async getTradeHistory(
+    _accountId: string,
+    range: { from: string; to: string },
+    opts?: FetchOpts
+  ): Promise<TradeRecord[]> {
+    const items = await fetchKisTradeHistory(range.from, range.to, opts);
+    // CCLD_DVSN='01' already asks for filled-only, but a cancelled order can
+    // still surface with 0 filled quantity — drop those defensively.
+    return items.filter((item) => num(item.tot_ccld_qty) > 0).map(mapTrade);
   },
 };

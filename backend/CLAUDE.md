@@ -24,7 +24,8 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 ## 브로커 어댑터 (`src/brokers/`)
 
 - `types.ts` — `BrokerAdapter` 인터페이스 (`id`, `displayName`, `isConfigured()`,
-  `listAccounts(opts?)`, `getPortfolio(accountId, opts?)`, 선택적 `getExchangeRate?(base, quote, opts?)`)와
+  `listAccounts(opts?)`, `getPortfolio(accountId, opts?)`, 선택적 `getExchangeRate?(base, quote, opts?)`,
+  선택적 `getTradeHistory?(accountId, {from, to}, opts?)` → `TradeRecord[]`)와
   공용 타입. `opts: FetchOpts`(`{ forceRefresh?: boolean }`)는 아래 `responseCache.ts` 참고.
 - `responseCache.ts` — `withCache(key, ttlMs, fetcher, opts)`. 브로커 API 응답을 5초
   (`DEFAULT_TTL_MS`) 캐시한다 — toss/kis 클라이언트의 계좌/보유종목/환율 조회 함수가 모두
@@ -59,7 +60,12 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   깨진다: `Math.round()`/`*`/`Intl.NumberFormat.format()`은 숫자 문자열을 알아서 형변환해서
   "그냥 동작하는 것처럼" 보이지만, `+`는 문자열 접합을 해버린다 — Dashboard.tsx의 비중(weight)
   계산이 정확히 이 이유로 조용히 깨져 있었다. `rateLimitGroups.ts`(문서상 18개 그룹 전체 표,
-  `X-RateLimit-*` 헤더로 실시간 보정), `tossAdapter.ts`.
+  `X-RateLimit-*` 헤더로 실시간 보정), `tossAdapter.ts`. 매매내역(`fetchTossOrders`)은
+  `GET /api/v1/orders?status=CLOSED`(`ORDER_HISTORY` 그룹, 이미 `rateLimitGroups.ts`에 등록돼
+  있었음)를 `cursor` 페이지네이션으로 끝까지 순회한다 — `status=CLOSED`엔 체결완료 외에
+  취소/거부 주문도 섞여 있어서, 어댑터가 `execution.filledQuantity > 0`인 것만 걸러
+  `TradeRecord`로 매핑한다. Toss `Order` 스키마엔 종목명 필드가 없어 `TradeRecord.name`은
+  항상 `null` — 프론트가 심볼로 대체 표시한다.
 - `kis/` — `kisClient.ts`(`POST /oauth2/tokenP`, **JSON 바디** — 토스와 다름. 에러는
   HTTP 상태가 아니라 응답 바디의 `rt_cd`/`msg_cd`/`msg1`로 판단). 주식잔고조회(`inquire-balance`,
   `TTTC8434R`)는 KIS 공식 API 스펙 문서(엑셀, 공식 포털에서 다운로드) 기준으로 **rate-limit
@@ -73,8 +79,20 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   명시되어 있지 않지만 공식 예제(`examples_user/kis_auth.py`의 `smart_sleep`)가 실전투자
   0.05초(20건/초), 모의투자 0.5초(2건/초)로 페이싱한다 — 이 앱은 그보다 보수적인 4건/초로
   시작한다. **계좌 목록 조회 API가 없어** 사용자가 CANO/상품코드를 직접 입력해야 하고,
-  실전투자 계좌만 지원(모의투자
-  미연동).
+  실전투자 계좌만 지원(모의투자 미연동). 매매내역(`fetchKisTradeHistory`, 주식일별주문체결조회
+  `/uapi/domestic-stock/v1/trading/inquire-daily-ccld`, 공식 예제
+  `examples_llm/domestic_stock/inquire_daily_ccld/`, checked 2026-08-14)은 **조회기간이
+  "3개월 이내"냐 "이전"이냐에 따라 TR_ID가 완전히 다르다**(`TTTC0081R` vs `CTSC9215R`,
+  모의투자는 `V` 접두), 그래서 요청한 `from~to`가 그 3개월 경계를 걸치면 두 TR을 필요한
+  구간만큼씩 나눠 호출해서 합친다(`fetchKisTradeHistoryUncached`). 또한 이 TR은 페이지네이션이
+  필요해서(실전 최대 100건/페이지) `kisGet`에 `tr_cont` 파라미터를 추가했다 — 응답 헤더의
+  `tr_cont`가 `M`/`F`면 다음 페이지가 있다는 뜻이고, 이때 응답 바디의 `ctx_area_fk100`/
+  `ctx_area_nk100`을 다음 요청의 같은 필드로 그대로 돌려주면서 요청 헤더 `tr_cont`를 `N`으로
+  바꿔 보낸다(기존 `inquire-balance` 호출은 페이지네이션이 필요 없어서 이 파라미터를 그냥
+  생략하고 기본값 `''`을 쓴다). 라이브 API로 실측한 결과 이 TR은 `inquire-balance`보다도
+  `EGW00201`(초당 거래건수 초과)에 훨씬 잘 걸린다 — 짧은 시간에 반복 호출하면 재시도(기존
+  백오프 로직)로도 계속 실패할 수 있으니, 이 기능을 테스트할 땐 호출 사이 간격을 넉넉히
+  둔다.
 
 새 브로커 추가 시 이 네 파일(어댑터, registry 등록, credentialFields, 필요하면 전용
 rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된다.
@@ -84,6 +102,11 @@ rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된�
 각 라우트는 브로커별 예외를 잡아 `handleBrokerApiError`로 위임한다. 목록형 엔드포인트
 (`GET /api/accounts`처럼 여러 브로커를 순회하는 것)는 브로커 하나가 실패해도 전체 응답이
 깨지지 않도록 **개별 try/catch**로 감싼다 — 전역 에러 미들웨어에만 의존하지 않는다.
+
+`trades.ts` (`GET /api/trades/:broker/:accountId?from=YYYY-MM-DD&to=YYYY-MM-DD`)는
+어댑터의 `getTradeHistory`가 optional이라 KB증권처럼 아직 구현 안 된 브로커면 404로
+명확히 응답한다(다른 라우트처럼 무조건 호출하지 않고 `adapter.getTradeHistory` 존재
+여부를 먼저 확인).
 
 ## 배당 기록 (`src/db/dividends.ts`)
 

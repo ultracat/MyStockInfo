@@ -50,6 +50,25 @@ export interface ExchangeRate {
   asOf: string | null;
 }
 
+export interface TradeRecord {
+  id: string;
+  symbol: string;
+  /** Not every broker's execution-history API returns a display name (Toss's doesn't) — falls back to symbol in the UI. */
+  name: string | null;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  /** Average fill price, in `currency`. */
+  price: number;
+  /** Total filled amount, in `currency` (broker-reported, not recomputed from quantity*price). */
+  amount: number;
+  /** Raw currency code from the broker (e.g. "KRW" / "USD"). */
+  currency: string;
+  commission: number | null;
+  tax: number | null;
+  /** Execution date, YYYY-MM-DD (day granularity — good enough for monthly aggregation). */
+  executedAt: string;
+}
+
 /** Bypasses the response cache (see brokers/responseCache.ts) and re-fetches from the broker. */
 export interface FetchOpts {
   forceRefresh?: boolean;
@@ -63,4 +82,10 @@ export interface BrokerAdapter {
   getPortfolio(accountId: string, opts?: FetchOpts): Promise<PortfolioOverview>;
   /** Not every broker's Open API publishes this — omit when it doesn't. */
   getExchangeRate?(baseCurrency: string, quoteCurrency: string, opts?: FetchOpts): Promise<ExchangeRate>;
+  /** Not every broker's Open API publishes this — omit when it doesn't. `from`/`to` are inclusive YYYY-MM-DD. */
+  getTradeHistory?(
+    accountId: string,
+    range: { from: string; to: string },
+    opts?: FetchOpts
+  ): Promise<TradeRecord[]>;
 }

@@ -62,6 +62,34 @@ interface RawTossHoldingsItem {
   cost: { commission: string; tax: string | null };
 }
 
+interface RawTossOrderExecution {
+  filledQuantity: string;
+  averageFilledPrice: string | null;
+  filledAmount: string | null;
+  commission: string | null;
+  tax: string | null;
+  filledAt: string | null;
+  settlementDate: string | null;
+}
+
+interface RawTossOrder {
+  orderId: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  status: string;
+  price: string | null;
+  quantity: string;
+  currency: string;
+  orderedAt: string;
+  execution: RawTossOrderExecution;
+}
+
+interface RawTossOrdersResponse {
+  orders: RawTossOrder[];
+  nextCursor: string | null;
+  hasNext: boolean;
+}
+
 interface RawTossExchangeRateResponse {
   baseCurrency: string;
   quoteCurrency: string;
@@ -112,6 +140,24 @@ interface TossHoldingsItem {
   cost: { commission: number; tax: number | null };
 }
 
+interface TossOrder {
+  orderId: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  price: number | null;
+  quantity: number;
+  currency: string;
+  orderedAt: string;
+  execution: {
+    filledQuantity: number;
+    averageFilledPrice: number | null;
+    filledAmount: number | null;
+    commission: number | null;
+    tax: number | null;
+    filledAt: string | null;
+  };
+}
+
 function toNum(value: string): number {
   const n = Number(value);
   if (!Number.isFinite(n)) {
@@ -148,6 +194,27 @@ function parseHoldingsItem(item: RawTossHoldingsItem): TossHoldingsItem {
     cost: {
       commission: toNum(item.cost.commission),
       tax: item.cost.tax === null || item.cost.tax === undefined ? null : toNum(item.cost.tax),
+    },
+  };
+}
+
+function parseOrder(o: RawTossOrder): TossOrder {
+  return {
+    orderId: o.orderId,
+    symbol: o.symbol,
+    side: o.side,
+    price: o.price === null ? null : toNum(o.price),
+    quantity: toNum(o.quantity),
+    currency: o.currency,
+    orderedAt: o.orderedAt,
+    execution: {
+      filledQuantity: toNum(o.execution.filledQuantity),
+      averageFilledPrice:
+        o.execution.averageFilledPrice === null ? null : toNum(o.execution.averageFilledPrice),
+      filledAmount: o.execution.filledAmount === null ? null : toNum(o.execution.filledAmount),
+      commission: o.execution.commission === null ? null : toNum(o.execution.commission),
+      tax: o.execution.tax === null ? null : toNum(o.execution.tax),
+      filledAt: o.execution.filledAt,
     },
   };
 }
@@ -314,6 +381,49 @@ export async function fetchTossHoldings(
   );
 }
 
+/** `from`/`to` are inclusive YYYY-MM-DD (`orderedAt`-based, per docs). */
+export async function fetchTossOrders(
+  accountSeq: number,
+  from: string,
+  to: string,
+  opts: FetchOpts = {}
+): Promise<TossOrder[]> {
+  return withCache(
+    `toss:orders:${accountSeq}:${from}:${to}`,
+    DEFAULT_TTL_MS,
+    async () => {
+      const orders: TossOrder[] = [];
+      let cursor: string | undefined;
+
+      // status=CLOSED covers FILLED/CANCELED/REJECTED/... — filtered down to
+      // actually-filled quantity by the caller (kis and toss both report
+      // execution.filledQuantity/tot_ccld_qty separately from the requested
+      // order quantity, since a CLOSED order can be a cancel with 0 fills).
+      for (let page = 0; page < 50; page++) {
+        const params = new URLSearchParams({ status: 'CLOSED', from, to, limit: '100' });
+        if (cursor) params.set('cursor', cursor);
+
+        const raw = await tossFetch<any>(`/api/v1/orders?${params}`, 'ORDER_HISTORY', { accountSeq });
+        const data = (raw?.result ?? raw) as RawTossOrdersResponse;
+
+        if (!data || !Array.isArray(data.orders)) {
+          console.error('[toss] Unexpected /api/v1/orders response shape:', JSON.stringify(raw));
+          throw new Error(
+            '토스증권 매매내역 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
+          );
+        }
+
+        orders.push(...data.orders.map(parseOrder));
+        if (!data.hasNext || !data.nextCursor) break;
+        cursor = data.nextCursor;
+      }
+
+      return orders;
+    },
+    opts
+  );
+}
+
 export async function fetchTossExchangeRate(
   baseCurrency: string,
   quoteCurrency: string,
@@ -357,5 +467,5 @@ export async function fetchTossExchangeRate(
   );
 }
 
-export type { TossHoldingsOverviewResponse, TossHoldingsItem, TossExchangeRateResponse };
+export type { TossHoldingsOverviewResponse, TossHoldingsItem, TossExchangeRateResponse, TossOrder };
 export { TossApiError };

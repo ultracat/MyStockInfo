@@ -7,7 +7,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 ## 구조
 
 - `src/App.tsx` — 좌측 사이드바 네비게이션 + `page` 상태(`'dashboard' | 'dividends' |
-  'settings'`)로 세 페이지 전환. 새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목 추가.
+  'trades' | 'settings'`)로 페이지 전환. 새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목 추가.
 - `src/pages/Dashboard.tsx` — 보유 종목 화면. 브로커 선택 드롭다운 → 해당 브로커 계좌/환율
   조회 → 선택 계좌 포트폴리오 조회, 3단계 `useEffect` 체인. 환율은 `selectedBroker ===
   'toss'`일 때만 조회한다(토스만 환율 API 제공). **브로커 전환 시 `accountId`는 브로커
@@ -55,6 +55,24 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   환율, 토스만 환율 API 제공)로 별도 effect에서 가져와 `effectiveFxRate`로 "합계(환산)"
   행과 `DividendsChart`(월별 그래프)에 전달한다 — 환율을 못 가져오면 "환율 미적용"으로
   표시하고 합산을 생략한다(조용히 틀린 숫자를 보여주지 않기 위함).
+- `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
+  `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
+  YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 호출한다. 백엔드가 이미 원시
+  `TradeRecord[]`만 돌려주므로(로컬 DB가 없어 "월별 요약" 같은 걸 백엔드가 미리 계산해둘
+  이유가 없음), 월별 매수/매도 집계(`monthlyRows`)와 총계(`totals`)는 Dividends.tsx의
+  `brokerDividendTotals`처럼 프론트에서 `useMemo`로 계산한다. 달러 거래는 `effectiveFxRate`로
+  원화 환산해서 하나의 숫자로 합친다(Dividends.tsx/Dashboard.tsx와 같은 패턴) — 통화별로
+  쪼개면 차트가 매수/매도/원화/달러 4계열이 되어 너무 복잡해진다.
+- `src/components/TradesChart.tsx` — 월별 매수(파랑, `--series-1`)/매도(주황, `--series-2`)
+  그룹형 막대 그래프. 12개월×2계열=24개 막대라 `DividendsChart.tsx`처럼 막대마다 금액을
+  직접 라벨링하면 너무 빽빽해서, 정확한 값은 호버 툴팁으로만 보여준다(dataviz 스킬의
+  "막대가 많으면 전부 라벨링하지 않는다"). `--series-2`(주황, `#eb6834`/`#d95926`)는 이
+  차트 때문에 `styles.css`에 새로 추가했다 — dataviz 스킬 팔레트의 카테고리 슬롯 1(파랑)
+  다음 순서인 슬롯 2를 그대로 썼다(문서화된 순서라 인접 쌍 CVD 검증을 통과한 상태 —
+  임의로 다른 슬롯을 고르지 않는다). 매수/매도는 손익의 좋음/나쁨이 아니므로 `--good`/
+  `--critical`(상태色)을 재사용하지 않는다 — 거래 목록 테이블의 "구분" 열도 텍스트 색이
+  아니라 이 카테고리 색의 작은 사각형 마커로 구분한다("텍스트는 항상 텍스트 색, 색은
+  마커가 담당" 원칙).
 - `src/pages/Settings.tsx` — 브로커별 자격증명 입력 폼. **하드코딩된 필드가 아니라
   백엔드의 `GET /api/settings/credential-fields`(=`CREDENTIAL_FIELDS`)를 읽어 동적으로
   렌더링한다.** 새 브로커/필드는 백엔드의 `credentialFields.ts`만 고치면 여기는 자동
@@ -65,7 +83,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `{error, detail?}` 형태를 기대하고 `detail`이 있으면 메시지에 이어 붙인다 (백엔드 원본
   에러 바디를 그대로 보여주기 위함).
 - `src/types.ts` — 백엔드 응답 타입 미러링 (`BrokerAccount`, `PortfolioOverview`,
-  `CredentialFieldSpec` 등). 백엔드 `brokers/types.ts`와 형태를 맞춰 유지한다.
+  `TradeRecord`, `CredentialFieldSpec` 등). 백엔드 `brokers/types.ts`와 형태를 맞춰 유지한다.
 
 ## 개발
 

@@ -5,6 +5,7 @@ import { accountsRouter } from './routes/accounts';
 import { holdingsRouter } from './routes/holdings';
 import { dividendsRouter } from './routes/dividends';
 import { marketInfoRouter } from './routes/marketInfo';
+import { tradesRouter } from './routes/trades';
 
 export function createApp() {
   const app = express();
@@ -20,6 +21,7 @@ export function createApp() {
   app.use('/api/holdings', holdingsRouter);
   app.use('/api/dividends', dividendsRouter);
   app.use('/api/market-info', marketInfoRouter);
+  app.use('/api/trades', tradesRouter);
 
   // Last-resort safety net: any route that throws without its own
   // try/catch would otherwise fall through to Express's default HTML error

@@ -82,3 +82,18 @@ export interface CredentialFieldSpec {
   secret: boolean;
   placeholder?: string;
 }
+
+export interface TradeRecord {
+  id: string;
+  symbol: string;
+  /** Not every broker's execution-history API returns a display name (Toss's doesn't) — falls back to symbol in the UI. */
+  name: string | null;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  amount: number;
+  currency: string;
+  commission: number | null;
+  tax: number | null;
+  executedAt: string;
+}

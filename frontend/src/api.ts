@@ -8,6 +8,7 @@ import type {
   ExchangeRate,
   MonthlySummaryRow,
   PortfolioOverview,
+  TradeRecord,
 } from './types';
 
 const BASE_URL = 'http://127.0.0.1:4317/api';
@@ -62,4 +63,9 @@ export const api = {
   addDividend: (input: Omit<DividendRecord, 'id'>) =>
     request<DividendRecord>('/dividends', { method: 'POST', body: JSON.stringify(input) }),
   deleteDividend: (id: string) => request<void>(`/dividends/${id}`, { method: 'DELETE' }),
+
+  getTradeHistory: (broker: BrokerId, accountId: string, from: string, to: string, opts?: { forceRefresh?: boolean }) =>
+    request<TradeRecord[]>(
+      `/trades/${broker}/${accountId}?from=${from}&to=${to}${opts?.forceRefresh ? '&refresh=true' : ''}`
+    ),
 };

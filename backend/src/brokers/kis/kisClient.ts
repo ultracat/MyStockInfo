@@ -70,6 +70,24 @@ export interface KisAccountSummary {
   [key: string]: unknown;
 }
 
+/** 주식일별주문체결조회 output1 row — column names per the official example
+ *  script's COLUMN_MAPPING (examples_llm/domestic_stock/inquire_daily_ccld/
+ *  chk_inquire_daily_ccld.py, checked 2026-08-14). */
+export interface KisDailyCcldItem {
+  ord_dt: string; // 주문일자 YYYYMMDD
+  odno: string; // 주문번호
+  pdno: string; // 상품번호(종목코드)
+  prdt_name: string; // 상품명(종목명)
+  sll_buy_dvsn_cd: string; // 매도매수구분코드 (01: 매도, 02: 매수)
+  sll_buy_dvsn_cd_name: string; // "매도" / "매수"
+  ord_qty: string; // 주문수량
+  ord_unpr: string; // 주문단가
+  tot_ccld_qty: string; // 총체결수량
+  avg_prvs: string; // 평균가(체결평균단가)
+  tot_ccld_amt: string; // 총체결금액
+  [key: string]: unknown;
+}
+
 export class KisApiError extends Error {
   constructor(message: string, readonly status: number, readonly body: string) {
     super(message);
@@ -153,7 +171,21 @@ async function getToken(forceRefresh = false): Promise<string> {
  * that's what triggers our backoff-and-retry here (1s, 2s, 4s + jitter),
  * separate from the Toss client's HTTP-429/header-based approach.
  */
-async function kisGet(path: string, trId: string, params: Record<string, string>): Promise<KisEnvelope> {
+/**
+ * `trCont` is KIS's continuation flag for paginated (연속조회) TRs — pass ''
+ * on the first call and 'N' on follow-ups, echoing back the `ctx_area_fk100`/
+ * `ctx_area_nk100` values the previous page returned in its body (per
+ * examples_user/kis_auth.py's `_url_fetch`/`smart_sleep` pattern). The
+ * response's own `tr_cont` header (returned here) is 'M' or 'F' when another
+ * page is available. inquire-balance (this file's only other caller) never
+ * pages, so it just omits the param and gets the default ''.
+ */
+async function kisGet(
+  path: string,
+  trId: string,
+  params: Record<string, string>,
+  trCont = ''
+): Promise<KisEnvelope & { trCont: string }> {
   const creds = requireCredentials();
   const query = new URLSearchParams(params);
 
@@ -166,6 +198,7 @@ async function kisGet(path: string, trId: string, params: Record<string, string>
         appkey: creds.appKey,
         appsecret: creds.appSecret,
         tr_id: trId,
+        tr_cont: trCont,
         custtype: 'P',
       },
     });
@@ -219,7 +252,7 @@ async function kisGet(path: string, trId: string, params: Record<string, string>
         throw new KisApiError(`한국투자증권 API 오류 (${json.msg_cd}): ${json.msg1}`, res.status, text);
       }
 
-      return json;
+      return { ...json, trCont: res.headers.get('tr_cont') ?? '' };
     }
   });
 }
@@ -268,4 +301,111 @@ export async function fetchKisBalance(
   // coalesced onto one in-flight call by withCache itself — see
   // brokers/responseCache.ts.
   return withCache('kis:balance', DEFAULT_TTL_MS, fetchKisBalanceUncached, opts);
+}
+
+function ymd(d: Date): string {
+  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function parseYmd(s: string): Date {
+  return new Date(`${s}T00:00:00`);
+}
+
+/** Fetches every page of one 주식일별주문체결조회 query (single TR/date range), following `ctx_area_fk100`/`nk100` until `tr_cont` stops being 'M'/'F'. */
+async function fetchDailyCcldAllPages(
+  trId: string,
+  base: Record<string, string>
+): Promise<KisDailyCcldItem[]> {
+  const items: KisDailyCcldItem[] = [];
+  let fk100 = '';
+  let nk100 = '';
+  let trCont = '';
+
+  // Real accounts return up to 100 rows/page per docs — 50 pages is a
+  // generous safety cap well beyond a year of realistic personal trading
+  // activity, so a stuck continuation cursor can't loop forever.
+  for (let page = 0; page < 50; page++) {
+    const res = await kisGet(
+      '/uapi/domestic-stock/v1/trading/inquire-daily-ccld',
+      trId,
+      { ...base, CTX_AREA_FK100: fk100, CTX_AREA_NK100: nk100 },
+      trCont
+    );
+
+    const output1 = Array.isArray(res.output1) ? (res.output1 as KisDailyCcldItem[]) : [];
+    items.push(...output1);
+
+    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    fk100 = String(res.ctx_area_fk100 ?? '');
+    nk100 = String(res.ctx_area_nk100 ?? '');
+    trCont = 'N';
+  }
+
+  return items;
+}
+
+async function fetchKisTradeHistoryUncached(from: string, to: string): Promise<KisDailyCcldItem[]> {
+  const creds = requireCredentials();
+  const fromDate = parseYmd(from);
+  const toDate = parseYmd(to);
+  if (fromDate > toDate) return [];
+
+  const base = {
+    CANO: creds.accountNumber,
+    ACNT_PRDT_CD: creds.accountProductCode,
+    SLL_BUY_DVSN_CD: '00', // 전체
+    PDNO: '',
+    CCLD_DVSN: '01', // 체결만
+    INQR_DVSN: '00', // 역순
+    INQR_DVSN_3: '00', // 전체
+    ORD_GNO_BRNO: '',
+    ODNO: '',
+    INQR_DVSN_1: '',
+    EXCG_ID_DVSN_CD: 'ALL',
+  };
+
+  // 이 TR은 실전계좌 기준으로 "3개월 이내"(TTTC0081R)와 "3개월 이전"(CTSC9215R)이
+  // 서로 다른 TR_ID로 나뉘어 있다(examples_llm/domestic_stock/inquire_daily_ccld/
+  // inquire_daily_ccld.py, checked 2026-08-14) — 조회기간이 그 경계를 걸치면
+  // 두 TR을 각각 필요한 구간만큼만 호출해서 합친다.
+  const splitDate = new Date();
+  splitDate.setMonth(splitDate.getMonth() - 3);
+
+  const items: KisDailyCcldItem[] = [];
+
+  if (fromDate < splitDate) {
+    const beforeEndDate = toDate < splitDate ? toDate : new Date(splitDate.getTime() - 24 * 60 * 60 * 1000);
+    if (beforeEndDate >= fromDate) {
+      items.push(
+        ...(await fetchDailyCcldAllPages('CTSC9215R', {
+          ...base,
+          INQR_STRT_DT: ymd(fromDate),
+          INQR_END_DT: ymd(beforeEndDate),
+        }))
+      );
+    }
+  }
+
+  if (toDate >= splitDate) {
+    const innerStartDate = fromDate > splitDate ? fromDate : splitDate;
+    if (toDate >= innerStartDate) {
+      items.push(
+        ...(await fetchDailyCcldAllPages('TTTC0081R', {
+          ...base,
+          INQR_STRT_DT: ymd(innerStartDate),
+          INQR_END_DT: ymd(toDate),
+        }))
+      );
+    }
+  }
+
+  return items;
+}
+
+export async function fetchKisTradeHistory(
+  from: string,
+  to: string,
+  opts: FetchOpts = {}
+): Promise<KisDailyCcldItem[]> {
+  return withCache(`kis:trades:${from}:${to}`, DEFAULT_TTL_MS, () => fetchKisTradeHistoryUncached(from, to), opts);
 }

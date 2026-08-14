@@ -1,0 +1,65 @@
+# MyStock
+
+여러 증권사 Open API를 연동해 보유 종목, 매입가, 손익, 비중, 배당금을 한 화면에서 보는
+Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS)**이 연동되어 있고, KB증권은
+어댑터를 추가하는 방식으로 확장하도록 설계되어 있다.
+
+## 워크스페이스 구조
+
+npm workspaces 모노레포이며, 각 폴더에 더 상세한 `CLAUDE.md`가 있다.
+
+```
+backend/    Express 서버 — 증권사 API 호출, 자격증명 암호화 저장, 배당 기록 로컬 저장
+frontend/   React + Vite 렌더러 UI
+electron/   Electron 메인 프로세스 — backend를 같은 프로세스에서 구동하고 창을 띄움
+```
+
+## 왜 백엔드가 Electron 메인 프로세스 안에서 도는가
+
+API 키 암호화(`Electron safeStorage`, OS 키체인 기반)가 Electron 메인 프로세스에서만
+동작한다. `electron/src/main.ts`가 `@mystock/backend`를 직접 `import`해서 같은 프로세스
+안에서 `startServer()`를 호출한다 — 별도 서버 프로세스가 아니다.
+
+## 개발 워크플로
+
+```bash
+npm install
+npm run build:backend   # electron이 dist/index.js를 require하므로 최초 1회 필요
+npm run dev              # frontend(Vite) + electron을 동시에 실행
+```
+
+- **백엔드(`backend/src/**`)를 수정하면 `npm run build:backend`로 재빌드 후 Electron을
+  재시작해야 반영된다.** Vite처럼 자동 반영되지 않는다.
+- 프론트엔드(`frontend/src/**`)는 Vite HMR로 자동 반영된다.
+- 백엔드는 `127.0.0.1:4317`에서만 리슨한다 (외부 노출 없음).
+- `npm run build` (backend → frontend → electron 순서)로 전체 빌드 검증 가능.
+
+## 브로커 확장 포인트
+
+새 증권사를 추가하려면:
+1. `backend/src/brokers/<broker>/`에 어댑터 구현 (`BrokerAdapter` 인터페이스,
+   `backend/src/brokers/types.ts` 참조)
+2. `backend/src/brokers/registry.ts`에 등록
+3. `backend/src/brokers/credentialFields.ts`에 그 브로커가 필요로 하는 자격증명 필드 선언
+   → 설정 화면 폼이 자동으로 그에 맞게 렌더링됨 (프론트엔드 수정 불필요)
+
+라우트/프론트엔드 코드는 `BrokerAdapter` 인터페이스만 의존하므로 그대로 재사용된다.
+
+## 알아둘 것
+
+- **각 증권사 API는 실제 공식 문서/레포를 확인하고 반영한다** — 필드명, 엔드포인트,
+  에러 처리 방식을 추측하지 않는다 (토스: developers.tossinvest.com/docs, KIS:
+  github.com/koreainvestment/open-trading-api).
+- **API 자격증명은 절대 커밋하지 않는다.** 실제 저장 위치는 Electron의 userData
+  디렉터리(`app.getPath('userData')`)이고, `backend/data/`는 Electron 밖에서 백엔드를
+  단독 실행할 때(dev/테스트)만 쓰는 로컬 폴백 경로다 — `.gitignore`에서 제외됨.
+- 배당금은 두 증권사 모두 "계좌에 실제 입금된 배당금" 조회 API가 없어 수동 입력 방식이다.
+- 브로커별 상세(인증 방식, Rate Limit, 알려진 제약)는 `README.md`와
+  `backend/CLAUDE.md`를 참고.
+
+## 다음 단계 (미구현)
+
+- KB증권 어댑터 추가
+- KIS 모의투자(paper trading) 지원
+- 프로덕션 패키징 (electron-builder 등 설치형 빌드 구성)
+- 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

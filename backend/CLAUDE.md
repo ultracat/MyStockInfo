@@ -1,0 +1,101 @@
+# backend
+
+Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 Electron 메인
+프로세스 안에서 구동된다 (별도 프로세스 아님). 단독 실행(`npm run dev` 또는
+`node dist/index.js`)도 가능하지만, 이 경우 `Electron safeStorage`를 못 써서 자격증명이
+암호화되지 않고 저장된다 — dev/테스트 전용 폴백.
+
+## 진입점 / 핵심 파일
+
+- `src/index.ts` — `startServer(port = 4317)`. `app.listen`의 `'error'` 이벤트를 반드시
+  처리한다 (EADDRINUSE 등) — 처리 안 하면 Node가 uncaught exception으로 취급해서
+  Electron이 "A JavaScript error occurred in the main process" 팝업을 띄운다.
+- `src/server.ts` — `createApp()`. 라우터 등록 + 마지막에 전역 4-인자 에러 핸들링
+  미들웨어(안전망). 어떤 라우트 핸들러든 예외를 던지면 Express 기본 HTML 에러 페이지
+  대신 JSON 에러 바디를 반환한다.
+- `src/credentials.ts` — 자격증명 저장/조회. **`isConfigured()` 류 존재 여부 확인에는
+  `hasCredential()`을 쓴다 (안 던짐). `getCredentialFields()`는 실제 복호화를 하므로
+  던질 수 있고, API 호출 직전에만 써야 한다.** 이 둘을 혼동하면 목록 조회 라우트가
+  복호화 실패 시 500으로 죽는 버그가 생긴다 (과거 실제로 발생).
+- `src/paths.ts` — `getDataDir()`. Electron 안에서는 `app.getPath('userData')/data`,
+  단독 실행 시 `backend/data/`(gitignore됨)로 폴백.
+- `src/jsonStore.ts` — 파일 기반 JSON 저장 헬퍼 (자격증명, 배당 기록, 설정 공용).
+
+## 브로커 어댑터 (`src/brokers/`)
+
+- `types.ts` — `BrokerAdapter` 인터페이스 (`id`, `displayName`, `isConfigured()`,
+  `listAccounts(opts?)`, `getPortfolio(accountId, opts?)`, 선택적 `getExchangeRate?(base, quote, opts?)`)와
+  공용 타입. `opts: FetchOpts`(`{ forceRefresh?: boolean }`)는 아래 `responseCache.ts` 참고.
+- `responseCache.ts` — `withCache(key, ttlMs, fetcher, opts)`. 브로커 API 응답을 5초
+  (`DEFAULT_TTL_MS`) 캐시한다 — toss/kis 클라이언트의 계좌/보유종목/환율 조회 함수가 모두
+  이걸로 감싸져 있음. `opts.forceRefresh`를 true로 넘기면 캐시를 건너뛰고 다시 호출한다
+  (프론트 새로고침 버튼 → `?refresh=true` 쿼리 → 라우트 → 어댑터 → 클라이언트로 전달됨).
+  새 브로커 클라이언트를 추가할 때도 네트워크를 직접 때리는 함수는 이걸로 감싸는 게 기본.
+  **같은 key로 동시에 들어온 호출은 in-flight promise를 공유한다** (TTL 캐시와 별개 —
+  아직 아무것도 캐시되지 않은 상태에서 거의 동시에 두 번 호출되면 TTL 캐시는 못 막는다).
+  React StrictMode가 dev에서 effect를 이중 실행하면서 같은 계좌에 대해 거의 동시에 두 번
+  실제 HTTP 요청을 보내는 게 원인이었는데, 브로커에 따라 이게 rate-limit 에러가 아니라
+  전혀 무관해 보이는 에러로 나타날 수 있다 — 실제로 토스 `/api/v1/holdings`가 이 경쟁
+  상태의 패자 쪽에 `account-not-found`(400)를 반환한 사례가 있었다(다른 쪽 요청은 성공해서
+  화면엔 데이터가 정상 표시됨 — 로그에만 에러가 남는 형태). KIS는 원래 `fetchKisBalance`에
+  전용 `inFlightBalance` 변수로 이 문제를 개별 해결했었는데, 이제 `withCache`가 이걸 범용으로
+  처리하므로 그 중복 코드는 제거했다.
+- `registry.ts` — 브로커 ID → 어댑터 매핑 (`getAdapter`, `listAdapters`).
+- `credentialFields.ts` — 브로커별 필요 자격증명 필드 명세 (`CREDENTIAL_FIELDS`). 설정
+  화면 폼이 이 명세를 그대로 읽어 렌더링하므로, 필드를 추가/변경하면 프론트엔드 수정 없이
+  반영된다.
+- `errors.ts` — `handleBrokerApiError(err, res)`. 브로커별 API 에러 클래스(구조적으로
+  `{message, status, body}` 형태)를 502로, 그 외는 500으로 통일 변환.
+- `rateLimiter.ts` — `RateLimiter`(스케줄링 + 헤더 기반 자가 보정 `learnFromHeaders` + 헤더가
+  없는 브로커용 `penalizeUntil`), `withRateLimitRetry`(429/Retry-After + 지수 백오프+jitter).
+  브로커 공용.
+- `toss/` — `tossClient.ts`(OAuth2 client_credentials, form-urlencoded). **토스 API는 금액/수량/비율
+  필드를 전부 `{ type: "string", format: "decimal" }`로 반환한다** (JSON number 아님 — 공식
+  OpenAPI 스펙, `openapi.tossinvest.com/openapi-docs/latest/openapi.json` 기준. float 정밀도
+  손실을 피하려는 의도로 보임). `tossClient.ts`의 `Raw*` 인터페이스가 이 실제 wire shape이고,
+  `toNum()`/`parsePrice()`/`parseHoldingsItem()`이 이 파일을 벗어나기 전에 실수(number)로
+  변환한다 — 이 경계를 벗어난 코드는 전부 진짜 number를 받는다는 전제로 짜여 있으니, 새 토스
+  필드를 추가할 때도 반드시 여기서 변환하고 넘겨야 한다. 이걸 문자열인 채로 흘려보내면 조용히
+  깨진다: `Math.round()`/`*`/`Intl.NumberFormat.format()`은 숫자 문자열을 알아서 형변환해서
+  "그냥 동작하는 것처럼" 보이지만, `+`는 문자열 접합을 해버린다 — Dashboard.tsx의 비중(weight)
+  계산이 정확히 이 이유로 조용히 깨져 있었다. `rateLimitGroups.ts`(문서상 18개 그룹 전체 표,
+  `X-RateLimit-*` 헤더로 실시간 보정), `tossAdapter.ts`.
+- `kis/` — `kisClient.ts`(`POST /oauth2/tokenP`, **JSON 바디** — 토스와 다름. 에러는
+  HTTP 상태가 아니라 응답 바디의 `rt_cd`/`msg_cd`/`msg1`로 판단). 주식잔고조회(`inquire-balance`,
+  `TTTC8434R`)는 KIS 공식 API 스펙 문서(엑셀, 공식 포털에서 다운로드) 기준으로 **rate-limit
+  코드가 두 개**다: `EGW00201`(우리 계정 자체의 초당 유량 초과 — 재시도 시
+  `kisLimiter.penalizeUntil()`로 이후 호출 페이싱도 함께 늦춘다)과 `EGW00215`(이 TR은 무거워서
+  전체 고객 공용 원장 유량이 초당 120 TPS로 별도 제한됨 — 우리 페이싱과 무관하니
+  penalizeUntil 없이 재시도만 한다, 문서가 명시적으로 그렇게 안내). 발급 토큰은
+  `kis-token.json`(userData)에 영속화 — 메모리 캐시만 쓰면 백엔드 재시작(이 프로젝트 dev
+  워크플로의 일상적인 일)마다 토큰을 재발급받다가 `EGW00133`(1일 1회 발급 원칙, 6시간 이내
+  재호출은 기존 토큰 반환 — 공식 문서 기준)에 걸린다. 개인 계정 TPS는 공식 문서에 숫자로
+  명시되어 있지 않지만 공식 예제(`examples_user/kis_auth.py`의 `smart_sleep`)가 실전투자
+  0.05초(20건/초), 모의투자 0.5초(2건/초)로 페이싱한다 — 이 앱은 그보다 보수적인 4건/초로
+  시작한다. **계좌 목록 조회 API가 없어** 사용자가 CANO/상품코드를 직접 입력해야 하고,
+  실전투자 계좌만 지원(모의투자
+  미연동).
+
+새 브로커 추가 시 이 네 파일(어댑터, registry 등록, credentialFields, 필요하면 전용
+rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된다.
+
+## 라우트 (`src/routes/`)
+
+각 라우트는 브로커별 예외를 잡아 `handleBrokerApiError`로 위임한다. 목록형 엔드포인트
+(`GET /api/accounts`처럼 여러 브로커를 순회하는 것)는 브로커 하나가 실패해도 전체 응답이
+깨지지 않도록 **개별 try/catch**로 감싼다 — 전역 에러 미들웨어에만 의존하지 않는다.
+
+## 배당 기록 (`src/db/dividends.ts`)
+
+`DividendRecord`는 `currency`(`'KRW'|'USD'`)와 그 통화 기준 `amount`를 저장한다 — 이 모듈은
+환율을 모르므로 **크로스 통화 환산을 하지 않는다**(달러 배당을 원화로 합산해 보여주는 건
+프론트엔드가 Dashboard.tsx와 같은 방식으로 환율을 가져와서 함). `monthlySummary()`도 같은
+이유로 `totalKrw`/`totalUsd`를 분리해서 반환한다. 예전엔 `amountKrw` 하나였고 입력 시 수동으로
+원화 환산해서 저장하는 방식이었는데, 그 히스토리 데이터(`dividends.json`)는 전부
+`currency: "KRW"`로 마이그레이션해뒀다.
+
+## 검증 방식
+
+증권사 API 관련 코드를 작성/수정할 때는 실제 공식 문서(토스: developers.tossinvest.com,
+KIS: github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포인트/에러
+포맷을 그대로 반영한다. 추측해서 채우지 않는다.

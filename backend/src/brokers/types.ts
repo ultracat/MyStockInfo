@@ -1,0 +1,66 @@
+export type BrokerId = 'toss' | 'kis' | 'kb';
+
+export interface BrokerAccount {
+  /** Adapter-specific identifier to pass into getPortfolio(). */
+  id: string;
+  accountNumber?: string;
+  accountType?: string;
+}
+
+export interface HoldingPosition {
+  symbol: string;
+  name: string;
+  /** Raw string from the broker (e.g. "KR" / "US") — not enumerated, since brokers differ. */
+  market: string | null;
+  /** Raw currency code from the broker (e.g. "KRW" / "USD"). */
+  currency: string | null;
+  quantity: number;
+  lastPrice: number;
+  averagePurchasePrice: number;
+  /** In position currency, after tax/fee deduction where the broker provides it. */
+  purchaseAmount: number;
+  marketValue: number;
+  profitLossAmount: number;
+  /** Decimal ratio, e.g. 0.1077 = 10.77%. */
+  profitLossRate: number;
+  commission: number | null;
+  tax: number | null;
+}
+
+export interface PortfolioOverview {
+  broker: BrokerId;
+  accountId: string;
+  totalPurchaseAmountKrw: number;
+  totalPurchaseAmountUsd: number | null;
+  totalMarketValueKrw: number;
+  totalMarketValueUsd: number | null;
+  totalProfitLossKrw: number;
+  totalProfitLossUsd: number | null;
+  profitLossRate: number | null;
+  positions: HoldingPosition[];
+}
+
+export interface ExchangeRate {
+  baseCurrency: string;
+  quoteCurrency: string;
+  /** 1 baseCurrency = ? quoteCurrency. */
+  rate: number;
+  /** Interbank mid rate, when the broker distinguishes it from the buy rate. */
+  midRate: number | null;
+  asOf: string | null;
+}
+
+/** Bypasses the response cache (see brokers/responseCache.ts) and re-fetches from the broker. */
+export interface FetchOpts {
+  forceRefresh?: boolean;
+}
+
+export interface BrokerAdapter {
+  id: BrokerId;
+  displayName: string;
+  isConfigured(): boolean;
+  listAccounts(opts?: FetchOpts): Promise<BrokerAccount[]>;
+  getPortfolio(accountId: string, opts?: FetchOpts): Promise<PortfolioOverview>;
+  /** Not every broker's Open API publishes this — omit when it doesn't. */
+  getExchangeRate?(baseCurrency: string, quoteCurrency: string, opts?: FetchOpts): Promise<ExchangeRate>;
+}

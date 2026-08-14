@@ -1,0 +1,25 @@
+{
+  "name": "mystock-api",
+  "private": true,
+  "version": "0.1.0",
+  "description": "여러 증권사 Open API를 연동해 보유 종목, 손익, 비중, 배당금을 보여주는 데스크톱 앱",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "electron"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace frontend",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:electron": "npm run dev --workspace electron",
+    "build:backend": "npm run build --workspace backend",
+    "build:frontend": "npm run build --workspace frontend",
+    "build:electron": "npm run build --workspace electron",
+    "build": "npm run build:backend && npm run build:frontend && npm run build:electron",
+    "dev": "npm run build:backend && concurrently -k -n frontend,electron \"npm:dev:frontend\" \"npm:dev:electron\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3"
+  }
+}

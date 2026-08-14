@@ -1,0 +1,185 @@
+import { useEffect, useState } from 'react';
+import { api } from '../api';
+import type { BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
+
+const BROKERS: { id: BrokerId; label: string; available: boolean }[] = [
+  { id: 'toss', label: '토스증권', available: true },
+  { id: 'kis', label: '한국투자증권', available: true },
+  { id: 'kb', label: 'KB증권', available: false },
+];
+
+export default function Settings() {
+  const [status, setStatus] = useState<CredentialStatus | null>(null);
+  const [fieldSpecs, setFieldSpecs] = useState<Record<BrokerId, CredentialFieldSpec[]> | null>(null);
+  const [broker, setBroker] = useState<BrokerId>('toss');
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [fxRate, setFxRate] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    const [s, fx, specs] = await Promise.all([api.getCredentialStatus(), api.getFxRate(), api.getCredentialFields()]);
+    setStatus(s);
+    setFxRate(fx.usdKrwRate ? String(fx.usdKrwRate) : '');
+    setFieldSpecs(specs);
+  }
+
+  useEffect(() => {
+    refresh().catch((e) => setError((e as Error).message));
+  }, []);
+
+  // Reset the form whenever the selected broker changes, since each has a
+  // different set of fields.
+  useEffect(() => {
+    setFieldValues({});
+  }, [broker]);
+
+  async function onSaveCredential(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+
+    const spec = fieldSpecs?.[broker] ?? [];
+    const missing = spec.filter((f) => !fieldValues[f.key]?.trim());
+    if (missing.length > 0) {
+      setError(`다음 항목을 입력해주세요: ${missing.map((f) => f.label).join(', ')}`);
+      return;
+    }
+
+    try {
+      await api.setCredential(broker, fieldValues);
+      setFieldValues({});
+      setMessage('저장되었습니다.');
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function onClearCredential(b: BrokerId) {
+    await api.clearCredential(b);
+    await refresh();
+  }
+
+  async function onSaveFxRate() {
+    setError(null);
+    setMessage(null);
+    const rate = fxRate ? Number(fxRate) : null;
+    if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) {
+      setError('환율은 양수여야 합니다.');
+      return;
+    }
+    try {
+      await api.setFxRate(rate);
+      setMessage('환율이 저장되었습니다.');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  const activeFields = fieldSpecs?.[broker] ?? [];
+
+  return (
+    <div>
+      <h2 className="page-title">설정</h2>
+      {error && (
+        <p className="text-critical" style={{ whiteSpace: 'pre-wrap' }}>
+          {error}
+        </p>
+      )}
+      {message && <p className="text-good">{message}</p>}
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>증권사 연동 상태</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>증권사</th>
+              <th>상태</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {BROKERS.map((b) => (
+              <tr key={b.id}>
+                <td>{b.label}</td>
+                <td>
+                  {!b.available
+                    ? '준비 중'
+                    : status?.[b.id]
+                      ? <span className="text-good">연결됨</span>
+                      : '미설정'}
+                </td>
+                <td>
+                  {b.available && status?.[b.id] && (
+                    <button className="ghost" onClick={() => onClearCredential(b.id)}>
+                      연결 해제
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>API 키 등록</h3>
+        <form onSubmit={onSaveCredential}>
+          <div className="form-row">
+            <label>증권사</label>
+            <select value={broker} onChange={(e) => setBroker(e.target.value as BrokerId)}>
+              {BROKERS.filter((b) => b.available).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {activeFields.map((f) => (
+            <div className="form-row" key={f.key}>
+              <label>{f.label}</label>
+              <input
+                type={f.secret ? 'password' : 'text'}
+                value={fieldValues[f.key] ?? ''}
+                placeholder={f.placeholder}
+                autoComplete="off"
+                onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <button type="submit" className="primary">
+            저장
+          </button>
+        </form>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 12 }}>
+          입력한 키는 OS 키체인 기반 암호화(Electron safeStorage)로 로컬에만 저장되며, 외부로 전송되지
+          않습니다.
+        </p>
+        {broker === 'kis' && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            한국투자증권 Open API는 계좌 목록을 조회하는 API가 없어, 계좌번호(8자리)와 상품코드(2자리,
+            보통 01)를 직접 입력해야 합니다. 실전투자 계좌만 지원되며 모의투자는 지원하지 않습니다.
+          </p>
+        )}
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>USD/KRW 환율</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          해외 종목 비중(%) 계산에 사용됩니다. 기본적으로 토스증권 Open API(GET /api/v1/exchange-rate)에서
+          실시간으로 조회합니다. 아래에 값을 입력하면 실시간 조회 대신 이 값을 우선 사용합니다 — 특정
+          환율로 고정하고 싶을 때만 입력하고, 평소엔 비워두세요. (한국투자증권 국내주식 잔고는 전부
+          원화라 이 설정이 필요 없습니다.)
+        </p>
+        <div className="form-row">
+          <label>1 USD = ? KRW (선택 — 비워두면 실시간 조회)</label>
+          <input type="number" min="0" step="0.01" value={fxRate} onChange={(e) => setFxRate(e.target.value)} />
+        </div>
+        <button className="primary" onClick={onSaveFxRate}>
+          저장
+        </button>
+      </div>
+    </div>
+  );
+}

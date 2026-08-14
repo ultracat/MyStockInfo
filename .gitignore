@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+release/
+*.log
+.DS_Store
+
+# Local encrypted credential store & user data (per-machine, never commit)
+backend/data/
+electron/userData/
+*.env
+.env.*
+
+# Per-machine Claude Code settings (not shared across machines)
+.claude/settings.local.json

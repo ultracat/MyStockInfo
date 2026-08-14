@@ -400,20 +400,17 @@ export default function Dividends() {
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <h3 style={{ margin: 0 }}>월별 배당금</h3>
-              <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
-              <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
-                <option value="ALL">전체</option>
-                {chartBrokerOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {BROKER_LABELS[id]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <h3 style={{ margin: 0 }}>증권사별 배당금 총계</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0 }}>월별 배당금</h3>
+            <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
+            <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
+              <option value="ALL">전체</option>
+              {chartBrokerOptions.map((id) => (
+                <option key={id} value={id}>
+                  {BROKER_LABELS[id]}
+                </option>
+              ))}
+            </select>
           </div>
           <CollapseToggle collapsed={dividendPanelsCollapsed} onClick={() => setDividendPanelsCollapsed((c) => !c)} />
         </div>
@@ -427,6 +424,7 @@ export default function Dividends() {
             <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)' }} />
 
             <div style={{ flex: '1 1 420px', minWidth: 0 }}>
+              <h3 style={{ marginTop: 0 }}>증권사별 배당금 총계</h3>
               {brokerLines.length === 0 ? (
                 <p style={{ color: 'var(--text-muted)' }}>
                   {investedLoading ? '불러오는 중...' : '배당 기록이 없습니다.'}

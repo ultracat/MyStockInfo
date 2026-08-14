@@ -20,7 +20,11 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   화면엔 안 보이지만 백엔드 로그엔 에러로 남는다(실제로 한 번 발생해서 고침). 반대 방향
   (토스→KIS)이 무해했던 건 `kisAdapter.getPortfolio`가 `accountId` 인자를 아예 안 쓰고
   자격증명에 저장된 계좌로만 조회하기 때문 — 이 비대칭성이 이 버그가 한쪽 방향에서만
-  나타난 이유였다.
+  나타난 이유였다. "총 매입금액"/"총 평가금액" 스탯 타일은 `AmountTile` 컴포넌트로
+  분리했다 — 달러 보유분(`totalPurchaseAmountUsd`/`totalMarketValueUsd`, 현재는 토스
+  해외주식만 해당)이 있으면 Dividends.tsx의 증권사별 총계와 같은 패턴으로 원화/달러/
+  합계(환산) 3줄로 보여주고, 없으면 기존처럼 원화 한 줄만 보여준다. 환율은 이미 비중
+  계산에 쓰던 `effectiveFxRate`를 그대로 재사용한다(새로 조회하지 않음).
 - `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회. 두 브로커 모두 개인 배당 지급
   내역 API가 없어서 수동 입력 방식임을 화면에 안내한다 — 이 사실이 바뀌지 않는 한 안내
   문구를 지우지 않는다. 배당 기록마다 `currency`(KRW/USD)와 그 통화 기준 `amount`를

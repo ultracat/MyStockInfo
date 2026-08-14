@@ -7,6 +7,48 @@ function formatKrw(value: number) {
   return `${new Intl.NumberFormat('ko-KR').format(Math.round(value))}원`;
 }
 
+const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+/**
+ * 원화 전용이면 기존과 동일하게 한 줄만 보여준다. 달러 보유분이 있으면(현재는
+ * 토스의 해외주식 계좌만 해당) Dividends.tsx의 "증권사별 배당금 총계"와 같은
+ * 방식으로 원화/달러/합계(환산) 3줄로 나눠 보여준다 — 환율은 이 화면에서 이미
+ * 비중(weight) 계산에 쓰던 effectiveFxRate(설정 수동 입력 > 토스 실시간 환율)를
+ * 그대로 재사용한다.
+ */
+function AmountTile({
+  label,
+  krwAmount,
+  usdAmount,
+  fxRate,
+}: {
+  label: string;
+  krwAmount: number;
+  usdAmount: number | null;
+  fxRate: number | null;
+}) {
+  if (!usdAmount) {
+    return (
+      <div className="stat-tile">
+        <div className="label">{label}</div>
+        <div className="value">{formatKrw(krwAmount)}</div>
+      </div>
+    );
+  }
+
+  const totalKrw = krwAmount + (fxRate ? usdAmount * fxRate : 0);
+  return (
+    <div className="stat-tile">
+      <div className="label">{label}</div>
+      <div className="value">{formatKrw(krwAmount)}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{usdFmt.format(usdAmount)}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+        합계(환산) {fxRate ? formatKrw(totalKrw) : '환율 미적용'}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -250,14 +292,18 @@ export default function Dashboard() {
       )}
 
       <div className="summary-row">
-        <div className="stat-tile">
-          <div className="label">총 매입금액</div>
-          <div className="value">{formatKrw(portfolio.totalPurchaseAmountKrw)}</div>
-        </div>
-        <div className="stat-tile">
-          <div className="label">총 평가금액</div>
-          <div className="value">{formatKrw(portfolio.totalMarketValueKrw)}</div>
-        </div>
+        <AmountTile
+          label="총 매입금액"
+          krwAmount={portfolio.totalPurchaseAmountKrw}
+          usdAmount={portfolio.totalPurchaseAmountUsd}
+          fxRate={effectiveFxRate}
+        />
+        <AmountTile
+          label="총 평가금액"
+          krwAmount={portfolio.totalMarketValueKrw}
+          usdAmount={portfolio.totalMarketValueUsd}
+          fxRate={effectiveFxRate}
+        />
         <div className="stat-tile">
           <div className="label">총 손익금액</div>
           <div className={`value ${portfolio.totalProfitLossKrw >= 0 ? 'text-good' : 'text-critical'}`}>

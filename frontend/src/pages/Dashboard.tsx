@@ -2,12 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { BrokerAccount, BrokerId, BrokerSummary, PortfolioOverview } from '../types';
 import HoldingsTable from '../components/HoldingsTable';
-
-function formatKrw(value: number) {
-  return `${new Intl.NumberFormat('ko-KR').format(Math.round(value))}원`;
-}
-
-const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+import { formatKrw, krw, usdFmt } from '../format';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
 
@@ -364,7 +359,7 @@ export default function Dashboard() {
 
       {!hasUnconvertedUsd && effectiveFxRate && portfolio.positions.some((p) => p.currency === 'USD') && (
         <div className="notice">
-          USD 종목 비중 계산에 적용된 환율: 1 USD = {new Intl.NumberFormat('ko-KR').format(Math.round(effectiveFxRate))}원
+          USD 종목 비중 계산에 적용된 환율: 1 USD = {krw.format(Math.round(effectiveFxRate))}원
           {manualFxRate ? ' (설정에서 직접 입력)' : ' (토스증권 실시간 조회)'}
         </div>
       )}

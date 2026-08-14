@@ -1,18 +1,11 @@
 import { useState } from 'react';
 import type { MonthlySummaryRow } from '../types';
+import { krw, krwCompact, usdFmt as usd } from '../format';
 
 const HEIGHT = 180;
 const BAR_GAP = 6;
 const LABEL_SPACE = 18; // room above the tallest bar for its value label
 const AXIS_SPACE = 24; // room below the baseline for month labels
-
-const krw = new Intl.NumberFormat('ko-KR');
-const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-const krwCompact = new Intl.NumberFormat('ko-KR', {
-  notation: 'compact',
-  compactDisplay: 'short',
-  maximumFractionDigits: 1,
-});
 
 /**
  * fxRate converts each row's USD-denominated dividends to KRW so bar height,

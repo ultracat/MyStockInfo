@@ -2,9 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { BrokerAccount, BrokerId, BrokerSummary, TradeRecord } from '../types';
 import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
+import { krw, usdFmt } from '../format';
 
-const krw = new Intl.NumberFormat('ko-KR');
-const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth() + 1;
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow } from '../types';
 import DividendsChart from '../components/DividendsChart';
+import { krw, usdFmt } from '../format';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
@@ -11,8 +12,6 @@ type BrokerFilter = 'ALL' | BrokerId;
 
 const BROKER_LABELS: Record<BrokerId, string> = { toss: '토스증권', kis: '한국투자증권', kb: 'KB증권' };
 const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'kb'];
-const krw = new Intl.NumberFormat('ko-KR');
-const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 interface BrokerInvested {
   krw: number;

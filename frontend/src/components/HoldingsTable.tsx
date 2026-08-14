@@ -1,7 +1,8 @@
 import type { HoldingPosition } from '../types';
+import { krw2dp } from '../format';
 
 function formatMoney(value: number, currency: string | null) {
-  const formatted = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 2 }).format(value);
+  const formatted = krw2dp.format(value);
   return currency && currency !== 'KRW' ? `${formatted} ${currency}` : `${formatted}원`;
 }
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { krw, krwCompact, usdCompact, usdFmt } from '../format';
 
 export interface TradeSummaryBucket {
   /** X축에 그대로 찍히는 라벨 — 연간 보기면 "01".."12", 월간 보기면 "1".."31". */
@@ -20,20 +21,6 @@ const BAR_WIDTH = (GROUP_WIDTH - BAR_GAP) / 2;
 // DividendsChart(18px)보다도 더 키웠다.
 const LABEL_SPACE = 24;
 const AXIS_SPACE = 24;
-
-const krw = new Intl.NumberFormat('ko-KR');
-const krwCompact = new Intl.NumberFormat('ko-KR', {
-  notation: 'compact',
-  compactDisplay: 'short',
-  maximumFractionDigits: 1,
-});
-const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-const usdCompact = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
 
 interface HoverInfo {
   x: number;

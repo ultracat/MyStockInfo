@@ -6,6 +6,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 
 ## 구조
 
+- `src/format.ts` — 공용 `Intl.NumberFormat` 인스턴스(`krw`, `krw2dp`, `krwCompact`,
+  `usdFmt`, `usdCompact`, `formatKrw`)를 모아둔 곳. **`Intl.NumberFormat` 생성자는 로케일
+  데이터 조회가 있어서 공짜가 아니다** — `HoldingsTable.tsx`의 `formatMoney`가 행마다(컬럼당
+  1번씩, 한 행에 6번) 새로 생성하고 있어서 포지션 30~50개짜리 포트폴리오 렌더 한 번에
+  수백 번 생성되던 걸 여기로 옮기며 고쳤다(`Dashboard.tsx`의 `formatKrw`와 인라인
+  환율 표시도 같은 문제였음). 새 페이지/컴포넌트에서 숫자 포맷이 필요하면 직접
+  `new Intl.NumberFormat(...)`를 쓰지 말고 여기서 가져다 쓴다 — 렌더 바디나 행마다 호출되는
+  함수 안에서 새로 만들면 똑같은 문제가 재발한다.
 - `src/App.tsx` — 좌측 사이드바 네비게이션 + `page` 상태(`'dashboard' | 'dividends' |
   'trades' | 'settings'`)로 페이지 전환. 새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목 추가.
 - `src/pages/Dashboard.tsx` — 보유 종목 화면. 브로커 선택 드롭다운 → 해당 브로커 계좌/환율

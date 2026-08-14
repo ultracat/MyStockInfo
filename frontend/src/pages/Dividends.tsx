@@ -48,6 +48,7 @@ export default function Dividends() {
   const [error, setError] = useState<string | null>(null);
   const [year, setYear] = useState<YearFilter>('ALL');
   const [chartBroker, setChartBroker] = useState<BrokerFilter>('ALL');
+  const [listBroker, setListBroker] = useState<BrokerFilter>('ALL');
   const [pageSize, setPageSize] = useState<PageSize>(10);
   const [page, setPage] = useState(1);
   const [dividendPanelsCollapsed, setDividendPanelsCollapsed] = useState(false);
@@ -247,23 +248,11 @@ export default function Dividends() {
     return records.filter((r) => r.paidDate.startsWith(prefix));
   }, [records, year]);
 
-  // 하단 배당 기록 목록의 페이지네이션. `page` state가 필터/삭제로 범위를
-  // 벗어나도(예: 마지막 페이지 항목을 지운 경우) 별도 effect로 되돌리지 않고
-  // 매 렌더마다 pageCount 안으로 clamp해서 쓴다 — 그래서 슬라이스에도, "현재
-  // 페이지" 표시에도 항상 이 clamp된 값 하나만 쓴다.
-  const pageCount = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(visibleRecords.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const pagedRecords = useMemo(() => {
-    if (pageSize === 'ALL') return visibleRecords;
-    const start = (currentPage - 1) * pageSize;
-    return visibleRecords.slice(start, start + pageSize);
-  }, [visibleRecords, pageSize, currentPage]);
-
-  // 그래프 전용 증권사 필터 — 연도 필터(visibleRecords)는 표/목록에도 다 적용되지만,
-  // 이 필터는 "월별 배당금" 그래프에만 건다. 옵션은 실제로 기록이 있는 증권사만
-  // 보여준다(연도와 무관하게 records 전체 기준 — 특정 연도로 좁혔을 때 옵션 목록이
-  // 들쭉날쭉 사라졌다 나타났다 하지 않게 하기 위함).
-  const chartBrokerOptions = useMemo(() => {
+  // 증권사 필터 옵션 — 실제로 기록이 있는 증권사만 보여준다(연도와 무관하게 records
+  // 전체 기준 — 특정 연도로 좁혔을 때 옵션 목록이 들쭉날쭉 사라졌다 나타났다 하지
+  // 않게 하기 위함). "월별 배당금" 그래프용(chartBroker)과 하단 "배당 기록" 목록용
+  // (listBroker) 두 필터가 이 옵션 목록을 그대로 같이 쓴다.
+  const brokerOptions = useMemo(() => {
     const present = new Set<BrokerId>(records.map((r) => r.broker));
     return BROKER_ORDER.filter((id) => present.has(id));
   }, [records]);
@@ -272,6 +261,27 @@ export default function Dividends() {
     if (chartBroker === 'ALL') return visibleRecords;
     return visibleRecords.filter((r) => r.broker === chartBroker);
   }, [visibleRecords, chartBroker]);
+
+  // 배당 기록 목록 전용 증권사 필터 — chartBroker(그래프 전용)와는 독립적이다.
+  // 연도 필터(visibleRecords)는 그래프·증권사별 표·목록에 전부 적용되는 페이지
+  // 전역 필터인 반면, 이건 하단 "배당 기록" 목록 하나만 좁힌다("증권사별 배당금
+  // 총계" 표는 비교가 목적이라 여기서도 필터링하지 않는다).
+  const listFilteredRecords = useMemo(() => {
+    if (listBroker === 'ALL') return visibleRecords;
+    return visibleRecords.filter((r) => r.broker === listBroker);
+  }, [visibleRecords, listBroker]);
+
+  // 하단 배당 기록 목록의 페이지네이션. `page` state가 필터/삭제로 범위를
+  // 벗어나도(예: 마지막 페이지 항목을 지운 경우) 별도 effect로 되돌리지 않고
+  // 매 렌더마다 pageCount 안으로 clamp해서 쓴다 — 그래서 슬라이스에도, "현재
+  // 페이지" 표시에도 항상 이 clamp된 값 하나만 쓴다.
+  const pageCount = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(listFilteredRecords.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pagedRecords = useMemo(() => {
+    if (pageSize === 'ALL') return listFilteredRecords;
+    const start = (currentPage - 1) * pageSize;
+    return listFilteredRecords.slice(start, start + pageSize);
+  }, [listFilteredRecords, pageSize, currentPage]);
 
   const monthlyRows = useMemo<MonthlySummaryRow[]>(() => {
     const byMonth = new Map<string, { totalKrw: number; totalUsd: number; count: number }>();
@@ -472,7 +482,7 @@ export default function Dividends() {
             <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
             <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
               <option value="ALL">전체</option>
-              {chartBrokerOptions.map((id) => (
+              {brokerOptions.map((id) => (
                 <option key={id} value={id}>
                   {BROKER_LABELS[id]}
                 </option>
@@ -611,6 +621,23 @@ export default function Dividends() {
             {refreshingNames ? '갱신 중...' : '종목명 일괄 갱신'}
           </button>
           {refreshResult && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{refreshResult}</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+            <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
+            <select
+              value={listBroker}
+              onChange={(e) => {
+                setListBroker(e.target.value as BrokerFilter);
+                setPage(1);
+              }}
+            >
+              <option value="ALL">전체</option>
+              {brokerOptions.map((id) => (
+                <option key={id} value={id}>
+                  {BROKER_LABELS[id]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
           {pageCount > 1 ? (
@@ -663,10 +690,11 @@ export default function Dividends() {
             </tr>
           </thead>
           <tbody>
-            {visibleRecords.length === 0 && (
+            {listFilteredRecords.length === 0 && (
               <tr>
                 <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {year === 'ALL' ? '배당 기록이 없습니다.' : `${year}년 배당 기록이 없습니다.`}
+                  {listBroker !== 'ALL' ? ` (${BROKER_LABELS[listBroker]} 기준)` : ''}
                 </td>
               </tr>
             )}

@@ -79,8 +79,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   따로 있다 — 연도 필터(`year`)는 표/목록까지 전부 같이 좁히는 페이지 전역 필터인 반면,
   이건 그래프 하나만 좁힌다(증권사별 표는 이미 모든 증권사를 나란히 비교해서 보여주는
   게 목적이라 거기까지 필터링하면 오히려 그 표의 존재 이유가 없어짐). 옵션 목록
-  (`chartBrokerOptions`)은 연도로 좁히기 전 `records` 전체 기준으로 계산한다 — 연도를
+  (`brokerOptions`)은 연도로 좁히기 전 `records` 전체 기준으로 계산한다 — 연도를
   바꿀 때마다 드롭다운 옵션 자체가 들쭉날쭉 생겼다 사라졌다 하지 않게 하기 위해서다.
+  하단 "배당 기록" 목록에도 별도의 목록 전용 증권사 필터(`listBroker`)가 있다 —
+  `chartBroker`(그래프 전용)와는 완전히 독립된 state로, 카드 안 "종목명 일괄 갱신"
+  버튼 옆에 `marginLeft: 'auto'`로 오른쪽에 붙인 `<select>`다. 옵션 목록은
+  `brokerOptions`를 그래프 필터와 그대로 같이 쓴다. `visibleRecords`(연도 필터까지만
+  적용)를 `listBroker`로 한 번 더 좁힌 `listFilteredRecords`가 페이지네이션
+  (`pageCount`/`currentPage`/`pagedRecords`)과 목록 렌더링의 기준이 된다 — "증권사별
+  배당금 총계" 표는 여기서도 필터링하지 않는다(비교가 목적인 표라 그대로 유지). 연도·
+  표시개수와 마찬가지로 `listBroker`를 바꿀 때도 `setPage(1)`을 같이 호출한다.
   하단 "배당 기록" 목록의 페이지네이션(`pageSize`: 10/20/30/전체, `page`)은 **`page`를
   effect로 되돌리지 않는다** — 연도 필터를 바꾸거나 마지막 페이지의 항목을 삭제해서
   실제 페이지 수(`pageCount`)가 줄어들면, `page` state는 그대로 두고 매 렌더마다

@@ -95,7 +95,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `currentPage = Math.min(page, pageCount)`로 clamp해서 슬라이스에도 "현재 페이지"
   표시에도 이 값 하나만 쓴다 — 필터가 다시 넓어지면 이전에 보던 페이지로 자연스럽게
   돌아가고, effect 기반으로 짰을 때 생기는 리셋 타이밍 경쟁도 없다. 연도/표시개수를
-  직접 바꿀 때만 `setPage(1)`을 명시적으로 같이 호출한다. "월별 배당금"과 "증권사별
+  직접 바꿀 때만 `setPage(1)`을 명시적으로 같이 호출한다. 페이지 번호 버튼은 전체
+  `pageCount`를 다 그리지 않고 `currentPage`가 속한 10개(`PAGE_GROUP_SIZE`) 그룹만
+  그린다(`pageGroupStart`/`pageGroupEnd` = `currentPage` 기준으로 매 렌더 계산 —
+  `page`처럼 별도 state로 안 둔다) — 기록이 몇 백 건이라 `pageCount`가 커지면 숫자
+  버튼이 한 줄에 다 안 들어가서, 그룹 양 끝에 "◀ 이전 10개"/"다음 10개 ▶" 버튼을 두어
+  그룹 자체를 `pageGroupStart ± PAGE_GROUP_SIZE`로 점프시킨다(그룹의 첫 페이지로
+  이동). 그룹 경계에서는 버튼을 `disabled`로 막는다(첫 그룹에서 "이전", 마지막
+  그룹에서 "다음"). "월별 배당금"과 "증권사별
   배당금 총계"는 **카드 하나**를 공유한다(처음엔 카드 두 개로 나란히 놓았다가, "따로
   접혔다 펴지지 말고 한 번에 같이"라는 피드백을 받고 합쳤다) — `dividendPanelsCollapsed`
   하나로 둘 다 같이 접고 펴며, `CollapseToggle`(파일 내부 컴포넌트)도 카드 헤더 행에

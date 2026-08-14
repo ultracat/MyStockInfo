@@ -12,6 +12,7 @@ type BrokerFilter = 'ALL' | BrokerId;
 type PageSize = 10 | 20 | 30 | 'ALL';
 
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 20, 30, 'ALL'];
+const PAGE_GROUP_SIZE = 10;
 
 const BROKER_LABELS: Record<BrokerId, string> = { toss: '토스증권', kis: '한국투자증권', kb: 'KB증권' };
 const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'kb'];
@@ -282,6 +283,13 @@ export default function Dividends() {
     const start = (currentPage - 1) * pageSize;
     return listFilteredRecords.slice(start, start + pageSize);
   }, [listFilteredRecords, pageSize, currentPage]);
+
+  // 페이지 번호 버튼은 한 번에 10개(PAGE_GROUP_SIZE) 그룹 단위로만 보여준다 —
+  // pageCount가 크면(예: "표시 개수"를 10개로 두고 기록이 몇 백 건이면) 버튼이
+  // 한 줄에 다 안 들어가서, currentPage가 속한 그룹만 렌더링하고 그 그룹 양 끝에
+  // "이전 10개"/"다음 10개"로 그룹 자체를 이동하는 버튼을 둔다.
+  const pageGroupStart = Math.floor((currentPage - 1) / PAGE_GROUP_SIZE) * PAGE_GROUP_SIZE + 1;
+  const pageGroupEnd = Math.min(pageGroupStart + PAGE_GROUP_SIZE - 1, pageCount);
 
   const monthlyRows = useMemo<MonthlySummaryRow[]>(() => {
     const byMonth = new Map<string, { totalKrw: number; totalUsd: number; count: number }>();
@@ -641,8 +649,11 @@ export default function Dividends() {
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
           {pageCount > 1 ? (
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {Array.from({ length: pageCount }, (_, i) => i + 1).map((p) => (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+              <button className="ghost" disabled={pageGroupStart === 1} onClick={() => setPage(pageGroupStart - PAGE_GROUP_SIZE)}>
+                ◀ 이전 10개
+              </button>
+              {Array.from({ length: pageGroupEnd - pageGroupStart + 1 }, (_, i) => pageGroupStart + i).map((p) => (
                 <button
                   key={p}
                   className="ghost"
@@ -656,6 +667,9 @@ export default function Dividends() {
                   {p}
                 </button>
               ))}
+              <button className="ghost" disabled={pageGroupEnd === pageCount} onClick={() => setPage(pageGroupEnd + 1)}>
+                다음 10개 ▶
+              </button>
             </div>
           ) : (
             <div />

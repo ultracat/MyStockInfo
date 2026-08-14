@@ -29,6 +29,16 @@ function sleep(ms: number) {
 // one call that failed.
 const kisLimiter = new RateLimiter({ tps: 4 }, 'KIS');
 
+// 주식일별주문체결조회(inquire-daily-ccld)는 실측 결과 inquire-balance와 같은 4건/초
+// 페이싱으로도 EGW00201(초당 거래건수 초과)에 훨씬 잘 걸린다(위 kisLimiter 주석,
+// backend/CLAUDE.md 참고) — 토큰/잔고조회와 한 페이싱을 공유하면 이 TR 하나 때문에
+// 계정 전체가 더 자주 걸리므로, 토스 클라이언트가 TR/엔드포인트 그룹별로 별도
+// RateLimiter를 두는 것(rateLimitGroups.ts)과 같은 방식으로 이 TR 전용 인스턴스를
+// 분리해 더 보수적으로(1건/초) 페이싱한다. 페이지네이션(최대 50페이지) + "3개월
+// 이내/이전" TR 분할로 짧은 시간에 여러 번 연속 호출되는 TR이라 재시도 여유도 더
+// 필요해서, kisGet 호출 시 maxAttempts도 이 TR만 늘려서 넘긴다.
+const kisDailyCcldLimiter = new RateLimiter({ tps: 1 }, 'KIS-DailyCcld');
+
 interface KisTokenResponse {
   access_token: string;
   token_type?: string;
@@ -184,7 +194,9 @@ async function kisGet(
   path: string,
   trId: string,
   params: Record<string, string>,
-  trCont = ''
+  trCont = '',
+  limiter: RateLimiter = kisLimiter,
+  maxRetries = 3
 ): Promise<KisEnvelope & { trCont: string }> {
   const creds = requireCredentials();
   const query = new URLSearchParams(params);
@@ -203,7 +215,7 @@ async function kisGet(
       },
     });
 
-  return kisLimiter.schedule(async () => {
+  return limiter.schedule(async () => {
     let token = await getToken();
 
     for (let attempt = 0; ; attempt++) {
@@ -215,40 +227,51 @@ async function kisGet(
       }
 
       const text = await res.text();
-      if (!res.ok) {
-        throw new KisApiError(`한국투자증권 API 호출 실패: ${path}`, res.status, text);
-      }
 
-      let json: KisEnvelope;
+      let json: KisEnvelope | null = null;
       try {
         json = JSON.parse(text);
       } catch {
-        throw new KisApiError(`한국투자증권 API 응답 파싱 실패: ${path}`, res.status, text);
+        json = null;
       }
 
-      if (json.rt_cd !== '0') {
-        // 주식잔고조회 doc (KIS's official API spec sheet, "개요" section):
-        // this TR draws from two separate rate limits.
-        //  - EGW00201 ("초당 거래건수를 초과하였습니다", no "원장" mention):
-        //    OUR OWN per-account quota — slow down every future call through
-        //    this limiter, not just retry this one, since our steady-state
-        //    pacing (see kisLimiter above) is apparently still faster than
-        //    what this account/tier actually allows.
-        //  - EGW00215 ("원장에서 허용 가능한 초당 거래건수를 초과하였습니다"):
-        //    a ledger-wide 120 TPS cap shared across *all* KIS customers on
-        //    this specific (heavy) TR, unrelated to our own pacing — the doc
-        //    explicitly says to just retry, so we do, without penalizing our
-        //    own limiter for another customer's traffic.
-        if (json.msg_cd === 'EGW00201' || json.msg_cd === 'EGW00215') {
-          const backoffMs = 2 ** attempt * 1000 + Math.random() * 250;
-          if (json.msg_cd === 'EGW00201') {
-            kisLimiter.penalizeUntil(Date.now() + backoffMs);
-          }
-          if (attempt < 3) {
-            await sleep(backoffMs);
-            continue;
-          }
+      // 문서상 EGW00201/EGW00215는 "200 응답 바디 안의 rt_cd/msg_cd"로 온다고
+      // 되어 있지만, 실사용 중 부하가 몰리면 같은 msg_cd가 담긴 바디를 HTTP
+      // 500으로도 보낸다(실측: `inquire-daily-ccld`에 짧은 간격으로 여러 요청을
+      // 동시에 보냈더니 res.status===500 + 이 msg_cd 조합이 실제로 나왔다).
+      // 그래서 이 판단은 res.ok 여부보다 먼저 한다 — 그래야 500으로 온
+      // rate-limit 에러도 재시도/penalizeUntil을 타고, res.ok 체크가 먼저면 이
+      // 분기에 닿기도 전에 곧장 throw돼서 재시도 로직 자체가 무력화된다(실제로
+      // 그렇게 프론트까지 에러가 새어나간 걸 확인하고 고쳤다).
+      //  - EGW00201 ("초당 거래건수를 초과하였습니다", no "원장" mention):
+      //    OUR OWN per-account quota — slow down every future call through
+      //    this limiter, not just retry this one, since our steady-state
+      //    pacing (see kisLimiter above) is apparently still faster than
+      //    what this account/tier actually allows.
+      //  - EGW00215 ("원장에서 허용 가능한 초당 거래건수를 초과하였습니다"):
+      //    a ledger-wide 120 TPS cap shared across *all* KIS customers on
+      //    this specific (heavy) TR, unrelated to our own pacing — the doc
+      //    explicitly says to just retry, so we do, without penalizing our
+      //    own limiter for another customer's traffic.
+      if (json && (json.msg_cd === 'EGW00201' || json.msg_cd === 'EGW00215')) {
+        const backoffMs = 2 ** attempt * 1000 + Math.random() * 250;
+        if (json.msg_cd === 'EGW00201') {
+          limiter.penalizeUntil(Date.now() + backoffMs);
         }
+        if (attempt < maxRetries) {
+          await sleep(backoffMs);
+          continue;
+        }
+        throw new KisApiError(`한국투자증권 API 오류 (${json.msg_cd}): ${json.msg1}`, res.status, text);
+      }
+
+      if (!res.ok) {
+        throw new KisApiError(`한국투자증권 API 호출 실패: ${path}`, res.status, text);
+      }
+      if (!json) {
+        throw new KisApiError(`한국투자증권 API 응답 파싱 실패: ${path}`, res.status, text);
+      }
+      if (json.rt_cd !== '0') {
         throw new KisApiError(`한국투자증권 API 오류 (${json.msg_cd}): ${json.msg1}`, res.status, text);
       }
 
@@ -329,7 +352,9 @@ async function fetchDailyCcldAllPages(
       '/uapi/domestic-stock/v1/trading/inquire-daily-ccld',
       trId,
       { ...base, CTX_AREA_FK100: fk100, CTX_AREA_NK100: nk100 },
-      trCont
+      trCont,
+      kisDailyCcldLimiter,
+      5
     );
 
     const output1 = Array.isArray(res.output1) ? (res.output1 as KisDailyCcldItem[]) : [];

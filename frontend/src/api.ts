@@ -7,6 +7,7 @@ import type {
   DividendRecord,
   ExchangeRate,
   PortfolioOverview,
+  StockInfo,
   TradeRecord,
 } from './types';
 
@@ -66,4 +67,6 @@ export const api = {
     request<TradeRecord[]>(
       `/trades/${broker}/${accountId}?from=${from}&to=${to}${opts?.forceRefresh ? '&refresh=true' : ''}`
     ),
+
+  getStockInfo: (symbol: string) => request<StockInfo>(`/stock-info/${encodeURIComponent(symbol)}`),
 };

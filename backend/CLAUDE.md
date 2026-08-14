@@ -119,6 +119,20 @@ rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된�
 (원래는 `monthlySummary()`란 백엔드 집계 함수가 있었는데, Trades.tsx가 애초에 그런 백엔드
 집계 없이 클라이언트에서 다 하는 걸 보고 통일했다 — 연도 필터 추가하면서 이 함수를 지웠다).
 
+## 종목명 자동조회 (`src/db/stockNames.ts`, `src/routes/stockInfo.ts`)
+
+배당 기록 추가 폼에서 종목코드만 입력하면 종목명을 사용자가 직접 안 쳐도 되게, 토스의
+종목 기본 정보 조회(`GET /api/v1/stocks?symbols=`, `tossClient.ts`의 `fetchTossStockInfo`,
+`STOCK` rate-limit 그룹)로 자동 조회한다. **이 API는 계좌와 무관한 시세 참조 데이터라**
+(공식 문서 확인, checked 2026-08-14) 국내(`005930`)/미국(`AAPL`) 심볼을 한 API로 다 커버하고,
+배당 기록의 브로커가 `kis`여도 그대로 쓸 수 있다(토스 연동이 안 돼 있으면 `GET
+/api/stock-info/:symbol`이 409로 "토스증권 연동 필요"를 응답 — 프론트는 이때 종목명
+직접 입력으로 폴백한다). `stockNames.json`(심볼 → 이름, 브로커 무관하게 심볼 하나로
+키잉)에 한 번 조회한 심볼을 영구 캐시해서, 같은 심볼을 나중에 또 입력해도(다른 배당
+기록이든, 재실행 후든) 두 번째부터는 토스 API를 다시 안 부른다 — `credentials.json`/
+`dividends.json`과 같은 `getDataDir()` 아래 파일이라 dev에서 `backend/data/`, 패키징된
+앱에서 `userData/data/`에 쌓인다.
+
 ## 검증 방식
 
 증권사 API 관련 코드를 작성/수정할 때는 실제 공식 문서(토스: developers.tossinvest.com,

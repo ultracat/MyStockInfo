@@ -467,5 +467,45 @@ export async function fetchTossExchangeRate(
   );
 }
 
+interface RawTossStockInfo {
+  symbol: string;
+  name: string;
+  englishName: string | null;
+  market: string;
+  securityType: string;
+  status: string;
+  currency: string;
+}
+
+/**
+ * 종목 기본 정보 조회 (`GET /api/v1/stocks`, `STOCK` group) — not
+ * account-scoped, works for both KR (e.g. "005930") and US (e.g. "AAPL")
+ * symbols in the same call, up to 200 comma-separated per request per docs.
+ * Used to auto-resolve a dividend record's 종목명 from its 종목코드 (see
+ * routes/stockInfo.ts) instead of asking the user to type it.
+ */
+export async function fetchTossStockInfo(symbols: string[], opts: FetchOpts = {}): Promise<RawTossStockInfo[]> {
+  const key = [...symbols].sort().join(',');
+  return withCache(
+    `toss:stockinfo:${key}`,
+    DEFAULT_TTL_MS,
+    async () => {
+      const params = new URLSearchParams({ symbols: symbols.join(',') });
+      const raw = await tossFetch<any>(`/api/v1/stocks?${params}`, 'STOCK');
+      const data = raw?.result ?? raw;
+
+      if (!Array.isArray(data)) {
+        console.error('[toss] Unexpected /api/v1/stocks response shape:', JSON.stringify(raw));
+        throw new Error(
+          '토스증권 종목정보 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
+        );
+      }
+
+      return data as RawTossStockInfo[];
+    },
+    opts
+  );
+}
+
 export type { TossHoldingsOverviewResponse, TossHoldingsItem, TossExchangeRateResponse, TossOrder };
 export { TossApiError };

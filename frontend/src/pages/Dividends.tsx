@@ -60,6 +60,13 @@ export default function Dividends() {
   const [paidDate, setPaidDate] = useState(today());
   const [memo, setMemo] = useState('');
 
+  // 종목명 자동조회 — 백엔드가 심볼별로 로컬 캐시(stockNames.json)를 두므로
+  // 같은 심볼을 다시 입력해도 매번 토스 API를 부르지 않는다. 사용자가
+  // "직접 입력"을 누르면 그 뒤로는 자동조회가 name을 덮어쓰지 않는다.
+  const [nameStatus, setNameStatus] = useState<'idle' | 'loading' | 'resolved' | 'error'>('idle');
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [manualNameEntry, setManualNameEntry] = useState(false);
+
   const [investedByBroker, setInvestedByBroker] = useState<Partial<Record<BrokerId, BrokerInvested>>>({});
   const [investedErrors, setInvestedErrors] = useState<Partial<Record<BrokerId, string>>>({});
   const [investedLoading, setInvestedLoading] = useState(true);
@@ -78,6 +85,43 @@ export default function Dividends() {
   useEffect(() => {
     refresh().catch((e) => setError((e as Error).message));
   }, []);
+
+  // 종목코드 입력이 멈추면(500ms 디바운스) 종목명을 자동조회한다. 사용자가
+  // "직접 입력"으로 전환했으면(manualNameEntry) 여기서 name을 건드리지 않는다.
+  useEffect(() => {
+    const trimmed = symbol.trim();
+    if (manualNameEntry) return;
+    if (!trimmed) {
+      setName('');
+      setNameStatus('idle');
+      setNameError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setNameStatus('loading');
+    setNameError(null);
+    const timer = setTimeout(() => {
+      api
+        .getStockInfo(trimmed)
+        .then((info) => {
+          if (cancelled) return;
+          setName(info.name);
+          setNameStatus('resolved');
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setName('');
+          setNameStatus('error');
+          setNameError((e as Error).message);
+        });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [symbol, manualNameEntry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,6 +199,9 @@ export default function Dividends() {
       setName('');
       setAmount('');
       setMemo('');
+      setManualNameEntry(false);
+      setNameStatus('idle');
+      setNameError(null);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -480,7 +527,37 @@ export default function Dividends() {
             </div>
             <div className="form-row">
               <label>종목명</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 애플" />
+              {manualNameEntry ? (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="예: 애플"
+                    style={{ flex: 1 }}
+                  />
+                  <button type="button" className="ghost" onClick={() => setManualNameEntry(false)}>
+                    자동조회
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 36 }}>
+                  {nameStatus === 'idle' && (
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>종목코드 입력 시 자동 조회</span>
+                  )}
+                  {nameStatus === 'loading' && (
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>조회 중...</span>
+                  )}
+                  {nameStatus === 'resolved' && <span>{name}</span>}
+                  {nameStatus === 'error' && (
+                    <span className="text-critical" style={{ fontSize: 12 }}>
+                      {nameError ?? '조회 실패'}
+                    </span>
+                  )}
+                  <button type="button" className="ghost" onClick={() => setManualNameEntry(true)}>
+                    직접 입력
+                  </button>
+                </div>
+              )}
             </div>
             <div className="form-row">
               <label>통화</label>
@@ -552,7 +629,8 @@ export default function Dividends() {
             <tr>
               <th>지급일</th>
               <th>증권사</th>
-              <th>종목</th>
+              <th>종목코드</th>
+              <th>종목명</th>
               <th>배당금</th>
               <th>메모</th>
               <th></th>
@@ -561,7 +639,7 @@ export default function Dividends() {
           <tbody>
             {visibleRecords.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {year === 'ALL' ? '배당 기록이 없습니다.' : `${year}년 배당 기록이 없습니다.`}
                 </td>
               </tr>
@@ -570,9 +648,8 @@ export default function Dividends() {
               <tr key={r.id}>
                 <td>{r.paidDate}</td>
                 <td>{BROKER_LABELS[r.broker]}</td>
-                <td>
-                  {r.name} ({r.symbol})
-                </td>
+                <td>{r.symbol}</td>
+                <td>{r.name}</td>
                 <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>
                 <td>{r.memo ?? '-'}</td>
                 <td>

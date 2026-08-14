@@ -97,3 +97,10 @@ export interface TradeRecord {
   tax: number | null;
   executedAt: string;
 }
+
+export interface StockInfo {
+  symbol: string;
+  name: string;
+  market: string | null;
+  currency: string | null;
+}

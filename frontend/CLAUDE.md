@@ -105,7 +105,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   옆 증권사 `<select>`는 `.form-row`(라벨-위/셀렉트-아래 세로 배치용 클래스)를 안
   쓴다 — 제목 `<h3>` 바로 옆, 라벨과 셀렉트가 한 줄에 나란히 오도록 얕은 flex row로
   직접 짰다(이 화면에서만 쓰는 예외적 레이아웃 — 폼 입력 필드는 계속 `.form-row`를
-  쓴다).
+  쓴다). "배당 기록 추가" 폼의 종목명은 더 이상 직접 입력이 기본이 아니다 — 종목코드를
+  입력하고 500ms 동안 추가 입력이 없으면(`useEffect` + `setTimeout` 디바운스)
+  `api.getStockInfo(symbol)`을 불러 자동으로 채운다(백엔드 CLAUDE.md의 "종목명
+  자동조회" 참고). 조회 상태(`nameStatus`: idle/loading/resolved/error)를 이름 자리에
+  그대로 보여주고, 실패하거나(토스 미연동, 못 찾음) 사용자가 원하면 "직접 입력" 버튼으로
+  수동 입력 모드(`manualNameEntry`)로 전환할 수 있다 — 그 모드에서는 이 effect가 더
+  이상 name을 덮어쓰지 않는다. 배당 기록 표의 "종목"은 종목코드/종목명 두 컬럼으로
+  나눠서 보여준다(예전엔 `{name} ({symbol})`로 한 셀에 합쳐서 헷갈린다는 피드백을 받음).
 - `src/pages/Trades.tsx` — 매매내역 화면. Dashboard.tsx와 같은 브로커/계좌 선택 +
   `accountId` 동기 리셋 패턴에, 연도 `<select>`(최근 5개년)를 추가해서 `[YYYY-01-01,
   YYYY-12-31]`(올해면 오늘까지) 범위로 `GET /api/trades`를 **연 단위로 한 번만** 호출한다.
@@ -151,7 +158,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `{error, detail?}` 형태를 기대하고 `detail`이 있으면 메시지에 이어 붙인다 (백엔드 원본
   에러 바디를 그대로 보여주기 위함).
 - `src/types.ts` — 백엔드 응답 타입 미러링 (`BrokerAccount`, `PortfolioOverview`,
-  `TradeRecord`, `CredentialFieldSpec` 등). 백엔드 `brokers/types.ts`와 형태를 맞춰 유지한다.
+  `TradeRecord`, `StockInfo`, `CredentialFieldSpec` 등). 백엔드 `brokers/types.ts`와
+  형태를 맞춰 유지한다.
 
 ## 개발
 

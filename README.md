@@ -35,6 +35,27 @@ Electron 창이 뜨면 좌측 **설정** 메뉴에서 증권사별 API 키를 �
 > 백엔드 코드(`backend/src/**`)를 수정하면 `npm run build:backend`로 다시 빌드한 뒤
 > Electron을 재시작해야 반영됩니다. 프론트엔드(`frontend/src/**`)는 Vite가 자동 반영합니다.
 
+## Mac 배포용 빌드 만들기
+
+```bash
+npm run package:mac
+```
+
+`backend`/`frontend`/`electron`을 전부 빌드한 뒤 `electron-builder`로 `release/` 아래에
+`MyStock.app`(및 `Applications` 폴더로 드래그해서 설치하는 `.dmg`)를 만듭니다.
+
+- **코드 서명·공증이 되어 있지 않습니다** (Apple Developer ID 인증서가 없어서 의도적으로
+  뺐습니다). 만든 사람 본인 Mac에서 실행하는 건 문제없지만(첫 실행 시 우클릭 → 열기),
+  **다른 사람에게 그대로 배포하면 macOS Gatekeeper가 "손상되었거나 확인할 수 없는
+  개발자입니다" 경고를 띄웁니다.** 여러 사람에게 배포하려면 유료 Apple Developer Program
+  인증서로 서명 + 공증이 추가로 필요합니다.
+- 앱 아이콘은 아직 별도로 만들지 않아 Electron 기본 아이콘이 붙습니다.
+- 패키징된 앱은 자격증명/배당 데이터를 `~/Library/Application Support/mystock-api/`에
+  저장합니다 — `npm run dev`로 띄운 개발용 앱(`~/Library/Application Support/@mystock/`)과는
+  **별개의 데이터**로 시작합니다.
+- 설정 상세와 이 모노레포 구조 때문에 필요했던 우회(예: npm workspaces 심볼릭 링크
+  처리)는 `electron/CLAUDE.md`의 "Mac 배포용 빌드" 절을 참고하세요.
+
 ## 브로커별로 알아둘 점
 
 ### 토스증권
@@ -82,5 +103,5 @@ Electron 창이 뜨면 좌측 **설정** 메뉴에서 증권사별 API 키를 �
 
 - KB증권 어댑터 추가
 - KIS 모의투자(paper trading) 지원
-- 프로덕션 패키징 (electron-builder 등 설치형 빌드 구성)
+- 배포용 빌드 코드 서명/공증 (Apple Developer ID 필요 — 현재는 본인 Mac 실행 전용)
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

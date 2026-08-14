@@ -33,6 +33,9 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - 프론트엔드(`frontend/src/**`)는 Vite HMR로 자동 반영된다.
 - 백엔드는 `127.0.0.1:4317`에서만 리슨한다 (외부 노출 없음).
 - `npm run build` (backend → frontend → electron 순서)로 전체 빌드 검증 가능.
+- `npm run package:mac`으로 배포용 `.app`/`.dmg`를 만든다 — 상세 설정과 이 모노레포
+  구조 때문에 필요했던 우회는 `electron/CLAUDE.md`의 "Mac 배포용 빌드" 참고. 코드
+  서명/공증은 안 돼 있어 다른 사람 Mac에 배포하면 Gatekeeper 경고가 뜬다.
 
 ## 브로커 확장 포인트
 
@@ -61,5 +64,5 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 
 - KB증권 어댑터 추가
 - KIS 모의투자(paper trading) 지원
-- 프로덕션 패키징 (electron-builder 등 설치형 빌드 구성)
+- 배포용 빌드 코드 서명/공증 (Apple Developer ID 필요 — 현재는 본인 Mac 실행 전용)
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

@@ -2,10 +2,10 @@
   "name": "@mystock/electron",
   "version": "0.1.0",
   "private": true,
-  "main": "src/index.cjs",
+  "main": "dist/main.js",
   "scripts": {
-    "dev": "electron .",
-    "build": "tsc -p tsconfig.json --noEmit"
+    "dev": "electron ./src/index.cjs",
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@mystock/backend": "*"

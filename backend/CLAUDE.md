@@ -129,6 +129,17 @@ rate limiter 설정)만 만들면 라우트/프론트는 그대로 재사용된�
 있다(토스 연동이 안 돼 있으면 `GET /api/stock-info/:symbol`이 409로 "토스증권 연동
 필요"를 응답 — 프론트는 이때 종목명 직접 입력으로 폴백한다).
 
+**`name` 필드가 종목코드와 그대로 같은 경우가 있다** — 삼성전자·애플처럼 잘 알려진
+종목은 토스가 한글 이름(`name`)을 갖고 있지만, 한글 이름이 등록 안 된 종목(주로
+SPY/QQQ/SCHD/NVDY 같은 미국 ETF)은 `name`이 그냥 티커 그대로 내려온다(실제 라이브
+API로 확인, checked 2026-08-14) — `englishName`엔 진짜 이름(예: NVDY →
+`"YIELDMAX NVDA OPTION INCOME STRATEGY ETF"`)이 따로 있다. `tossClient.ts`의
+`displayNameOf(info)`가 `name === symbol`(대소문자 무시)일 때만 `englishName`으로
+대체한다 — 한글 이름이 있는 종목은 그대로 두고, 정말 티커만 내려오는 경우에만
+폴백한다. `stockInfo.ts`/`dividends.ts`(`refresh-names`) 둘 다 `info.name`을 직접
+안 쓰고 이 함수를 거친다 — 하나만 고치고 다른 하나를 빠뜨리면 같은 종목인데 화면마다
+다른 이름이 뜨는 버그가 남는다.
+
 한 번 조회한 심볼은 **SQLite**(`node:sqlite`의 `DatabaseSync`, `stockNames.sqlite`,
 심볼 → 이름 · 브로커 무관하게 심볼 하나로 키잉)에 영구 캐시해서, 같은 심볼을 나중에 또
 입력해도(다른 배당 기록이든, 재실행 후든) 두 번째부터는 토스 API를 다시 안 부른다 —

@@ -1,15 +1,14 @@
 import { Router } from 'express';
 import { cacheStockName, getCachedStockName } from '../db/stockNames';
-import { fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
+import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
 
 export const stockInfoRouter = Router();
 
-// 종목명 자동조회 — 이미 조회한 심볼은 로컬 캐시(stockNames.json)에서 바로
-// 돌려주고, 처음 보는 심볼만 토스 종목 기본 정보 API를 호출한다. 국내/미국
-// 심볼 둘 다 이 하나의 API로 커버되고 계좌와 무관한 시세 데이터라, 배당
-// 기록이 kis 브로커 소속이어도 그대로 쓸 수 있다(브로커별로 다른 API를
-// 안 써도 됨).
+// 종목명 자동조회 — 이미 조회한 심볼은 로컬 캐시(SQLite)에서 바로 돌려주고,
+// 처음 보는 심볼만 토스 종목 기본 정보 API를 호출한다. 국내/미국 심볼 둘 다
+// 이 하나의 API로 커버되고 계좌와 무관한 시세 데이터라, 배당 기록이 kis
+// 브로커 소속이어도 그대로 쓸 수 있다(브로커별로 다른 API를 안 써도 됨).
 stockInfoRouter.get('/:symbol', async (req, res) => {
   const symbol = req.params.symbol.trim().toUpperCase();
   if (!symbol) {
@@ -36,7 +35,7 @@ stockInfoRouter.get('/:symbol', async (req, res) => {
 
     const entry = {
       symbol: info.symbol,
-      name: info.name,
+      name: displayNameOf(info),
       market: info.market ?? null,
       currency: info.currency ?? null,
       cachedAt: new Date().toISOString(),

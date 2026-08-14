@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { addDividend, deleteDividend, listDividends, updateDividendNames } from '../db/dividends';
 import { cacheStockName } from '../db/stockNames';
-import { fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
+import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
 
 export const dividendsRouter = Router();
@@ -33,11 +33,12 @@ dividendsRouter.post('/refresh-names', async (_req, res) => {
       const chunk = uniqueSymbols.slice(i, i + 200);
       const infos = await fetchTossStockInfo(chunk);
       for (const info of infos) {
-        namesBySymbol[info.symbol] = info.name;
+        const name = displayNameOf(info);
+        namesBySymbol[info.symbol] = name;
         resolvedSymbols.add(info.symbol);
         cacheStockName({
           symbol: info.symbol,
-          name: info.name,
+          name,
           market: info.market ?? null,
           currency: info.currency ?? null,
           cachedAt: new Date().toISOString(),

@@ -1,4 +1,4 @@
-export type BrokerId = 'toss' | 'kis' | 'kb';
+export type BrokerId = 'toss' | 'kis' | 'kb' | 'samsung' | 'mirae';
 
 export interface BrokerSummary {
   id: BrokerId;
@@ -100,11 +100,9 @@ export interface MonthlySummaryRow {
   count: number;
 }
 
-export interface CredentialStatus {
-  toss: boolean;
-  kis: boolean;
-  kb: boolean;
-}
+// CSV 전용 브로커(KB/삼성/미래에셋)는 자격증명이 없어 이 응답에 값이 없을 수
+// 있다 — Partial. 고정 필드 대신 BrokerId로 인덱싱할 수 있어야 해서 Record로 바꿈.
+export type CredentialStatus = Partial<Record<BrokerId, boolean>>;
 
 export interface ExchangeRate {
   baseCurrency: string;

@@ -5,6 +5,7 @@ import DividendsChart from '../components/DividendsChart';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
+import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
 
 // export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
 // 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
@@ -21,9 +22,6 @@ type PageSize = 10 | 20 | 30 | 'ALL';
 
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 20, 30, 'ALL'];
 const PAGE_GROUP_SIZE = 10;
-
-const BROKER_LABELS: Record<BrokerId, string> = { toss: '토스증권', kis: '한국투자증권', kb: 'KB증권' };
-const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'kb'];
 
 interface BrokerInvested {
   krw: number;
@@ -160,7 +158,9 @@ export default function Dividends() {
       setInvestedLoading(true);
       const brokers = await api.listBrokers().catch(() => []);
       if (cancelled) return;
-      const configured = brokers.filter((b) => b.configured);
+      // CSV 전용 브로커(KB/삼성/미래에셋)는 항상 configured: true로 오지만 실시간
+      // 조회 API 자체가 없다 — 애초에 실패할 게 뻔한 호출을 안 날리게 걸러낸다.
+      const configured = brokers.filter((b) => b.configured && API_BROKER_IDS.includes(b.id));
 
       const results = await Promise.all(
         configured.map(async (b) => {

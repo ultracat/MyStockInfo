@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { BrokerAccount, BrokerId, BrokerSummary, PortfolioOverview } from '../types';
+import type { BrokerAccount, BrokerId, BrokerSummary, PortfolioOverview, StoredHolding } from '../types';
 import HoldingsTable from '../components/HoldingsTable';
 import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
+import { API_BROKER_IDS } from '../brokers';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
 
@@ -13,6 +14,62 @@ const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-
 // 건드리지 않도록 쿨다운을 둔다.
 const AUTO_REFRESH_MS = 60_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 10_000;
+
+// CSV 전용 브로커(KB/삼성/미래에셋 — API 연동 없이 CSV로만 데이터 관리, frontend/
+// brokers.ts의 API_BROKER_IDS 참고)는 라이브 PortfolioOverview가 없다 — 로컬
+// 저장소(holdings-store)에 쌓인 행으로 그 자리에서 합성한다. 필드 하나하나를
+// 그대로 합산하기만 하면 되므로(홀딩스토어 자체가 이미 통화별 매입/평가/손익을
+// 갖고 있음), AmountTile/RateTile/HoldingsTable은 API 브로커용과 완전히 동일하게
+// 재사용된다 — 이 함수가 만드는 모양만 맞으면 그 아래 렌더링은 손댈 필요가 없다.
+function buildPortfolioFromStored(broker: BrokerId, accountId: string, rows: StoredHolding[]): PortfolioOverview {
+  let purchaseKrw = 0;
+  let purchaseUsd = 0;
+  let marketKrw = 0;
+  let marketUsd = 0;
+  let plKrw = 0;
+  let plUsd = 0;
+
+  for (const r of rows) {
+    if (r.currency === 'USD') {
+      purchaseUsd += r.purchaseAmount;
+      marketUsd += r.marketValue;
+      plUsd += r.profitLossAmount;
+    } else {
+      purchaseKrw += r.purchaseAmount;
+      marketKrw += r.marketValue;
+      plKrw += r.profitLossAmount;
+    }
+  }
+
+  const hasUsd = purchaseUsd !== 0 || marketUsd !== 0;
+
+  return {
+    broker,
+    accountId,
+    totalPurchaseAmountKrw: purchaseKrw,
+    totalPurchaseAmountUsd: hasUsd ? purchaseUsd : null,
+    totalMarketValueKrw: marketKrw,
+    totalMarketValueUsd: hasUsd ? marketUsd : null,
+    totalProfitLossKrw: plKrw,
+    totalProfitLossUsd: hasUsd ? plUsd : null,
+    profitLossRate: purchaseKrw > 0 ? plKrw / purchaseKrw : null,
+    positions: rows.map((r) => ({
+      symbol: r.symbol,
+      name: r.name,
+      market: r.market,
+      currency: r.currency,
+      quantity: r.quantity,
+      lastPrice: r.lastPrice,
+      averagePurchasePrice: r.averagePurchasePrice,
+      purchaseAmount: r.purchaseAmount,
+      marketValue: r.marketValue,
+      profitLossAmount: r.profitLossAmount,
+      profitLossRate: r.profitLossRate,
+      commission: r.commission,
+      tax: r.tax,
+    })),
+  };
+}
 
 const HOLDINGS_CSV_HEADER = [
   'broker',
@@ -204,7 +261,14 @@ export default function Dashboard() {
         setManualFxRate(null);
         setLiveFxRate(null);
 
-        const accs = await api.listAccounts(selectedBroker);
+        // CSV 전용 브로커(KB/삼성/미래에셋)는 listAccounts API 자체가 없다 — 로컬
+        // 저장소에 실제로 CSV로 넣어둔 (broker, accountId) 쌍의 accountId를 모아
+        // 계좌 목록처럼 쓴다(새 백엔드 엔드포인트 불필요, 이미 있는 조회로 충분).
+        const accs = API_BROKER_IDS.includes(selectedBroker)
+          ? await api.listAccounts(selectedBroker)
+          : await api
+              .listHoldingsStore({ broker: selectedBroker })
+              .then((rows) => Array.from(new Set(rows.map((r) => r.accountId))).map((id) => ({ id })));
         if (cancelled) return;
         setAccounts(accs);
         if (accs.length > 0) setAccountId(accs[0].id);
@@ -244,9 +308,37 @@ export default function Dashboard() {
   // 시각을 기록해서, 수동 새로고침 버튼의 쿨다운 판단 기준으로도 같이 쓴다.
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
 
+  // CSV 전용 브로커는 로컬 저장소를 그 자리에서 PortfolioOverview 모양으로 합성한다
+  // (buildPortfolioFromStored) — CSV 가져오기 성공 직후에도 재선택 없이 화면을
+  // 갱신하려고 effect 밖에서도 부를 수 있게 함수로 뺐다.
+  async function loadStoredPortfolio(broker: BrokerId, accId: string) {
+    const rows = await api.listHoldingsStore({ broker, accountId: accId });
+    setPortfolio(buildPortfolioFromStored(broker, accId, rows));
+    setLastFetchedAt(Date.now());
+  }
+
   useEffect(() => {
     if (!selectedBroker || !accountId) return;
     let cancelled = false;
+
+    // CSV 전용 브로커는 폴링할 라이브 소스가 없다 — 한 번만 로컬 저장소를 읽고
+    // 인터벌을 안 돌린다.
+    if (!API_BROKER_IDS.includes(selectedBroker)) {
+      (async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          await loadStoredPortfolio(selectedBroker, accountId);
+        } catch (e) {
+          if (!cancelled) setError((e as Error).message);
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function fetchPortfolio(opts?: { forceRefresh?: boolean }) {
       try {
@@ -413,6 +505,18 @@ export default function Dashboard() {
               .join('; ')})`
           : `${result.added}건 추가됨`
       );
+
+      // 지금 보고 있는 브로커가 CSV 전용이면, 브로커 재선택 없이 방금 가져온
+      // 데이터가 바로 보이도록 계좌 목록/포트폴리오를 다시 읽는다.
+      if (selectedBroker && !API_BROKER_IDS.includes(selectedBroker)) {
+        const rows = await api.listHoldingsStore({ broker: selectedBroker });
+        const ids = Array.from(new Set(rows.map((r) => r.accountId)));
+        setAccounts(ids.map((id) => ({ id })));
+        const nextAccountId = accountId && ids.includes(accountId) ? accountId : (ids[0] ?? null);
+        setAccountId(nextAccountId);
+        if (nextAccountId) await loadStoredPortfolio(selectedBroker, nextAccountId);
+        else setPortfolio(null);
+      }
     } catch (e) {
       setImportResult((e as Error).message);
     } finally {
@@ -451,14 +555,19 @@ export default function Dashboard() {
 
   const hasUnconvertedUsd = portfolio?.positions.some((p) => p.currency === 'USD') && !effectiveFxRate;
 
-  if (loading && !portfolio) return <p>불러오는 중...</p>;
+  // 브로커/계좌를 아직 하나도 못 골랐을 때만(최초 로딩) 전체 화면을 스피너로
+  // 막는다 — CSV 전용 브로커는 저장된 데이터가 없어도 헤더의 CSV 가져오기
+  // 버튼까지 같이 사라지면 안 되므로, `!portfolio`로는 더 이상 막지 않는다
+  // (예전엔 `if (!portfolio) return null`이라 빈 화면이 됐음).
+  if (loading && brokers.length === 0) return <p>불러오는 중...</p>;
   if (error)
     return (
       <p className="notice text-critical" style={{ whiteSpace: 'pre-wrap' }}>
         {error}
       </p>
     );
-  if (!portfolio) return null;
+
+  const isCurrentBrokerApi = !!selectedBroker && API_BROKER_IDS.includes(selectedBroker);
 
   return (
     <div>
@@ -472,9 +581,11 @@ export default function Dashboard() {
             {importing ? '가져오는 중...' : 'CSV 가져오기'}
           </button>
           <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
-          <button className="ghost" onClick={handleRefresh} disabled={refreshing}>
-            {refreshing ? '새로고침 중...' : '새로고침'}
-          </button>
+          {isCurrentBrokerApi && (
+            <button className="ghost" onClick={handleRefresh} disabled={refreshing}>
+              {refreshing ? '새로고침 중...' : '새로고침'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -531,58 +642,70 @@ export default function Dashboard() {
         </div>
       )}
 
-      {hasUnconvertedUsd && (
+      {!portfolio && !loading && (
         <div className="notice">
-          USD 종목이 있지만 환율을 가져오지 못해 비중(%) 계산에서 제외됩니다. 설정 화면에서 USD/KRW 환율을
-          직접 입력하시거나, 토스증권 연동 상태를 확인해주세요.
+          {isCurrentBrokerApi
+            ? '표시할 데이터가 없습니다.'
+            : '저장된 데이터가 없습니다 — 위의 "CSV 가져오기"로 보유종목을 등록해주세요.'}
         </div>
       )}
 
-      {!hasUnconvertedUsd && effectiveFxRate && portfolio.positions.some((p) => p.currency === 'USD') && (
-        <div className="notice">
-          USD 종목 비중 계산에 적용된 환율: 1 USD = {krw.format(Math.round(effectiveFxRate))}원
-          {manualFxRate ? ' (설정에서 직접 입력)' : ' (토스증권 실시간 조회)'}
-        </div>
+      {portfolio && (
+        <>
+          {hasUnconvertedUsd && (
+            <div className="notice">
+              USD 종목이 있지만 환율을 가져오지 못해 비중(%) 계산에서 제외됩니다. 설정 화면에서 USD/KRW 환율을
+              직접 입력하시거나, 토스증권 연동 상태를 확인해주세요.
+            </div>
+          )}
+
+          {!hasUnconvertedUsd && effectiveFxRate && portfolio.positions.some((p) => p.currency === 'USD') && (
+            <div className="notice">
+              USD 종목 비중 계산에 적용된 환율: 1 USD = {krw.format(Math.round(effectiveFxRate))}원
+              {manualFxRate ? ' (설정에서 직접 입력)' : ' (토스증권 실시간 조회)'}
+            </div>
+          )}
+
+          <div className="summary-row">
+            <AmountTile
+              label="총 매입금액"
+              krwAmount={portfolio.totalPurchaseAmountKrw}
+              usdAmount={portfolio.totalPurchaseAmountUsd}
+              hasUsd={hasUsdHoldings}
+              fxRate={effectiveFxRate}
+            />
+            <AmountTile
+              label="총 평가금액"
+              krwAmount={portfolio.totalMarketValueKrw}
+              usdAmount={portfolio.totalMarketValueUsd}
+              hasUsd={hasUsdHoldings}
+              fxRate={effectiveFxRate}
+            />
+            <AmountTile
+              label="총 손익금액"
+              krwAmount={portfolio.totalProfitLossKrw}
+              usdAmount={portfolio.totalProfitLossUsd}
+              hasUsd={hasUsdHoldings}
+              fxRate={effectiveFxRate}
+              signed
+            />
+            <RateTile
+              label="손익률"
+              krwPl={portfolio.totalProfitLossKrw}
+              krwInvested={portfolio.totalPurchaseAmountKrw}
+              usdPl={portfolio.totalProfitLossUsd}
+              usdInvested={portfolio.totalPurchaseAmountUsd}
+              hasUsd={hasUsdHoldings}
+              fxRate={effectiveFxRate}
+              fallbackRate={portfolio.profitLossRate}
+            />
+          </div>
+
+          <div className="card">
+            <HoldingsTable rows={rows} />
+          </div>
+        </>
       )}
-
-      <div className="summary-row">
-        <AmountTile
-          label="총 매입금액"
-          krwAmount={portfolio.totalPurchaseAmountKrw}
-          usdAmount={portfolio.totalPurchaseAmountUsd}
-          hasUsd={hasUsdHoldings}
-          fxRate={effectiveFxRate}
-        />
-        <AmountTile
-          label="총 평가금액"
-          krwAmount={portfolio.totalMarketValueKrw}
-          usdAmount={portfolio.totalMarketValueUsd}
-          hasUsd={hasUsdHoldings}
-          fxRate={effectiveFxRate}
-        />
-        <AmountTile
-          label="총 손익금액"
-          krwAmount={portfolio.totalProfitLossKrw}
-          usdAmount={portfolio.totalProfitLossUsd}
-          hasUsd={hasUsdHoldings}
-          fxRate={effectiveFxRate}
-          signed
-        />
-        <RateTile
-          label="손익률"
-          krwPl={portfolio.totalProfitLossKrw}
-          krwInvested={portfolio.totalPurchaseAmountKrw}
-          usdPl={portfolio.totalProfitLossUsd}
-          usdInvested={portfolio.totalPurchaseAmountUsd}
-          hasUsd={hasUsdHoldings}
-          fxRate={effectiveFxRate}
-          fallbackRate={portfolio.profitLossRate}
-        />
-      </div>
-
-      <div className="card">
-        <HoldingsTable rows={rows} />
-      </div>
     </div>
   );
 }

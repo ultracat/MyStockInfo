@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
-
-const BROKERS: { id: BrokerId; label: string; available: boolean }[] = [
-  { id: 'toss', label: '토스증권', available: true },
-  { id: 'kis', label: '한국투자증권', available: true },
-  { id: 'kb', label: 'KB증권', available: false },
-];
+import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
 
 export default function Settings() {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
@@ -100,27 +95,34 @@ export default function Settings() {
             </tr>
           </thead>
           <tbody>
-            {BROKERS.map((b) => (
-              <tr key={b.id}>
-                <td>{b.label}</td>
-                <td>
-                  {!b.available
-                    ? '준비 중'
-                    : status?.[b.id]
-                      ? <span className="text-good">연결됨</span>
-                      : '미설정'}
-                </td>
-                <td>
-                  {b.available && status?.[b.id] && (
-                    <button className="ghost" onClick={() => onClearCredential(b.id)}>
-                      연결 해제
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {BROKER_ORDER.map((id) => {
+              const isApiBroker = API_BROKER_IDS.includes(id);
+              return (
+                <tr key={id}>
+                  <td>{BROKER_LABELS[id]}</td>
+                  <td>
+                    {!isApiBroker
+                      ? 'CSV 전용'
+                      : status?.[id]
+                        ? <span className="text-good">연결됨</span>
+                        : '미설정'}
+                  </td>
+                  <td>
+                    {isApiBroker && status?.[id] && (
+                      <button className="ghost" onClick={() => onClearCredential(id)}>
+                        연결 해제
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 12 }}>
+          KB증권/삼성증권/미래에셋증권은 API 연동 없이 CSV로 보유종목·매매내역을 직접 관리합니다 — 보유
+          종목/매매내역 화면에서 CSV 가져오기를 이용하세요.
+        </p>
       </div>
 
       <div className="card">
@@ -129,9 +131,9 @@ export default function Settings() {
           <div className="form-row">
             <label>증권사</label>
             <select value={broker} onChange={(e) => setBroker(e.target.value as BrokerId)}>
-              {BROKERS.filter((b) => b.available).map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.label}
+              {BROKER_ORDER.filter((id) => API_BROKER_IDS.includes(id)).map((id) => (
+                <option key={id} value={id}>
+                  {BROKER_LABELS[id]}
                 </option>
               ))}
             </select>

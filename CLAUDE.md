@@ -1,8 +1,12 @@
 # MyStock
 
 여러 증권사 Open API를 연동해 보유 종목, 매입가, 손익, 비중, 배당금을 한 화면에서 보는
-Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS)**이 연동되어 있고, KB증권은
-어댑터를 추가하는 방식으로 확장하도록 설계되어 있다.
+Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS)**이 API로 연동되어 있고,
+**KB증권/삼성증권/미래에셋증권**은 API 연동 없이 CSV로 보유종목·매매내역을 직접
+관리한다(어댑터를 만들 계획 없음 — CSV 전용으로 확정된 결정, `backend/CLAUDE.md`의
+`knownBrokers.ts` 참고). 새 증권사를 API로 연동하려면 아래 "브로커 확장 포인트"를 따르고,
+API 연동 없이 CSV로만 지원하려면 `backend/src/brokers/knownBrokers.ts`에
+`hasApiIntegration: false`로 한 줄만 추가하면 된다.
 
 ## 워크스페이스 구조
 
@@ -62,7 +66,6 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 
 ## 다음 단계 (미구현)
 
-- KB증권 어댑터 추가
 - KIS 모의투자(paper trading) 지원
 - 배포용 빌드 코드 서명/공증 (Apple Developer ID 필요 — 현재는 본인 Mac 실행 전용)
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

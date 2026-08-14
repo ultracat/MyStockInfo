@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { deleteTrade, listTrades, upsertFromImport, type ImportTradeInput } from '../db/tradesStore';
+import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
 
 export const tradesStoreRouter = Router();
 
-const BROKER_IDS: BrokerId[] = ['toss', 'kis', 'kb'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 tradesStoreRouter.get('/', (req, res) => {

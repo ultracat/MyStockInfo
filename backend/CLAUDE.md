@@ -25,8 +25,17 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   **in-flight promise 공유**(같은 key로 거의 동시에 온 호출은 하나만 실제 요청). React
   StrictMode의 effect 이중실행이 이 없이는 rate-limit과 무관해 보이는 에러(토스
   `account-not-found` 등)로 샐 수 있어서 생긴 장치 — 새 브로커 클라이언트도 이걸로 감싼다.
-- `registry.ts` — `getAdapter`/`listAdapters`. **KB증권은 등록 안 돼 있음**(어댑터 미구현,
-  아래 참고).
+- `registry.ts` — `getAdapter`/`listAdapters`. **KB증권/삼성증권/미래에셋증권은
+  등록 안 돼 있음**(어댑터를 만들 계획 자체가 없음 — CSV 전용, 아래 `knownBrokers.ts`
+  참고).
+- `knownBrokers.ts` — `KNOWN_BROKERS`(`{id, displayName, hasApiIntegration}[]`),
+  `BROKER_IDS`. 브로커 id/표시 이름의 단일 소스 — `routes/dividends.ts`/
+  `holdingsStore.ts`/`tradesStore.ts`/`settings.ts`/`accounts.ts`가 전부 여기서
+  가져다 쓴다(예전엔 각 라우트가 `['toss','kis','kb']`를 따로 하드코딩했었음). 새
+  브로커(API 연동이든 CSV 전용이든)를 추가할 땐 여기 한 줄만 추가하면 위 라우트들의
+  검증/목록에 자동 반영된다. `hasApiIntegration: false`인 브로커는 `registry.ts`에
+  없어도 되고, `GET /api/accounts`가 항상 `configured: true`로 돌려준다(자격증명
+  개념이 없어서 — 프론트가 바로 선택할 수 있게).
 - `credentialFields.ts` — 브로커별 자격증명 필드 명세. 설정 화면 폼이 이걸 그대로 읽어
   렌더링하므로 필드 추가 시 프론트 수정 불필요.
 - `rateLimiter.ts` — `RateLimiter`(직렬 스케줄링 + `learnFromHeaders` 자가보정 +
@@ -52,9 +61,13 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   필요해서, `kisGet`이 `limiter`/`maxRetries`를 파라미터로 받아 호출부가 TR별로 다른
   페이싱/재시도 예산(기본 3회, 이 TR은 5회+1/2/4/8/16초 백오프)을 쓸 수 있다.
 
-새 브로커 추가 시 어댑터+registry 등록+credentialFields(+필요하면 전용 리미터)만
-만들면 라우트/프론트는 그대로 재사용된다. **KB증권은 이 넷 다 아직 없다** — 로컬
-저장소/CSV import는 `broker: 'kb'`를 받아들이지만(아래), 계좌 조회/실시간 동기화는 안 됨.
+**진짜 API 연동이 필요한** 새 브로커는 어댑터+registry 등록+credentialFields(+필요하면
+전용 리미터)만 만들면 라우트/프론트는 그대로 재사용된다. **KB증권/삼성증권/
+미래에셋증권은 이 넷 다 없고, 앞으로도 안 만든다**(사용자 요청 — API 연동 없이 CSV로만
+데이터 관리) — `knownBrokers.ts`에 `hasApiIntegration: false`로 등록만 돼 있고, 로컬
+저장소/CSV import(아래)가 이 broker id를 받아들인다. 계좌 목록 개념도 라이브 API가
+아니라 로컬 저장소에 실제로 CSV로 넣어둔 `accountId`들을 모아 대신한다(프론트
+`API_BROKER_IDS.includes(broker)`로 분기, `frontend/CLAUDE.md` 참고).
 
 ## 라우트 (`src/routes/`)
 
@@ -65,8 +78,8 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 ## 로컬 저장소 + write-through 동기화
 
 보유종목(`src/db/holdingsStore.ts`, `holdings.json`)과 매매내역(`src/db/tradesStore.ts`,
-`trades.json`)은 KB증권처럼 API 연동이 없는 브로커의 데이터를 다루기 위해 만든 로컬
-저장소다 — `dividends.ts`/`JsonStore` 패턴 그대로. `routes/holdings.ts`/`routes/trades.ts`는
+`trades.json`)은 KB증권/삼성증권/미래에셋증권처럼 API 연동이 없는 브로커의 데이터를
+다루기 위해 만든 로컬 저장소다 — `dividends.ts`/`JsonStore` 패턴 그대로. `routes/holdings.ts`/`routes/trades.ts`는
 실시간 조회가 성공할 때마다(브로커 무관) 이 저장소도 같이 갱신한다(write-through, 저장
 실패는 try/catch로 삼켜서 라이브 응답을 막지 않음) — 그래서 API 연동 브로커도 로컬에
 최신 상태가 항상 반영돼 있다. 보유종목은 `replaceSnapshot`(해당 broker+accountId의 기존
@@ -76,7 +89,7 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 실시간 동기화(전체 교체)와 달리 사용자가 일부 종목만 넣어도 나머지가 안 사라지게.
 
 `GET /api/holdings-store`, `GET /api/trades-store`(둘 다 `?broker=&accountId=` 필터)로
-저장된 걸 조회한다 — CSV 전체 내보내기와 KB증권처럼 실시간 조회가 안 되는 브로커의 데이터
+저장된 걸 조회한다 — CSV 전체 내보내기와 CSV 전용 브로커(실시간 조회가 안 되는)의 데이터
 확인용.
 
 ## CSV 가져오기 (배당금/보유종목/매매내역 공통 패턴)
@@ -102,7 +115,7 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/stockNameResolver.ts`, `src/routes/stockInfo.ts`)
 
 토스 종목 기본 정보 조회(`GET /api/v1/stocks?symbols=`, 최대 200개 콤마 동시조회)로 자동
-조회 — 계좌와 무관한 시세 참조 데이터라 브로커가 `kis`/`kb`인 기록에도 그대로 쓴다(토스
+조회 — 계좌와 무관한 시세 참조 데이터라 브로커가 `kis`/CSV 전용인 기록에도 그대로 쓴다(토스
 미연동이면 409, 프론트는 직접 입력으로 폴백). **`name`이 심볼과 같은 경우가 있다** —
 한글명이 없는 종목(주로 미국 ETF)은 `name`이 티커 그대로 내려와서, `displayNameOf(info)`가
 `name === symbol`(대소문자 무시)일 때만 `englishName`으로 대체한다. 조회 결과는

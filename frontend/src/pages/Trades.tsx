@@ -1,10 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { BrokerAccount, BrokerId, BrokerSummary, TradeRecord } from '../types';
+import type { BrokerAccount, BrokerId, BrokerSummary, StoredTrade, TradeRecord } from '../types';
 import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
+import { API_BROKER_IDS } from '../brokers';
+
+// CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
+// TradeRecord 모양으로 바꾼다 — name은 항상 null(화면이 심볼 폴백을 지원).
+function mapStoredTrade(t: StoredTrade): TradeRecord {
+  return {
+    id: t.id,
+    symbol: t.symbol,
+    name: null,
+    side: t.side,
+    quantity: t.quantity,
+    price: t.price,
+    amount: t.amount,
+    currency: t.currency,
+    commission: t.commission,
+    tax: t.tax,
+    executedAt: t.executedAt,
+  };
+}
 
 // name·id 둘 다 없다 — name은 TradeRecord가 원래도 선택적이고 화면이 이미 심볼로
 // 폴백 표시하므로 자동조회가 불필요(배당금/보유종목과 다른 점), id는 브로커 고유
@@ -133,7 +152,18 @@ export default function Trades() {
         setLoading(true);
         setError(null);
         setAccountId(null);
-        const accs = await api.listAccounts(selectedBroker);
+        // 브로커를 바꾸는 즉시 이전 브로커의 매매내역을 지운다 — 새 브로커의 계좌
+        // 목록이 비어 있으면(CSV 전용 브로커에 아직 아무 것도 안 넣은 경우) 아래
+        // 매매내역 조회 effect가 accountId===null이라 아예 안 돌아서, 이 reset이
+        // 없으면 화면에 이전 브로커의 표가 그대로 남아있게 된다.
+        setTrades([]);
+        // CSV 전용 브로커(KB/삼성/미래에셋)는 listAccounts API가 없다 — 로컬
+        // 저장소(trades-store)에 실제로 CSV로 넣어둔 accountId를 계좌 목록처럼 쓴다.
+        const accs = API_BROKER_IDS.includes(selectedBroker)
+          ? await api.listAccounts(selectedBroker)
+          : await api
+              .listTradesStore({ broker: selectedBroker })
+              .then((rows) => Array.from(new Set(rows.map((r) => r.accountId))).map((id) => ({ id })));
         if (cancelled) return;
         setAccounts(accs);
         if (accs.length > 0) setAccountId(accs[0].id);
@@ -155,11 +185,18 @@ export default function Trades() {
       try {
         setLoading(true);
         setError(null);
-        const today = new Date().toISOString().slice(0, 10);
-        const from = `${year}-01-01`;
-        const to = year === CURRENT_YEAR ? today : `${year}-12-31`;
-        const data = await api.getTradeHistory(selectedBroker, accountId, from, to);
-        if (!cancelled) setTrades(data);
+        if (API_BROKER_IDS.includes(selectedBroker)) {
+          const today = new Date().toISOString().slice(0, 10);
+          const from = `${year}-01-01`;
+          const to = year === CURRENT_YEAR ? today : `${year}-12-31`;
+          const data = await api.getTradeHistory(selectedBroker, accountId, from, to);
+          if (!cancelled) setTrades(data);
+        } else {
+          // CSV 전용 브로커는 연도별 라이브 조회가 없다 — 로컬 저장소에 있는
+          // 전부를 한 번에 받아오고, 연도/월 필터링은 기존처럼 클라이언트에서 한다.
+          const stored = await api.listTradesStore({ broker: selectedBroker, accountId });
+          if (!cancelled) setTrades(stored.map(mapStoredTrade));
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -266,6 +303,21 @@ export default function Trades() {
               .join('; ')})`
           : `${result.added}건 추가됨`
       );
+
+      // 지금 보고 있는 브로커가 CSV 전용이면, 브로커 재선택 없이 방금 가져온
+      // 데이터가 바로 보이도록 계좌 목록/매매내역을 다시 읽는다.
+      if (selectedBroker && !API_BROKER_IDS.includes(selectedBroker)) {
+        const stored = await api.listTradesStore({ broker: selectedBroker });
+        const ids = Array.from(new Set(stored.map((t) => t.accountId)));
+        setAccounts(ids.map((id) => ({ id })));
+        const nextAccountId = accountId && ids.includes(accountId) ? accountId : (ids[0] ?? null);
+        setAccountId(nextAccountId);
+        if (nextAccountId) {
+          setTrades(stored.filter((t) => t.accountId === nextAccountId).map(mapStoredTrade));
+        } else {
+          setTrades([]);
+        }
+      }
     } catch (e) {
       setImportResult((e as Error).message);
     } finally {

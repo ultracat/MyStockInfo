@@ -1,12 +1,11 @@
 import { Router } from 'express';
 import { deleteHolding, listHoldings, upsertHoldings, type UpsertHoldingInput } from '../db/holdingsStore';
-import type { BrokerId } from '../brokers/types';
 import { resolveStockNames } from '../stockNameResolver';
 import { isTossConfigured } from '../brokers/toss/tossClient';
+import { BROKER_IDS } from '../brokers/knownBrokers';
+import type { BrokerId } from '../brokers/types';
 
 export const holdingsStoreRouter = Router();
-
-const BROKER_IDS: BrokerId[] = ['toss', 'kis', 'kb'];
 
 holdingsStoreRouter.get('/', (req, res) => {
   const broker = typeof req.query.broker === 'string' ? (req.query.broker as BrokerId) : undefined;

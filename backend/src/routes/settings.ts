@@ -2,18 +2,17 @@ import { Router } from 'express';
 import { clearCredential, hasCredential, setCredentialFields } from '../credentials';
 import { getSettings, setUsdKrwRate } from '../db/settings';
 import { CREDENTIAL_FIELDS } from '../brokers/credentialFields';
+import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
 
-const SUPPORTED_BROKERS: BrokerId[] = ['toss', 'kis', 'kb'];
-
 function isBrokerId(value: string): value is BrokerId {
-  return (SUPPORTED_BROKERS as string[]).includes(value);
+  return (BROKER_IDS as string[]).includes(value);
 }
 
 export const settingsRouter = Router();
 
 settingsRouter.get('/credentials', (_req, res) => {
-  const status = Object.fromEntries(SUPPORTED_BROKERS.map((b) => [b, hasCredential(b)]));
+  const status = Object.fromEntries(BROKER_IDS.map((b) => [b, hasCredential(b)]));
   res.json(status);
 });
 

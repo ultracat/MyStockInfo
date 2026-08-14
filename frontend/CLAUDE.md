@@ -15,6 +15,11 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `BACKEND_PORT`와 일치해야 한다. 에러 응답은 `{error, detail?}`을 기대.
 - `src/types.ts` — 백엔드 응답 타입 미러링(`brokers/types.ts`와 형태 유지). CSV 관련
   로컬 저장소 타입은 `StoredHolding`/`StoredTrade`.
+- `src/brokers.ts` — `BROKER_LABELS`/`BROKER_ORDER`/`API_BROKER_IDS`. 브로커 표시
+  이름/순서의 단일 소스(백엔드 `brokers/knownBrokers.ts`와 짝) — Dividends.tsx/
+  Settings.tsx/Dashboard.tsx/Trades.tsx가 전부 여기서 가져다 쓴다. `API_BROKER_IDS`
+  (토스/KIS만)에 없는 브로커는 CSV 전용(KB/삼성/미래에셋) — 실시간 조회 없이 로컬
+  저장소로만 동작한다, 아래 "CSV 전용 브로커" 참고.
 - `src/csv.ts` — RFC4180 최소 파서/직렬화(`parseCsv`/`toCsv`/`downloadCsv`, 라이브러리
   없이 직접 구현). `downloadCsv`는 UTF-8 BOM을 붙인다(없으면 엑셀/한글 스프레드시트가
   UTF-8로 안 열림). 배당금/보유종목/매매내역 세 화면이 공용으로 쓴다.
@@ -23,7 +28,11 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트.
 - `src/pages/Settings.tsx` — 브로커별 자격증명 폼. **하드코딩이 아니라 백엔드의
   `GET /api/settings/credential-fields`를 읽어 동적 렌더링** — 새 브로커/필드는
-  백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨.
+  백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨. "증권사 연동 상태" 표는
+  `BROKER_ORDER` 전체를 보여주되 `API_BROKER_IDS`에 없는 브로커(CSV 전용)는 "준비
+  중"이 아니라 "CSV 전용"으로 표시한다("준비 중"은 "언젠가 API 연동될 예정"이라는
+  잘못된 인상을 줌 — API 연동을 안 하기로 한 결정임을 명확히 함). "API 키 등록" 폼의
+  브로커 선택지에는 API 브로커만 넣는다(CSV 전용은 자격증명 필드가 없음).
 
 ## 공용 패턴 (여러 페이지가 공유)
 
@@ -51,6 +60,20 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   자동조회 자체가 불필요. 가져오기는 백엔드에 그대로 배열로 보내고, 백엔드가 행별로
   검증해 `{ added, failed: [{row, error}] }`를 돌려주면 그 메시지를 그대로 보여준다
   (실패 행이 있어도 나머지는 저장됨 — backend/CLAUDE.md의 "CSV 가져오기" 참고).
+- **CSV 전용 브로커 분기**(Dashboard.tsx/Trades.tsx): 브로커/계좌 관련 effect마다
+  `API_BROKER_IDS.includes(selectedBroker)`로 갈라진다 — API 브로커는 기존 라이브
+  조회(`api.listAccounts`/`getPortfolio`/`getTradeHistory`) 그대로, CSV 전용은 계좌
+  목록을 `api.listHoldingsStore({broker})`/`listTradesStore({broker})` 결과의 고유
+  `accountId`로 대신하고(별도 백엔드 엔드포인트 없음), 포트폴리오/매매내역도 로컬
+  저장소 조회 결과를 화면이 원래 쓰는 모양(`PortfolioOverview`/`TradeRecord[]`)으로
+  그 자리에서 바꿔 넣는다 — 그 아래 렌더링(스탯 타일/표/차트)은 API 브로커와 완전히
+  동일하게 재사용된다. **브로커를 바꾸는 effect는 항상 이전 브로커의 데이터부터
+  지운다**(`setPortfolio(null)`/`setTrades([])`) — 새 브로커의 계좌가 0개면(CSV
+  전용인데 아직 아무 것도 안 넣은 경우) 그 아래 조회 effect 자체가 `accountId===null`
+  이라 안 도는데, 이 reset이 없으면 이전 브로커의 데이터가 화면에 그대로 남는다(실제로
+  Trades.tsx에서 한 번 발생해서 고침 — Dashboard.tsx는 원래도 이 reset이 있어서
+  안 겪었음). CSV 가져오기가 성공하면 지금 보고 있는 브로커가 CSV 전용일 때 계좌
+  목록/데이터를 재조회해서 브로커 재선택 없이 바로 반영한다.
 
 ## 페이지
 
@@ -74,6 +97,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   전체(모든 브로커/계좌)를 대상으로 한다 — 컬럼에 `accountId`가 있어서 대상을 고르는
   UI가 따로 필요 없다(배당금과 다른 점: 배당금은 계좌 개념이 없어 목록 필터를 그대로
   내보내기 범위로 재사용했지만, 보유종목은 행 자체에 이미 범위 정보가 있음).
+  CSV 전용 브로커는 `buildPortfolioFromStored()`가 로컬 저장소 행을 통화별로 합산해
+  `PortfolioOverview`를 그 자리에서 만든다(위 "CSV 전용 브로커 분기" 참고) — 1분
+  자동갱신/새로고침 버튼은 라이브 소스가 없어서 안 돈다(새로고침 버튼 자체를 안
+  보여줌). 저장된 데이터가 하나도 없으면(막 추가된 CSV 전용 브로커) 예전엔
+  `if (!portfolio) return null`이라 헤더의 CSV 가져오기 버튼까지 같이 사라져서
+  가져오기를 할 방법이 없어졌었다 — 지금은 `portfolio`가 없어도 헤더/선택
+  드롭다운은 항상 그리고, 그 아래(스탯 타일/표)만 `portfolio &&`로 조건부 렌더링한다.
 - `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회(두 브로커 다 개인 배당 지급
   내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
   그대로 저장(backend/CLAUDE.md 참고). "증권사별 배당금 총계" 표는 달러 투자금/배당금이
@@ -81,7 +111,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   표현). 투자금(`totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없어 마운트 시
   `listBrokers`→`listAccounts`→`getPortfolio`로 별도 조회(브로커 하나 실패해도 나머지는
   보여야 하므로 개별 try/catch) — **연도 필터를 안 탄다**(지금 시점의 실제 투자 원금이라
-  연도별로 안 나뉨). 연도 필터(`year`)는 서버에 다시 안 묻고 클라이언트에서 걸러
+  연도별로 안 나뉨). 이 조회는 `API_BROKER_IDS`에 없는 브로커(CSV 전용)를 먼저
+  걸러내고 시작한다 — 어차피 라이브 API가 없어 매번 실패할 호출을 날릴 이유가 없다. 연도 필터(`year`)는 서버에 다시 안 묻고 클라이언트에서 걸러
   월별/증권사별 집계·목록까지 전부 다시 계산한다. 그래프 전용 증권사 필터
   (`chartBroker`)와 목록 전용 필터(`listBroker`)는 완전히 독립된 state — 후자가
   페이지네이션 대상(`listFilteredRecords`)의 기준이다. "월별 배당금"+"증권사별 배당금
@@ -103,7 +134,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   (`TradesChart.tsx` 참고). "월별 매수/매도" 그래프 카드도 `CollapseToggle`로 접힌다.
   **CSV 내보내기**는 Dashboard.tsx와 같은 이유로 `GET /api/trades-store` 전체를
   대상으로 하고, **가져오기**도 대상 선택 없이 CSV 행 자체의 `broker`/`accountId`를
-  그대로 쓴다.
+  그대로 쓴다. CSV 전용 브로커는 연도별 라이브 조회 대신 로컬 저장소 전체를 한 번에
+  받아와 `mapStoredTrade()`로 `TradeRecord` 모양(`name: null`)으로 바꾸고, 이후
+  연도/월 필터링은 기존 클라이언트 로직을 그대로 재사용한다(서버가 연도 개념을 몰라도
+  됨).
 - `src/components/TradesChart.tsx` — 월별 매수(`--series-1`)/매도(`--series-2`) 그룹형
   막대 그래프. **원화·달러를 환율로 합쳐서 하나의 막대로 그리지 않는다**(단위/스케일이
   달라서 — dataviz 스킬의 "두 측정값은 두 차트로" 원칙) — 달러 거래가 있으면 원화

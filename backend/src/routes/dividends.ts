@@ -3,12 +3,11 @@ import { addDividend, deleteDividend, listDividends, updateDividendNames, type N
 import { cacheStockName } from '../db/stockNames';
 import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
-import type { BrokerId } from '../brokers/types';
 import { resolveStockNames } from '../stockNameResolver';
+import { BROKER_IDS } from '../brokers/knownBrokers';
+import type { BrokerId } from '../brokers/types';
 
 export const dividendsRouter = Router();
-
-const BROKER_IDS: BrokerId[] = ['toss', 'kis', 'kb'];
 
 // 단건 추가(POST /)용 검증 — 종목명 자동조회는 프론트가 이미 하고 그 결과를 같이
 // 보내므로 name을 그대로 요구한다. CSV 가져오기(POST /import)는 name 없이 심볼만

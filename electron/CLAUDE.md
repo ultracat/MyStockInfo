@@ -46,10 +46,14 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
 - 백엔드 코드를 고쳤다면 **`npm run build:backend`를 먼저 실행**하지 않으면 이 워크스페이스가
   참조하는 `@mystock/backend`(`dist/index.js`)가 최신이 아니다.
 
-## Mac 배포용 빌드 (`npm run package:mac`, 루트에서)
+## 플랫폼별 배포용 빌드 (`npm run package:mac`/`package:linux`/`package:win`, 루트에서)
 
-`electron-builder`로 `.app`/`.dmg`를 만든다. 설정은 루트 `package.json`의 `"build"` 키에
-있다 — 이 모노레포 구조 때문에 몇 가지가 일반적인 electron-builder 세팅과 다르다:
+`electron-builder`로 플랫폼별 산출물을 만든다. 설정은 루트 `package.json`의 `"build"` 키에
+있고, `mac`/`linux`/`win` 서브키로 플랫폼별 타겟을 나눠 지정한다. 네이티브(`.node`) 모듈이
+전혀 없는 앱이라(`express`/`cors` 체인 전부 순수 JS) `asar`/`npmRebuild` 등 아래 공통
+설정은 세 플랫폼 모두에 그대로 적용되고, 크로스 컴파일 이슈(네이티브 모듈 재빌드 실패 등)
+걱정 없이 다른 OS용으로도 빌드를 시도해볼 수 있다. 이 모노레포 구조 때문에 몇 가지가
+일반적인 electron-builder 세팅과 다르다:
 
 - **`directories.app`을 따로 지정하지 않는다** → 루트가 곧 "app" package.json이 된다.
   electron-builder가 어떤 `node_modules`를 포함할지 결정할 때 이 package.json의
@@ -89,6 +93,10 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   쓰는 이상 못 줄인다. 우리 코드(`node_modules`+`frontend`+`electron`)는 asar로 묶은
   뒤 1.8MB밖에 안 된다 — 여기서 더 짤 게 별로 없다는 뜻. "용량이 너무 크다"고 느껴지면
   범인은 거의 항상 Electron 자체지 이 앱 코드가 아니다.
+공통 설정(위 `files`/`asar`/`npmRebuild`) 위에, 플랫폼별로 아래 서브키가 따로 있다.
+
+### Mac (`build.mac`, `npm run package:mac`)
+
 - **코드 서명/공증 안 함** (`mac.identity: null`). Apple Developer ID 인증서가 없어서
   의도적으로 뺐다 — 만든 사람 본인 Mac에서 실행하는 건 문제없지만(첫 실행 시 우클릭 →
   열기 필요, Gatekeeper 경고), 다른 사람에게 배포하면 "손상되었거나 확인할 수 없는
@@ -99,10 +107,50 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
 - `main.ts`가 `app.setName('@mystock/electron')`으로 이름을 고정하므로, 패키징된 앱도
   dev와 똑같이 `~/Library/Application Support/@mystock/electron/`을 쓴다 — 기존에 dev에서
   입력해둔 자격증명/배당 기록을 그대로 이어서 쓸 수 있다(별도 마이그레이션 불필요).
-- 산출물은 `release/`(gitignore됨)에 생긴다. 실제로 빌드해서 `.app`을 직접 실행 →
-  백엔드가 4317 포트에 정상 바인딩 → `/api/accounts`/`/api/dividends` 응답 확인 →
-  `.dmg` 마운트까지 확인해서 검증했다(asar 활성화 이후에도 다시 실행해서 재검증함 —
-  `require('@mystock/backend')`와 `loadFile()` 둘 다 asar 안에서 투명하게 잘 풀린다).
+- 타겟은 `dmg` 하나. 산출물은 `release/`(gitignore됨)에 생긴다. 실제로 빌드해서 `.app`을
+  직접 실행 → 백엔드가 4317 포트에 정상 바인딩 → `/api/accounts`/`/api/dividends` 응답
+  확인 → `.dmg` 마운트까지 확인해서 검증했다(asar 활성화 이후에도 다시 실행해서
+  재검증함 — `require('@mystock/backend')`와 `loadFile()` 둘 다 asar 안에서 투명하게
+  잘 풀린다).
+
+### Linux (`build.linux`, `npm run package:linux`) — 검증 완료
+
+- **타겟은 `AppImage` 하나.** 설치 없이 실행 파일 하나로 배포 가능해서 골랐다(Mac의
+  서명 없는 `.dmg`와 같은 맥락 — 별도 배포 채널/서명 없이 그냥 실행할 수 있는 형태).
+  `deb`/`rpm` 등 배포판 패키지는 추가하지 않았다 — `deb`는 electron-builder가
+  `author`에 이메일이 있어야 빌드되므로(현재 루트 `package.json`의 `author`는 이름
+  문자열만 있음), 개인정보를 커밋된 `package.json`에 넣지 않기 위해 보류했다. 필요해지면
+  `build.linux.target`에 `"deb"`를 추가하고 `author`를 `{name, email}` 객체로 바꾸면 된다.
+- **아이콘 미설정** — 기본 Electron 아이콘이 붙는다(Mac과 동일한 이유로 아직 안 함).
+- `category: "Office"` — `.desktop` 항목의 프리데스크톱 분류. 앱 성격상 "Finance"도
+  가능하지만(Mac의 `public.app-category.finance`와 대응) 리눅스 데스크톱 환경에서
+  메뉴 노출이 더 안정적인 표준 카테고리인 `Office`를 우선 썼다.
+  `build.linux.category`만 바꾸면 된다.
+  Mac과 마찬가지로 `main.ts`의 `app.setName()` 고정 덕분에 사용자 데이터 경로는
+  `~/.config/@mystock/electron/`로 dev와 동일하게 간다.
+- 실제로 이 리눅스 환경(Ubuntu, x64)에서 `npm run package:linux` 전체 빌드 →
+  `release/MyStock-0.1.0.AppImage` 생성 → `xvfb-run`으로 헤드리스 실행 → 백엔드가
+  4317에 바인딩되고 `/api/accounts`가 정상 JSON을 반환하는 것까지 확인했다. 다른
+  배포판(특히 Wayland-only 환경)에서의 실행은 아직 검증되지 않았다.
+
+### Windows (`build.win`, `npm run package:win`) — 설정만 준비, 미검증
+
+- **타겟은 `nsis`**(일반적인 `.exe` 설치 마법사) 하나로 준비해뒀다. `portable` 타겟(설치
+  없이 실행)이 필요해지면 `build.win.target`에 추가하면 된다.
+- **코드 서명 안 함.** Mac과 동일한 이유(인증서 없음) — 서명 없는 `.exe`를 실행하면
+  Windows SmartScreen이 "알 수 없는 게시자" 경고를 띄운다. 여러 사람에게 배포하려면
+  코드 서명 인증서(EV 인증서면 SmartScreen 평판이 즉시 쌓임)가 필요하다.
+  `build.win.certificateFile`/`certificatePassword` 또는 `signtoolOptions`로 나중에
+  추가할 수 있다.
+  아이콘도 미설정 — 기본 Electron 아이콘이 붙는다. `.ico` 파일을 만들어
+  `build.win.icon`에 지정하면 바뀐다.
+- **아직 실제로 빌드/실행해보지 않았다.** 이 저장소는 Linux 환경에서 작업 중이라 `--win`
+  타겟은 (a) Windows 머신에서 직접 빌드하거나 (b) Linux/Mac에서 `wine`을 설치해
+  electron-builder의 크로스 빌드를 쓰는 방법으로만 만들 수 있다(NSIS 인스톨러 생성기
+  자체가 `wine`을 필요로 함). 네이티브(`.node`) 모듈이 없는 앱이라 크로스 빌드가 막힐
+  가능성은 낮지만, 실제 Windows에서 앱을 띄워 백엔드 바인딩/자격증명 저장(`safeStorage`는
+  Windows에서 DPAPI 기반으로 동작)까지 확인하기 전에는 "설정은 있으나 검증 안 됨" 상태로
+  취급한다.
 
 ## 자격증명 암호화와의 관계
 
@@ -113,6 +161,9 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
 
 ## 알려진 제약
 
-- 배포용 빌드는 코드 서명/공증이 안 돼 있다 — 위 "Mac 배포용 빌드" 참고.
+- 배포용 빌드는 세 플랫폼 모두 코드 서명/공증이 안 돼 있다 — 위 "플랫폼별 배포용 빌드"
+  참고.
+- Windows 빌드(`package:win`)는 설정만 준비돼 있고 실제로 빌드/실행해서 검증한 적이
+  없다 — 위 "Windows" 참고.
 - 백엔드 dev 모드 파일 변경 시 자동 재시작 안 됨 — 수동으로 `build:backend` 후 Electron
   재시작 필요.

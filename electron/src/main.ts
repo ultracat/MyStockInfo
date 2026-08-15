@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, Menu } from 'electron';
 import path from 'node:path';
 import { startServer } from '@mystock/backend';
 
@@ -18,6 +18,14 @@ const FRONTEND_DEV_URL = 'http://localhost:5173';
 // path segment — hence the nested "@mystock/electron" folder) so existing
 // local data keeps working without migration.
 app.setName('@mystock/electron');
+
+// Mac은 기본 메뉴가 창 안이 아니라 OS 전역 메뉴바로 가서 눈에 안 띄지만(Cmd+Q 등
+// 표준 단축키도 거기 얹혀 있어서 그대로 둔다), Windows/Linux는 기본 메뉴(File/Edit/
+// View/Window)가 창 안에 그대로 그려져서 커스텀 메뉴 항목이 하나도 없는 이 앱에선
+// 그냥 불필요한 줄로 보인다 — 그 두 플랫폼에서만 완전히 없앤다.
+if (process.platform !== 'darwin') {
+  Menu.setApplicationMenu(null);
+}
 
 let mainWindow: BrowserWindow | null = null;
 

@@ -33,6 +33,11 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
     오픈, 패키징된 빌드는 `frontend/dist/index.html`을 파일로 로드.
   - `webPreferences`: `contextIsolation: true`, `nodeIntegration: false`,
     `sandbox: true` — 렌더러 보안 기본값 유지. 완화하지 않는다.
+  - `process.platform !== 'darwin'`일 때만 `Menu.setApplicationMenu(null)`로 기본
+    메뉴(File/Edit/View/Window)를 없앤다. Mac은 이 메뉴가 창 밖 OS 전역 메뉴바로
+    가서 원래도 창 안엔 안 보이고 Cmd+Q 같은 표준 단축키도 거기 얹혀 있어 그대로
+    둔다 — Windows/Linux만 창 안에 그대로 그려져서(커스텀 메뉴 항목이 하나도 없는
+    이 앱엔 불필요한 줄) 뺐다. Linux AppImage를 처음 화면으로 띄워보고 나서 추가함.
 
 ## 개발/빌드
 

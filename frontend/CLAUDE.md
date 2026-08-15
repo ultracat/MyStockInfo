@@ -151,6 +151,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `npm run dev`(frontend 워크스페이스) → Vite `localhost:5173`. 보통 루트의
   `npm run dev`로 electron과 함께 띄운다. HMR 자동 반영(백엔드와 달리 재빌드 불필요).
 - `npm run build` → `tsc` 타입체크 후 `vite build`.
+- **`vite.config.ts`의 `base: './'`는 지우면 안 된다.** 패키징된 Electron 앱은
+  `electron/src/main.ts`가 `mainWindow.loadFile()`로 `frontend/dist/index.html`을
+  `file://`로 직접 연다(dev처럼 `http://localhost`가 아님) — Vite 기본값인 절대경로
+  (`/assets/...`)로 빌드하면 브라우저가 그걸 파일시스템 루트 기준으로 풀어서
+  `file:///assets/...`를 찾다가 전부 404가 나고, JS가 하나도 안 실행돼 흰 화면(메뉴바만
+  있고 콘텐츠 없음)이 된다. 실제로 Linux 패키징 빌드를 처음 화면으로 띄워봤을 때
+  이 증상으로 발견됐다 — 그 전까지는 Mac 빌드도 백엔드 API 응답만 확인했지 렌더러가
+  실제로 그려지는지 눈으로 확인한 적이 없어서 안 걸렸다(플랫폼과 무관한 버그였다).
+  `base: './'`로 상대경로(`./assets/...`) 빌드를 강제하면 `file://`/`http://` 어느
+  쪽에서도 index.html 기준 상대 경로로 풀려서 둘 다 동작한다.
 
 ## 차트/시각화
 

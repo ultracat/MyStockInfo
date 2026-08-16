@@ -644,8 +644,11 @@ export default function Dividends() {
             <div className="form-row">
               <label>증권사</label>
               <select value={broker} onChange={(e) => setBroker(e.target.value as BrokerId)}>
-                <option value="toss">토스증권</option>
-                <option value="kis">한국투자증권</option>
+                {BROKER_ORDER.map((id) => (
+                  <option key={id} value={id}>
+                    {BROKER_LABELS[id]}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="form-row">

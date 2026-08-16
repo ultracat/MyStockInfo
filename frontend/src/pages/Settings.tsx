@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import type { BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
+import type { AccountLabel, BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
+import { accountLabelKey } from '../accountLabels';
+
+const CSV_ONLY_BROKERS = BROKER_ORDER.filter((id) => !API_BROKER_IDS.includes(id));
 
 export default function Settings() {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
@@ -73,6 +76,116 @@ export default function Settings() {
   }
 
   const activeFields = fieldSpecs?.[broker] ?? [];
+
+  // CSV 전용 브로커의 (broker, accountId) → 별칭. 관리는 여기서만 하고
+  // Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 한다. "알려진 계좌"
+  // 목록은 이미 라벨이 붙은 계좌 + holdings-store/trades-store/배당 기록에 실제로
+  // 나온 accountId 전부의 합집합이다 — 데이터가 없어도 라벨만 미리 등록해둘 수
+  // 있고, 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다.
+  const [knownAccounts, setKnownAccounts] = useState<{ broker: BrokerId; accountId: string }[]>([]);
+  const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [newAccountBroker, setNewAccountBroker] = useState<BrokerId>(CSV_ONLY_BROKERS[0]);
+  const [newAccountId, setNewAccountId] = useState('');
+  const [newAccountLabel, setNewAccountLabel] = useState('');
+
+  async function refreshAccounts() {
+    setAccountsLoading(true);
+    const [labels, allDividends, perBroker] = await Promise.all([
+      api.listAccountLabels(),
+      api.listDividends(),
+      Promise.all(
+        CSV_ONLY_BROKERS.map((b) =>
+          Promise.all([api.listHoldingsStore({ broker: b }), api.listTradesStore({ broker: b })]).then(
+            ([holdings, trades]) => ({
+              broker: b,
+              accountIds: new Set([...holdings.map((h) => h.accountId), ...trades.map((t) => t.accountId)]),
+            })
+          )
+        )
+      ),
+    ]);
+
+    const known = new Map<string, { broker: BrokerId; accountId: string }>();
+    for (const { broker: b, accountIds } of perBroker) {
+      for (const accountId of accountIds) known.set(accountLabelKey(b, accountId), { broker: b, accountId });
+    }
+    for (const d of allDividends) {
+      if (d.accountId && CSV_ONLY_BROKERS.includes(d.broker)) {
+        known.set(accountLabelKey(d.broker, d.accountId), { broker: d.broker, accountId: d.accountId });
+      }
+    }
+    for (const l of labels) {
+      known.set(accountLabelKey(l.broker, l.accountId), { broker: l.broker, accountId: l.accountId });
+    }
+
+    const list = Array.from(known.values()).sort(
+      (a, b) =>
+        CSV_ONLY_BROKERS.indexOf(a.broker) - CSV_ONLY_BROKERS.indexOf(b.broker) ||
+        a.accountId.localeCompare(b.accountId)
+    );
+    setKnownAccounts(list);
+
+    const drafts: Record<string, string> = {};
+    for (const a of list) {
+      const key = accountLabelKey(a.broker, a.accountId);
+      drafts[key] = labels.find((l) => l.broker === a.broker && l.accountId === a.accountId)?.label ?? '';
+    }
+    setLabelDrafts(drafts);
+    setAccountsLoading(false);
+  }
+
+  useEffect(() => {
+    refreshAccounts().catch((e) => setError((e as Error).message));
+  }, []);
+
+  async function onSaveLabel(b: BrokerId, accountId: string) {
+    const key = accountLabelKey(b, accountId);
+    const label = (labelDrafts[key] ?? '').trim();
+    if (!label) {
+      setError('별칭을 입력해주세요.');
+      return;
+    }
+    setError(null);
+    setMessage(null);
+    try {
+      await api.upsertAccountLabel(b, accountId, label);
+      setMessage('저장되었습니다.');
+      await refreshAccounts();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function onDeleteLabel(b: BrokerId, accountId: string) {
+    setError(null);
+    setMessage(null);
+    try {
+      await api.deleteAccountLabel(b, accountId);
+      await refreshAccounts();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function onAddAccount(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setMessage(null);
+    if (!newAccountId.trim() || !newAccountLabel.trim()) {
+      setError('계좌번호와 별칭을 입력해주세요.');
+      return;
+    }
+    try {
+      await api.upsertAccountLabel(newAccountBroker, newAccountId.trim(), newAccountLabel.trim());
+      setNewAccountId('');
+      setNewAccountLabel('');
+      setMessage('계좌가 등록되었습니다.');
+      await refreshAccounts();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   return (
     <div>
@@ -181,6 +294,95 @@ export default function Settings() {
         <button className="primary" onClick={onSaveFxRate}>
           저장
         </button>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>계좌 별칭</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          CSV 전용 브로커(KB증권/삼성증권/미래에셋증권)는 한 증권사 안에 계좌가 여러 개일 수 있습니다
+          (예: 종합위탁계좌, 연금저축, IRP). 여기서 계좌번호에 별칭을 붙이면 보유종목/매매내역/배당금
+          화면에서 계좌를 구분해 보여줍니다.
+        </p>
+        {accountsLoading ? (
+          <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>
+        ) : knownAccounts.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)' }}>아직 등록된 계좌가 없습니다.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>증권사</th>
+                <th>계좌번호</th>
+                <th>별칭</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {knownAccounts.map((a) => {
+                const key = accountLabelKey(a.broker, a.accountId);
+                return (
+                  <tr key={key}>
+                    <td>{BROKER_LABELS[a.broker]}</td>
+                    <td>{a.accountId}</td>
+                    <td>
+                      <input
+                        type="text"
+                        value={labelDrafts[key] ?? ''}
+                        placeholder="예: 종합위탁계좌"
+                        onChange={(e) =>
+                          setLabelDrafts((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                      />
+                    </td>
+                    <td>
+                      <button className="ghost" onClick={() => onSaveLabel(a.broker, a.accountId)}>
+                        저장
+                      </button>
+                      <button className="ghost" onClick={() => onDeleteLabel(a.broker, a.accountId)}>
+                        삭제
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+
+        <h4>새 계좌 등록</h4>
+        <form onSubmit={onAddAccount}>
+          <div className="form-row">
+            <label>증권사</label>
+            <select value={newAccountBroker} onChange={(e) => setNewAccountBroker(e.target.value as BrokerId)}>
+              {CSV_ONLY_BROKERS.map((id) => (
+                <option key={id} value={id}>
+                  {BROKER_LABELS[id]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-row">
+            <label>계좌번호</label>
+            <input
+              type="text"
+              value={newAccountId}
+              placeholder="예: 123-45-678901"
+              onChange={(e) => setNewAccountId(e.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <label>별칭</label>
+            <input
+              type="text"
+              value={newAccountLabel}
+              placeholder="예: 종합위탁계좌"
+              onChange={(e) => setNewAccountLabel(e.target.value)}
+            />
+          </div>
+          <button type="submit" className="primary">
+            등록
+          </button>
+        </form>
       </div>
     </div>
   );

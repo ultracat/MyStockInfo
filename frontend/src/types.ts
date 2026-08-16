@@ -12,6 +12,14 @@ export interface BrokerAccount {
   accountType?: string;
 }
 
+/** `(broker, accountId)` → 사람이 읽을 수 있는 별칭. Settings.tsx에서만 관리하고
+ *  Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 한다. */
+export interface AccountLabel {
+  broker: BrokerId;
+  accountId: string;
+  label: string;
+}
+
 export interface HoldingPosition {
   symbol: string;
   name: string;
@@ -84,6 +92,10 @@ export type DividendCurrency = 'KRW' | 'USD';
 export interface DividendRecord {
   id: string;
   broker: BrokerId;
+  /** 브로커 안에서 계좌를 구분하기 위한 선택 필드(예: KB증권 한 곳에 여러 계좌가
+   *  있는 경우) — 없으면 null. holdings-store/trades-store의 accountId와 같은
+   *  문자열을 쓰면 그 화면들과도 같은 계좌로 매칭된다. */
+  accountId: string | null;
   symbol: string;
   name: string;
   currency: DividendCurrency;

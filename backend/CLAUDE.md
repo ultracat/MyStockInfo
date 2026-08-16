@@ -127,7 +127,23 @@ symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩�
 
 `currency`(`KRW`|`USD`) 기준 `amount`를 그대로 저장 — 크로스 통화 환산은 안 함(프론트가
 환율 가져와서 함). 월별/연도별 집계도 여기 없음 — `listDividends()`가 전체를 돌려주고
-집계는 전부 프론트(Dividends.tsx) 책임.
+집계는 전부 프론트(Dividends.tsx) 책임. `accountId: string | null`(선택) — 한 증권사
+(주로 KB증권처럼 CSV 전용 브로커) 안에 계좌가 여러 개일 때 구분하는 자유 문자열이다.
+계좌 개념이 필요 없으면 `null`. 필드 도입 전 저장된 기존 기록은 JSON에 이 키 자체가
+없는데, `listDividends()`가 읽을 때 `normalize()`로 항상 `null`로 채워서(마이그레이션
+불필요) 이 밖의 코드는 `undefined` 케이스를 신경 안 써도 된다.
+
+## 계좌 별칭 (`src/db/accountLabels.ts`, `src/routes/accountLabels.ts`)
+
+`(broker, accountId) → label` 매핑을 저장하는 작은 `JsonStore`(`account-labels.json`).
+CSV 전용 브로커(KB증권/삼성증권/미래에셋증권)는 한 증권사 안에 계좌가 여러 개일 수
+있는데(예: KB증권의 종합위탁계좌/연금저축/IRP), 그 계좌를 구분하는 `accountId`는
+holdings-store/trades-store/dividends 세 로컬 저장소에 실제로 CSV/수동 입력으로 들어온
+문자열 그대로일 뿐 사람이 읽을 수 있는 이름이 아니다 — 이 저장소가 그 위에 별칭을
+얹는다. `GET /api/account-labels?broker=`, `PUT /api/account-labels/:broker/:accountId`
+(body `{label}`, upsert), `DELETE /api/account-labels/:broker/:accountId`.
+**관리 UI는 `Settings.tsx` 한 곳에만 있다** — Dashboard.tsx/Trades.tsx/Dividends.tsx는
+마운트 시 한 번 불러와 표시할 때 읽기만 한다(`frontend/CLAUDE.md` 참고).
 
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/stockNameResolver.ts`, `src/routes/stockInfo.ts`)
 

@@ -26,13 +26,27 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/components/CollapseToggle.tsx` — 카드 헤더 우측 접기/펼치기 토글(공용, 처음엔
   Dividends.tsx 안에 있다가 Trades.tsx도 필요해져서 공용 컴포넌트로 뺌).
 - `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트.
+- `src/accountLabels.ts` — `(broker, accountId) → label`(백엔드 `account-labels`) 조회용
+  공용 유틸. `accountLabelKey(broker, accountId)`(맵 키 조합 — accountId만으로는 브로커
+  간에 우연히 겹칠 수 있어서 broker도 같이 묶는다), `formatAccountOption(account, label?)`
+  (계좌 select 옵션 텍스트 — `accountType`이 있을 때만 괄호를 붙인다: CSV 전용 브로커의
+  로컬 저장소 계좌는 `accountType`이 없어서, 예전엔 여기서 무조건 괄호를 붙이다가
+  "123-45-678901 (undefined)"가 그대로 찍히는 버그가 있었다). Dashboard.tsx/Trades.tsx/
+  Dividends.tsx가 전부 여기서 가져다 쓴다.
 - `src/pages/Settings.tsx` — 브로커별 자격증명 폼. **하드코딩이 아니라 백엔드의
   `GET /api/settings/credential-fields`를 읽어 동적 렌더링** — 새 브로커/필드는
   백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨. "증권사 연동 상태" 표는
   `BROKER_ORDER` 전체를 보여주되 `API_BROKER_IDS`에 없는 브로커(CSV 전용)는 "준비
   중"이 아니라 "CSV 전용"으로 표시한다("준비 중"은 "언젠가 API 연동될 예정"이라는
   잘못된 인상을 줌 — API 연동을 안 하기로 한 결정임을 명확히 함). "API 키 등록" 폼의
-  브로커 선택지에는 API 브로커만 넣는다(CSV 전용은 자격증명 필드가 없음).
+  브로커 선택지에는 API 브로커만 넣는다(CSV 전용은 자격증명 필드가 없음). "계좌 별칭"
+  카드는 CSV 전용 브로커의 `(broker, accountId) → label` 매핑을 관리하는 **유일한
+  화면**이다(Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 함 — 편집 UI를
+  세 군데에 중복해서 두지 않으려는 결정). "알려진 계좌" 목록은 이미 라벨이 붙은
+  accountId와 `listHoldingsStore`/`listTradesStore`/`listDividends`에 실제로 나온
+  accountId 전체의 합집합이라, 데이터가 없어도 "새 계좌 등록" 폼으로 라벨만 미리
+  등록해둘 수 있고(사용자가 실제로 이렇게 씀 — 계좌부터 이름 붙이고 나중에 CSV로
+  채움), 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다.
 
 ## 공용 패턴 (여러 페이지가 공유)
 
@@ -106,7 +120,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   드롭다운은 항상 그리고, 그 아래(스탯 타일/표)만 `portfolio &&`로 조건부 렌더링한다.
 - `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회(두 브로커 다 개인 배당 지급
   내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
-  그대로 저장(backend/CLAUDE.md 참고). "증권사별 배당금 총계" 표는 달러 투자금/배당금이
+  그대로 저장(backend/CLAUDE.md 참고). `accountId`(선택, `string | null`)로 한 증권사
+  안의 여러 계좌를 구분할 수 있다 — "배당 기록 추가" 폼의 "계좌 (선택)" 입력칸(브로커
+  종류와 무관하게 항상 노출 — CSV 전용 브로커뿐 아니라 토스/KIS도 계좌가 여러 개일 수
+  있으므로), 인라인 수정 행, 목록의 "계좌" 컬럼(라벨이 있으면 라벨, 없으면 accountId
+  원문, 둘 다 없으면 `-` — 라벨 조회는 `accountLabels.ts` 참고), CSV
+  헤더(`DIVIDEND_CSV_HEADER`)의 선택 컬럼까지 전부 이 필드로 연결된다. **계좌
+  필터(별도 드롭다운)는 의도적으로 안 만들었다** — 목록에 계좌 컬럼이 보이는 것만으로
+  "구분 가능"이라는 요청은 충족된다고 판단, 필요해지면 추가 요청으로 처리. "증권사별 배당금 총계" 표는 달러 투자금/배당금이
   있으면 원화/달러/합계(환산) 3행(별도 "구분" 컬럼 없이 첫 컬럼 안에 들여쓴 라벨로
   표현). 투자금(`totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없어 마운트 시 브로커별로
   따로 조회해 합산한다(브로커 하나 실패해도 나머지는 보여야 하므로 개별 try/catch) —

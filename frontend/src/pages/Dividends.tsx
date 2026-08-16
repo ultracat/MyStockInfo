@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow } from '../types';
+import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow } from '../types';
 import DividendsChart from '../components/DividendsChart';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
+import { accountLabelKey } from '../accountLabels';
 
 // export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
 // 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
 // 헤더 매칭이 대소문자만 다르면 되게 하기 위함). name(종목명)은 없다 — 심볼로부터
-// 서버가 자동조회하므로 CSV에 넣을 필요가 없다(가져오기도 마찬가지).
-const DIVIDEND_CSV_HEADER = ['broker', 'symbol', 'currency', 'amount', 'paidDate', 'memo'];
+// 서버가 자동조회하므로 CSV에 넣을 필요가 없다(가져오기도 마찬가지). accountId는
+// 선택 컬럼 — 브로커 한 곳에 계좌가 여러 개일 때만 채우면 된다.
+const DIVIDEND_CSV_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo'];
 
 const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
@@ -52,6 +54,7 @@ export default function Dividends() {
   const [dividendPanelsCollapsed, setDividendPanelsCollapsed] = useState(false);
 
   const [broker, setBroker] = useState<BrokerId>('toss');
+  const [accountId, setAccountId] = useState('');
   const [currency, setCurrency] = useState<DividendCurrency>('KRW');
   const [symbol, setSymbol] = useState('');
   const [name, setName] = useState('');
@@ -91,6 +94,21 @@ export default function Dividends() {
   useEffect(() => {
     refresh().catch((e) => setError((e as Error).message));
   }, []);
+
+  // 계좌 별칭 — 관리는 Settings.tsx에서만 하고 여기선 읽기만 한다(마운트 시 한 번).
+  const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
+  useEffect(() => {
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+  }, []);
+  const accountLabelMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of accountLabels) m.set(accountLabelKey(l.broker, l.accountId), l.label);
+    return m;
+  }, [accountLabels]);
+  function displayAccountId(recordBroker: BrokerId, accountId: string | null): string {
+    if (!accountId) return '-';
+    return accountLabelMap.get(accountLabelKey(recordBroker, accountId)) ?? accountId;
+  }
 
   // 종목코드 입력이 멈추면(500ms 디바운스) 종목명을 자동조회한다. 사용자가
   // "직접 입력"으로 전환했으면(manualNameEntry) 여기서 name을 건드리지 않는다.
@@ -211,7 +229,16 @@ export default function Dividends() {
       return;
     }
     try {
-      await api.addDividend({ broker, symbol, name, currency, amount: amountNum, paidDate, memo: memo || null });
+      await api.addDividend({
+        broker,
+        accountId: accountId.trim() || null,
+        symbol,
+        name,
+        currency,
+        amount: amountNum,
+        paidDate,
+        memo: memo || null,
+      });
       setSymbol('');
       setName('');
       setAmount('');
@@ -237,6 +264,7 @@ export default function Dividends() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{
     broker: BrokerId;
+    accountId: string;
     symbol: string;
     name: string;
     currency: DividendCurrency;
@@ -251,6 +279,7 @@ export default function Dividends() {
     setEditingId(r.id);
     setEditDraft({
       broker: r.broker,
+      accountId: r.accountId ?? '',
       symbol: r.symbol,
       name: r.name,
       currency: r.currency,
@@ -279,6 +308,7 @@ export default function Dividends() {
     try {
       await api.updateDividend(id, {
         broker: editDraft.broker,
+        accountId: editDraft.accountId.trim() || null,
         symbol: editDraft.symbol,
         name: editDraft.name,
         currency: editDraft.currency,
@@ -320,7 +350,15 @@ export default function Dividends() {
   function onExportCsv() {
     const rows: string[][] = [
       DIVIDEND_CSV_HEADER,
-      ...listFilteredRecords.map((r) => [r.broker, r.symbol, r.currency, String(r.amount), r.paidDate, r.memo ?? '']),
+      ...listFilteredRecords.map((r) => [
+        r.broker,
+        r.accountId ?? '',
+        r.symbol,
+        r.currency,
+        String(r.amount),
+        r.paidDate,
+        r.memo ?? '',
+      ]),
     ];
     const scope = listBroker === 'ALL' ? 'all' : listBroker;
     downloadCsv(`dividends-${scope}-${today()}.csv`, rows);
@@ -350,6 +388,7 @@ export default function Dividends() {
       const [header, ...dataRows] = rows;
       const colIndex = (name: string) => header.findIndex((h) => h.trim().toLowerCase() === name.toLowerCase());
       const iBroker = colIndex('broker');
+      const iAccountId = colIndex('accountId');
       const iSymbol = colIndex('symbol');
       const iCurrency = colIndex('currency');
       const iAmount = colIndex('amount');
@@ -365,6 +404,7 @@ export default function Dividends() {
         .filter((r) => r.some((v) => v.trim() !== ''))
         .map((r) => ({
           broker: (r[iBroker] ?? '').trim() as BrokerId,
+          accountId: iAccountId !== -1 && (r[iAccountId] ?? '').trim() ? r[iAccountId].trim() : null,
           symbol: (r[iSymbol] ?? '').trim(),
           currency: (r[iCurrency] ?? '').trim() as DividendCurrency,
           amount: Number((r[iAmount] ?? '').trim()),
@@ -732,6 +772,14 @@ export default function Dividends() {
               </select>
             </div>
             <div className="form-row">
+              <label>계좌 (선택)</label>
+              <input
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                placeholder="한 증권사에 계좌가 여러 개일 때만"
+              />
+            </div>
+            <div className="form-row">
               <label>종목코드</label>
               <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="예: AAPL, 005930" />
             </div>
@@ -891,6 +939,7 @@ export default function Dividends() {
             <tr>
               <th>지급일</th>
               <th>증권사</th>
+              <th>계좌</th>
               <th>종목코드</th>
               <th>종목명</th>
               <th>배당금</th>
@@ -901,7 +950,7 @@ export default function Dividends() {
           <tbody>
             {listFilteredRecords.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {year === 'ALL' ? '배당 기록이 없습니다.' : `${year}년 배당 기록이 없습니다.`}
                   {listBroker !== 'ALL' ? ` (${BROKER_LABELS[listBroker]} 기준)` : ''}
                 </td>
@@ -928,6 +977,13 @@ export default function Dividends() {
                         </option>
                       ))}
                     </select>
+                  </td>
+                  <td>
+                    <input
+                      value={editDraft.accountId}
+                      onChange={(e) => setEditDraft({ ...editDraft, accountId: e.target.value })}
+                      style={{ width: 100 }}
+                    />
                   </td>
                   <td>
                     <input
@@ -987,6 +1043,7 @@ export default function Dividends() {
                 <tr key={r.id}>
                   <td>{r.paidDate}</td>
                   <td>{BROKER_LABELS[r.broker]}</td>
+                  <td>{displayAccountId(r.broker, r.accountId)}</td>
                   <td>{r.symbol}</td>
                   <td>{r.name}</td>
                   <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>

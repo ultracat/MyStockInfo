@@ -20,7 +20,10 @@ export const dividendsRouter = Router();
 // 보내므로 name을 그대로 요구한다. CSV 가져오기(POST /import)는 name 없이 심볼만
 // 받고 서버가 자동조회한다 — 아래 `parseImportRowShape` 참고.
 function parseDividendInput(body: unknown): { input: NewDividendInput } | { error: string } {
-  const { broker, symbol, name, currency, amount, paidDate, memo } = (body ?? {}) as Record<string, unknown>;
+  const { broker, accountId, symbol, name, currency, amount, paidDate, memo } = (body ?? {}) as Record<
+    string,
+    unknown
+  >;
 
   if (
     typeof broker !== 'string' ||
@@ -44,6 +47,7 @@ function parseDividendInput(body: unknown): { input: NewDividendInput } | { erro
   return {
     input: {
       broker: broker as BrokerId,
+      accountId: typeof accountId === 'string' && accountId.trim() ? accountId.trim() : null,
       symbol,
       name,
       currency,
@@ -57,7 +61,7 @@ function parseDividendInput(body: unknown): { input: NewDividendInput } | { erro
 type ImportRowShape = Omit<NewDividendInput, 'name'>;
 
 function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error: string } {
-  const { broker, symbol, currency, amount, paidDate, memo } = (body ?? {}) as Record<string, unknown>;
+  const { broker, accountId, symbol, currency, amount, paidDate, memo } = (body ?? {}) as Record<string, unknown>;
 
   if (
     typeof broker !== 'string' ||
@@ -79,6 +83,7 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
   return {
     input: {
       broker: broker as BrokerId,
+      accountId: typeof accountId === 'string' && accountId.trim() ? accountId.trim() : null,
       symbol,
       currency,
       amount,

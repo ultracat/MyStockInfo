@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { BrokerAccount, BrokerId, BrokerSummary, PortfolioOverview, StoredHolding } from '../types';
+import type { AccountLabel, BrokerAccount, BrokerId, BrokerSummary, PortfolioOverview, StoredHolding } from '../types';
 import HoldingsTable from '../components/HoldingsTable';
 import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS } from '../brokers';
+import { accountLabelKey, formatAccountOption } from '../accountLabels';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
 
@@ -210,8 +211,15 @@ export default function Dashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioOverview | null>(null);
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
+  const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
 
   const configuredBrokers = brokers.filter((b) => b.configured);
+
+  // 계좌 별칭은 Settings.tsx에서만 관리하고 여기선 읽기만 한다 — 마운트 시 한 번만
+  // 불러오면 충분(브로커/계좌를 바꿔도 라벨 목록 자체는 안 바뀜).
+  useEffect(() => {
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+  }, []);
 
   useEffect(() => {
     // React StrictMode double-invokes effects in dev — this only suppresses
@@ -635,7 +643,14 @@ export default function Dashboard() {
           <select value={accountId ?? ''} onChange={(e) => setAccountId(e.target.value)}>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.accountNumber ?? a.id} ({a.accountType})
+                {formatAccountOption(
+                  a,
+                  selectedBroker
+                    ? accountLabels.find(
+                        (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, a.id)
+                      )?.label
+                    : undefined
+                )}
               </option>
             ))}
           </select>

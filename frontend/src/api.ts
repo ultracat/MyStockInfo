@@ -1,4 +1,5 @@
 import type {
+  AccountLabel,
   BrokerAccount,
   BrokerId,
   BrokerSummary,
@@ -144,4 +145,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ records }),
     }),
+
+  // (broker, accountId) → 사람이 읽을 수 있는 별칭. 관리는 Settings.tsx에서만
+  // 하고, Dashboard.tsx/Trades.tsx/Dividends.tsx는 읽기만 한다.
+  listAccountLabels: (broker?: BrokerId) =>
+    request<AccountLabel[]>(`/account-labels${broker ? `?broker=${broker}` : ''}`),
+  upsertAccountLabel: (broker: BrokerId, accountId: string, label: string) =>
+    request<AccountLabel>(`/account-labels/${broker}/${encodeURIComponent(accountId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ label }),
+    }),
+  deleteAccountLabel: (broker: BrokerId, accountId: string) =>
+    request<void>(`/account-labels/${broker}/${encodeURIComponent(accountId)}`, { method: 'DELETE' }),
 };

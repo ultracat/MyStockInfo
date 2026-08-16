@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { BrokerAccount, BrokerId, BrokerSummary, StoredTrade, TradeRecord } from '../types';
+import type { AccountLabel, BrokerAccount, BrokerId, BrokerSummary, StoredTrade, TradeRecord } from '../types';
 import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS } from '../brokers';
+import { accountLabelKey, formatAccountOption } from '../accountLabels';
 
 // CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
 // TradeRecord 모양으로 바꾼다 — name은 항상 null(화면이 심볼 폴백을 지원).
@@ -79,6 +80,7 @@ export default function Trades() {
   const [selectedBroker, setSelectedBroker] = useState<BrokerId | null>(null);
   const [accounts, setAccounts] = useState<BrokerAccount[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
   const [year, setYear] = useState(CURRENT_YEAR);
   const [viewMode, setViewMode] = useState<ViewMode>('year');
   const [month, setMonth] = useState(CURRENT_MONTH);
@@ -92,6 +94,12 @@ export default function Trades() {
   const [importResult, setImportResult] = useState<string | null>(null);
 
   const configuredBrokers = brokers.filter((b) => b.configured);
+
+  // 계좌 별칭은 Settings.tsx에서만 관리하고 여기선 읽기만 한다 — 마운트 시 한 번만
+  // 불러오면 충분(브로커/계좌를 바꿔도 라벨 목록 자체는 안 바뀜).
+  useEffect(() => {
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+  }, []);
 
   // 배당금 화면과 같은 방식: 달러 거래를 원화로 환산해 보여주기 위한 환율.
   // 선택된 브로커와 무관하게 한 번만 가져온다(KIS만 보고 있어도 나중에
@@ -469,7 +477,14 @@ export default function Trades() {
             <select value={accountId ?? ''} onChange={(e) => setAccountId(e.target.value)}>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.accountNumber ?? a.id} ({a.accountType})
+                  {formatAccountOption(
+                    a,
+                    selectedBroker
+                      ? accountLabels.find(
+                          (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, a.id)
+                        )?.label
+                      : undefined
+                  )}
                 </option>
               ))}
             </select>

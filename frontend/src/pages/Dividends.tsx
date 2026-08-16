@@ -493,9 +493,14 @@ export default function Dividends() {
   // 줄엔 증권사명, 나머지 줄엔 들여쓴 구분 라벨만 적어서 컬럼 수를
   // 늘리지 않는다.
   const brokerLines = useMemo<BrokerLine[]>(() => {
+    // investedByBroker는 이제 CSV 전용 브로커도 항상 항목을 갖는다(보유종목을
+    // 하나도 안 넣었으면 0/0) — 배당 기록도 없고 투자금도 0인 브로커까지 표에
+    // 나오면 안 되니, 실제로 뭔가 있는 브로커만 걸러서 넣는다.
     const ids = new Set<BrokerId>([
       ...brokerDividendTotals.keys(),
-      ...(Object.keys(investedByBroker) as BrokerId[]),
+      ...(Object.entries(investedByBroker) as [BrokerId, BrokerInvested][])
+        .filter(([, inv]) => inv.krw > 0 || inv.usd > 0)
+        .map(([id]) => id),
     ]);
     const lines: BrokerLine[] = [];
 

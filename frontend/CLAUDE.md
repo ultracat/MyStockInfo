@@ -108,12 +108,18 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
   그대로 저장(backend/CLAUDE.md 참고). "증권사별 배당금 총계" 표는 달러 투자금/배당금이
   있으면 원화/달러/합계(환산) 3행(별도 "구분" 컬럼 없이 첫 컬럼 안에 들여쓴 라벨로
-  표현). 투자금(`totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없어 마운트 시
-  `listBrokers`→`listAccounts`→`getPortfolio`로 별도 조회(브로커 하나 실패해도 나머지는
-  보여야 하므로 개별 try/catch) — **연도 필터를 안 탄다**(지금 시점의 실제 투자 원금이라
-  연도별로 안 나뉨). 이 조회는 `API_BROKER_IDS`에 없는 브로커(CSV 전용)를 먼저
-  걸러내고 시작한다 — 어차피 라이브 API가 없어 매번 실패할 호출을 날릴 이유가 없다. 연도 필터(`year`)는 서버에 다시 안 묻고 클라이언트에서 걸러
-  월별/증권사별 집계·목록까지 전부 다시 계산한다. 그래프 전용 증권사 필터
+  표현). 투자금(`totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없어 마운트 시 브로커별로
+  따로 조회해 합산한다(브로커 하나 실패해도 나머지는 보여야 하므로 개별 try/catch) —
+  **연도 필터를 안 탄다**(지금 시점의 실제 투자 원금이라 연도별로 안 나뉨). API
+  브로커(`API_BROKER_IDS`)는 `listAccounts`→`getPortfolio`로, **CSV 전용 브로커는
+  라이브 API가 없어 그 대신 `api.listHoldingsStore({broker})`로 로컬 저장소(CSV로
+  가져온 실제 보유종목)를 읽어 `purchaseAmount`를 통화별로 합산한다**(Dashboard.tsx의
+  `buildPortfolioFromStored`와 같은 집계 방식) — 한 번은 이 분기를 통째로 빼먹고 CSV
+  전용 브로커를 조회 자체에서 걸러버려서 투자금이 항상 "-"로만 뜨는 버그가 있었다
+  (라이브 API 소스가 없다는 것과 "그래서 투자금을 아예 안 보여준다"는 건 다른
+  얘기 — 로컬에 진짜 데이터가 있으면 그걸 보여줘야 함). 연도 필터(`year`)는 서버에
+  다시 안 묻고 클라이언트에서 걸러 월별/증권사별 집계·목록까지 전부 다시 계산한다.
+  그래프 전용 증권사 필터
   (`chartBroker`)와 목록 전용 필터(`listBroker`)는 완전히 독립된 state — 후자가
   페이지네이션 대상(`listFilteredRecords`)의 기준이다. "월별 배당금"+"증권사별 배당금
   총계"는 카드 하나를 공유하며 `CollapseToggle` 하나로 같이 접힌다. 종목코드 입력 후

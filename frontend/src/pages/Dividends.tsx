@@ -158,17 +158,26 @@ export default function Dividends() {
       setInvestedLoading(true);
       const brokers = await api.listBrokers().catch(() => []);
       if (cancelled) return;
-      // CSV 전용 브로커(KB/삼성/미래에셋)는 항상 configured: true로 오지만 실시간
-      // 조회 API 자체가 없다 — 애초에 실패할 게 뻔한 호출을 안 날리게 걸러낸다.
-      const configured = brokers.filter((b) => b.configured && API_BROKER_IDS.includes(b.id));
+      const configured = brokers.filter((b) => b.configured);
 
       const results = await Promise.all(
         configured.map(async (b) => {
           try {
-            const accounts = await api.listAccounts(b.id);
-            const portfolios = await Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id)));
-            const totalKrw = portfolios.reduce((sum, p) => sum + p.totalPurchaseAmountKrw, 0);
-            const totalUsd = portfolios.reduce((sum, p) => sum + (p.totalPurchaseAmountUsd ?? 0), 0);
+            if (API_BROKER_IDS.includes(b.id)) {
+              const accounts = await api.listAccounts(b.id);
+              const portfolios = await Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id)));
+              const totalKrw = portfolios.reduce((sum, p) => sum + p.totalPurchaseAmountKrw, 0);
+              const totalUsd = portfolios.reduce((sum, p) => sum + (p.totalPurchaseAmountUsd ?? 0), 0);
+              return { id: b.id, invested: { krw: totalKrw, usd: totalUsd } as BrokerInvested | null, error: null as string | null };
+            }
+
+            // CSV 전용 브로커(KB/삼성/미래에셋)는 라이브 API가 없다 — 유일한
+            // 투자금 소스는 로컬 저장소(holdings-store, CSV로 가져온 실제
+            // 보유종목)라 그 매입금액을 통화별로 합산한다(Dashboard.tsx의
+            // buildPortfolioFromStored와 같은 집계 방식).
+            const holdings = await api.listHoldingsStore({ broker: b.id });
+            const totalKrw = holdings.filter((h) => h.currency !== 'USD').reduce((sum, h) => sum + h.purchaseAmount, 0);
+            const totalUsd = holdings.filter((h) => h.currency === 'USD').reduce((sum, h) => sum + h.purchaseAmount, 0);
             return { id: b.id, invested: { krw: totalKrw, usd: totalUsd } as BrokerInvested | null, error: null as string | null };
           } catch (e) {
             return { id: b.id, invested: null, error: (e as Error).message };

@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { addDividend, deleteDividend, listDividends, updateDividendNames, type NewDividendInput } from '../db/dividends';
+import {
+  addDividend,
+  deleteDividend,
+  listDividends,
+  updateDividend,
+  updateDividendNames,
+  type NewDividendInput,
+} from '../db/dividends';
 import { cacheStockName } from '../db/stockNames';
 import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
@@ -135,6 +142,17 @@ dividendsRouter.post('/', (req, res) => {
 
   const record = addDividend(parsed.input);
   res.status(201).json(record);
+});
+
+// 배당금 화면의 인라인 수정 — 단건 추가와 같은 검증(parseDividendInput)을 그대로
+// 쓴다(부분 patch가 아니라 폼 전체를 다시 검증해 통째로 교체).
+dividendsRouter.put('/:id', (req, res) => {
+  const parsed = parseDividendInput(req.body);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+
+  const record = updateDividend(req.params.id, parsed.input);
+  if (!record) return res.status(404).json({ error: '해당 배당 기록을 찾을 수 없습니다.' });
+  res.json(record);
 });
 
 // CSV 내보내기/가져오기(전체 또는 증권사별)의 "가져오기" 쪽 — 프론트가 CSV를

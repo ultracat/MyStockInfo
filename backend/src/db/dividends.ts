@@ -55,6 +55,29 @@ export function addDividend(input: NewDividendInput): DividendRecord {
   return record;
 }
 
+/** 배당 기록 화면의 인라인 수정용 — id를 뺀 모든 필드를 통째로 교체한다(부분
+ *  patch가 아니라 폼 전체 재검증 후 덮어쓰기, 단건 추가와 같은 검증 통과 전제). */
+export function updateDividend(id: string, input: NewDividendInput): DividendRecord | null {
+  let updated: DividendRecord | null = null;
+  store().update((current) =>
+    current.map((r) => {
+      if (r.id !== id) return r;
+      updated = {
+        id: r.id,
+        broker: input.broker,
+        symbol: input.symbol,
+        name: input.name,
+        currency: input.currency,
+        amount: input.amount,
+        paidDate: input.paidDate,
+        memo: input.memo ?? null,
+      };
+      return updated;
+    })
+  );
+  return updated;
+}
+
 export function deleteDividend(id: string): boolean {
   let removed = false;
   store().update((current) => {

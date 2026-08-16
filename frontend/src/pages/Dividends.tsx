@@ -221,6 +221,72 @@ export default function Dividends() {
     await refresh();
   }
 
+  // 배당 기록 목록의 인라인 수정 — 한 번에 한 행만 편집 가능(editingId).
+  // 다른 행에서 "수정"을 누르면 그 행으로 그냥 전환된다(저장 안 한 편집 내용은
+  // 버려짐) — 개인용 기록 관리 화면이라 "저장 안 한 변경사항" 경고까지는
+  // 과하다고 판단.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{
+    broker: BrokerId;
+    symbol: string;
+    name: string;
+    currency: DividendCurrency;
+    amount: string;
+    paidDate: string;
+    memo: string;
+  } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function startEdit(r: DividendRecord) {
+    setEditingId(r.id);
+    setEditDraft({
+      broker: r.broker,
+      symbol: r.symbol,
+      name: r.name,
+      currency: r.currency,
+      amount: String(r.amount),
+      paidDate: r.paidDate,
+      memo: r.memo ?? '',
+    });
+    setEditError(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  async function saveEdit(id: string) {
+    if (!editDraft) return;
+    const amountNum = Number(editDraft.amount);
+    if (!editDraft.symbol || !editDraft.name || !amountNum || amountNum <= 0 || !editDraft.paidDate) {
+      setEditError('종목코드, 종목명, 배당금(양수), 지급일을 입력해주세요.');
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      await api.updateDividend(id, {
+        broker: editDraft.broker,
+        symbol: editDraft.symbol,
+        name: editDraft.name,
+        currency: editDraft.currency,
+        amount: amountNum,
+        paidDate: editDraft.paidDate,
+        memo: editDraft.memo || null,
+      });
+      setEditingId(null);
+      setEditDraft(null);
+      await refresh();
+    } catch (e) {
+      setEditError((e as Error).message);
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   async function onRefreshNames() {
     setRefreshingNames(true);
     setRefreshResult(null);
@@ -827,21 +893,103 @@ export default function Dividends() {
                 </td>
               </tr>
             )}
-            {pagedRecords.map((r) => (
-              <tr key={r.id}>
-                <td>{r.paidDate}</td>
-                <td>{BROKER_LABELS[r.broker]}</td>
-                <td>{r.symbol}</td>
-                <td>{r.name}</td>
-                <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>
-                <td>{r.memo ?? '-'}</td>
-                <td>
-                  <button className="ghost" onClick={() => onDelete(r.id)}>
-                    삭제
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {pagedRecords.map((r) =>
+              editingId === r.id && editDraft ? (
+                <tr key={r.id}>
+                  <td>
+                    <input
+                      type="date"
+                      value={editDraft.paidDate}
+                      onChange={(e) => setEditDraft({ ...editDraft, paidDate: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={editDraft.broker}
+                      onChange={(e) => setEditDraft({ ...editDraft, broker: e.target.value as BrokerId })}
+                    >
+                      {BROKER_ORDER.map((id) => (
+                        <option key={id} value={id}>
+                          {BROKER_LABELS[id]}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      value={editDraft.symbol}
+                      onChange={(e) => setEditDraft({ ...editDraft, symbol: e.target.value })}
+                      style={{ width: 80 }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      value={editDraft.name}
+                      onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <select
+                        value={editDraft.currency}
+                        onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value as DividendCurrency })}
+                      >
+                        <option value="KRW">원</option>
+                        <option value="USD">USD</option>
+                      </select>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editDraft.amount}
+                        onChange={(e) => setEditDraft({ ...editDraft, amount: e.target.value })}
+                        style={{ width: 90 }}
+                      />
+                    </div>
+                  </td>
+                  <td>
+                    <input
+                      value={editDraft.memo}
+                      onChange={(e) => setEditDraft({ ...editDraft, memo: e.target.value })}
+                    />
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="ghost" onClick={() => saveEdit(r.id)} disabled={editSaving}>
+                        {editSaving ? '저장 중...' : '저장'}
+                      </button>
+                      <button className="ghost" onClick={cancelEdit} disabled={editSaving}>
+                        취소
+                      </button>
+                    </div>
+                    {editError && (
+                      <div className="text-critical" style={{ fontSize: 12, marginTop: 4, whiteSpace: 'pre-wrap' }}>
+                        {editError}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ) : (
+                <tr key={r.id}>
+                  <td>{r.paidDate}</td>
+                  <td>{BROKER_LABELS[r.broker]}</td>
+                  <td>{r.symbol}</td>
+                  <td>{r.name}</td>
+                  <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>
+                  <td>{r.memo ?? '-'}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className="ghost" onClick={() => startEdit(r)}>
+                        수정
+                      </button>
+                      <button className="ghost" onClick={() => onDelete(r.id)}>
+                        삭제
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
       </div>

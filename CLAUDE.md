@@ -70,6 +70,4 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - KIS 모의투자(paper trading) 지원
 - 배포용 빌드 코드 서명/공증 (Mac은 Apple Developer ID, Windows는 코드 서명 인증서
   필요 — 현재는 서명 없이 본인 머신 실행 전용)
-- Windows 빌드(`package:win`) 실제 검증 — 설정은 있으나 Windows 머신에서 빌드/실행해본
-  적 없음, `electron/CLAUDE.md`의 "Windows" 참고
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

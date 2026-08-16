@@ -138,7 +138,7 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   4317에 바인딩되고 `/api/accounts`가 정상 JSON을 반환하는 것까지 확인했다. 다른
   배포판(특히 Wayland-only 환경)에서의 실행은 아직 검증되지 않았다.
 
-### Windows (`build.win`, `npm run package:win`) — 설정만 준비, 미검증
+### Windows (`build.win`, `npm run package:win`) — 검증 완료
 
 - **타겟은 `nsis`**(일반적인 `.exe` 설치 마법사) 하나로 준비해뒀다. `portable` 타겟(설치
   없이 실행)이 필요해지면 `build.win.target`에 추가하면 된다.
@@ -149,13 +149,13 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   추가할 수 있다.
   아이콘도 미설정 — 기본 Electron 아이콘이 붙는다. `.ico` 파일을 만들어
   `build.win.icon`에 지정하면 바뀐다.
-- **아직 실제로 빌드/실행해보지 않았다.** 이 저장소는 Linux 환경에서 작업 중이라 `--win`
-  타겟은 (a) Windows 머신에서 직접 빌드하거나 (b) Linux/Mac에서 `wine`을 설치해
-  electron-builder의 크로스 빌드를 쓰는 방법으로만 만들 수 있다(NSIS 인스톨러 생성기
-  자체가 `wine`을 필요로 함). 네이티브(`.node`) 모듈이 없는 앱이라 크로스 빌드가 막힐
-  가능성은 낮지만, 실제 Windows에서 앱을 띄워 백엔드 바인딩/자격증명 저장(`safeStorage`는
-  Windows에서 DPAPI 기반으로 동작)까지 확인하기 전에는 "설정은 있으나 검증 안 됨" 상태로
-  취급한다.
+- 실제로 Windows 11 머신에서 `npm run package:win` 전체 빌드 →
+  `release/win-unpacked/MyStock.exe` 직접 실행(NSIS 인스톨러를 거치지 않고 unpacked
+  산출물로 검증) → 창이 정상적으로 뜨고 백엔드가 4317 포트에 바인딩 → `/api/accounts`가
+  정상 JSON을 반환 → 프론트엔드도 흰 화면 없이 실제 데이터(보유 종목)까지 렌더링되는 것을
+  확인했다. NSIS 인스톨러(`MyStock Setup 0.1.0.exe`) 자체도 산출물로 정상 생성된다.
+  다만 인스톨러를 실제로 실행해 설치 마법사 플로우까지 검증하지는 않았다(시스템에 설치되는
+  동작이라 보류) — unpacked 실행 파일 검증으로 앱 코드 자체의 동작은 확인된 상태다.
 
 ## 자격증명 암호화와의 관계
 
@@ -168,7 +168,7 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
 
 - 배포용 빌드는 세 플랫폼 모두 코드 서명/공증이 안 돼 있다 — 위 "플랫폼별 배포용 빌드"
   참고.
-- Windows 빌드(`package:win`)는 설정만 준비돼 있고 실제로 빌드/실행해서 검증한 적이
-  없다 — 위 "Windows" 참고.
+- Windows NSIS 인스톨러(`MyStock Setup *.exe`)는 실제 설치 마법사 플로우까지는 검증하지
+  않았다 — 위 "Windows" 참고.
 - 백엔드 dev 모드 파일 변경 시 자동 재시작 안 됨 — 수동으로 `build:backend` 후 Electron
   재시작 필요.

@@ -106,6 +106,23 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 불필요하다. 매매내역은 `id`도 안 받는다(브로커 고유 체결번호라 CSV 행엔 없음 — 없으면
 서버가 `randomUUID()`로 발급).
 
+**보유종목 CSV는 현재가/평가금액/손익도 자동으로 채운다** — 필수 컬럼(`broker,accountId,
+symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩용으로 사실상
+필수)만 채운 최소 CSV를 지원하려는 목적. `routes/holdingsStore.ts`가 `resolveStockNames`와
+함께 `resolveStockPrices`(`stockNameResolver.ts`)를 호출해 `lastPrice`/`marketValue`/
+`profitLossAmount`/`profitLossRate`를 계산한다(`marketValue = quantity * lastPrice`,
+`profitLossAmount = marketValue - purchaseAmount`) — CSV에 이 필드들을 명시적으로 넣으면
+그 값을 그대로 쓰고(override), 안 넣은 경우에만 계산한다. **현재가 조회는 토스 우선,
+토스 미연동이면 한국투자증권으로 대체한다**(`kisClient.ts`의 `fetchKisDomesticPrice`,
+`inquire-price` TR `FHKST01010100` — 계좌 무관 공개 시세라 CANO 불필요, 공식 예제
+`examples_llm/domestic_stock/inquire_price/inquire_price.py` 확인, checked 2026-08-17).
+**KIS 대체는 국내(KR) 심볼만 지원** — 해외주식 현재가는 거래소코드(EXCD, NAS/NYS 등)가
+필수인데 이 앱은 그 정보를 안 받으므로(CSV엔 통화만 있고 거래소는 없음) 임의로 추측해
+넣지 않는다. 이름 조회 실패는 행을 실패 처리하지만 현재가 조회 실패는 그냥 0으로 남긴다
+(이름은 화면 표시에 필수, 현재가는 부가 정보). **KR 심볼은 6자리로 0-패딩한다**
+(`normalizeSymbol`, `market === 'KR'`이고 숫자 1~6자리면 `padStart(6,'0')`) — CSV에
+"5930"처럼 앞자리 0이 빠진 채로 들어와도 이름/현재가 자동조회가 정상 동작하게.
+
 ## 배당 기록 (`src/db/dividends.ts`)
 
 `currency`(`KRW`|`USD`) 기준 `amount`를 그대로 저장 — 크로스 통화 환산은 안 함(프론트가

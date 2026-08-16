@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { deleteHolding, listHoldings, upsertHoldings, type UpsertHoldingInput } from '../db/holdingsStore';
-import { resolveStockNames } from '../stockNameResolver';
+import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
 import { isTossConfigured } from '../brokers/toss/tossClient';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
@@ -20,12 +20,25 @@ interface ImportRowShape {
   currency: 'KRW' | 'USD';
   quantity: number;
   averagePurchasePrice: number;
+  market?: string | null;
   lastPrice?: number;
+  purchaseAmount?: number;
   marketValue?: number;
   profitLossAmount?: number;
   profitLossRate?: number;
   commission?: number | null;
   tax?: number | null;
+}
+
+// 국내(KR) 심볼은 6자리다 — CSV에 "5930"처럼 앞자리 0이 빠진 채로 입력되면
+// 이름/현재가 자동조회(토스 API)가 못 찾는다. market이 KR이고 숫자만 6자리
+// 이하면 0으로 채워 6자리로 맞춘다. 해외 심볼(예: AAPL)이나 market이 KR이
+// 아닌 행은 그대로 둔다.
+function normalizeSymbol(symbol: string, market: string | null | undefined): string {
+  if (market === 'KR' && /^\d{1,6}$/.test(symbol)) {
+    return symbol.padStart(6, '0');
+  }
+  return symbol;
 }
 
 function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error: string } {
@@ -36,7 +49,9 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
     currency,
     quantity,
     averagePurchasePrice,
+    market,
     lastPrice,
+    purchaseAmount,
     marketValue,
     profitLossAmount,
     profitLossRate,
@@ -69,16 +84,19 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
   const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
   const numOrNull = (v: unknown): number | null | undefined =>
     v === null || v === '' || v === undefined ? undefined : num(v);
+  const marketValueNorm = typeof market === 'string' && market ? market : null;
 
   return {
     input: {
       broker: broker as BrokerId,
       accountId,
-      symbol,
+      symbol: normalizeSymbol(symbol, marketValueNorm),
       currency,
       quantity,
       averagePurchasePrice,
+      market: marketValueNorm,
       lastPrice: num(lastPrice),
+      purchaseAmount: num(purchaseAmount),
       marketValue: num(marketValue),
       profitLossAmount: num(profitLossAmount),
       profitLossRate: num(profitLossRate),
@@ -89,8 +107,13 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
 }
 
 // CSV 가져오기 — name(종목명)은 CSV에 없다(배당금과 같은 이유: 심볼로 자동조회).
-// 형태 검증을 통과한 행들의 고유 심볼을 모아 한 번에 이름을 조회하고, 조회 실패한
-// 심볼의 행만 failed로 보고한다.
+// lastPrice/marketValue/profitLossAmount/profitLossRate도 CSV에 안 넣으면(값을
+// 아예 안 보내면) 토스 현재가 조회로 자동 계산한다 — broker/accountId/symbol/
+// quantity/averagePurchasePrice/currency/market만 채우는 최소 CSV를 지원하려는
+// 목적. 명시적으로 값을 넣은 행은 그 값을 그대로 쓴다(override). 이름 조회
+// 실패는 행을 실패 처리하지만, 현재가 조회 실패는 그냥 0으로 남긴다 — 이름은
+// 화면 표시에 필수지만 현재가는 부가 정보라 없다고 가져오기 자체를 막을
+// 이유가 없다.
 holdingsStoreRouter.post('/import', async (req, res) => {
   const records = (req.body as { records?: unknown })?.records;
   if (!Array.isArray(records) || records.length === 0) {
@@ -104,7 +127,10 @@ holdingsStoreRouter.post('/import', async (req, res) => {
     .map(({ row, error }) => ({ row, error }));
 
   const uniqueSymbols = Array.from(new Set(validRows.map((r) => r.input.symbol)));
-  const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
+  const [{ namesBySymbol, unresolved }, { pricesBySymbol }] = await Promise.all([
+    resolveStockNames(uniqueSymbols),
+    resolveStockPrices(uniqueSymbols),
+  ]);
 
   const toUpsert: UpsertHoldingInput[] = [];
   for (const { row, input } of validRows) {
@@ -120,7 +146,16 @@ holdingsStoreRouter.post('/import', async (req, res) => {
       });
       continue;
     }
-    toUpsert.push({ ...input, name });
+
+    const purchaseAmount = input.purchaseAmount ?? input.averagePurchasePrice * input.quantity;
+    const resolvedPrice = pricesBySymbol[key];
+    const lastPrice = input.lastPrice ?? resolvedPrice ?? 0;
+    const marketValue = input.marketValue ?? (resolvedPrice !== undefined ? input.quantity * resolvedPrice : 0);
+    const profitLossAmount = input.profitLossAmount ?? marketValue - purchaseAmount;
+    const profitLossRate =
+      input.profitLossRate ?? (purchaseAmount > 0 ? profitLossAmount / purchaseAmount : 0);
+
+    toUpsert.push({ ...input, name, purchaseAmount, lastPrice, marketValue, profitLossAmount, profitLossRate });
   }
 
   upsertHoldings(toUpsert);

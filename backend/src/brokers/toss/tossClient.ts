@@ -507,6 +507,55 @@ export async function fetchTossStockInfo(symbols: string[], opts: FetchOpts = {}
   );
 }
 
+interface RawTossPriceItem {
+  symbol: string;
+  timestamp: string | null;
+  lastPrice: string;
+  currency: string;
+}
+
+export interface TossPriceItem {
+  symbol: string;
+  lastPrice: number;
+  currency: string;
+}
+
+/**
+ * 현재가 조회 (`GET /api/v1/prices`, `MARKET_DATA` group, 공식 스펙
+ * openapi.tossinvest.com/openapi-docs/latest/openapi.json 확인, checked
+ * 2026-08-17) — `/api/v1/stocks`처럼 계좌와 무관하고 KR/US 심볼을 한 API로
+ * 커버하며 최대 200개 콤마 동시조회. `lastPrice`는 다른 토스 금액 필드와
+ * 마찬가지로 문자열(`format: decimal`)로 내려와서 여기서 number로 변환해
+ * 넘긴다. 보유종목 CSV 가져오기가 사용자가 안 채운 현재가/평가금액/손익을
+ * 자동으로 채우는 데 쓴다(routes/holdingsStore.ts).
+ */
+export async function fetchTossPrices(symbols: string[], opts: FetchOpts = {}): Promise<TossPriceItem[]> {
+  const key = [...symbols].sort().join(',');
+  return withCache(
+    `toss:prices:${key}`,
+    DEFAULT_TTL_MS,
+    async () => {
+      const params = new URLSearchParams({ symbols: symbols.join(',') });
+      const raw = await tossFetch<any>(`/api/v1/prices?${params}`, 'MARKET_DATA');
+      const data = raw?.result ?? raw;
+
+      if (!Array.isArray(data)) {
+        console.error('[toss] Unexpected /api/v1/prices response shape:', JSON.stringify(raw));
+        throw new Error(
+          '토스증권 현재가 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
+        );
+      }
+
+      return (data as RawTossPriceItem[]).map((item) => ({
+        symbol: item.symbol,
+        lastPrice: toNum(item.lastPrice),
+        currency: item.currency,
+      }));
+    },
+    opts
+  );
+}
+
 /**
  * Toss's own `name` falls back to the bare ticker (e.g. `"SPY"`, `"NVDY"`)
  * for securities with no registered Korean short name — confirmed against

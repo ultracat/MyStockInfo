@@ -50,6 +50,11 @@ interface KisEnvelope {
   rt_cd: string;
   msg_cd: string;
   msg1: string;
+  // 대부분의 TR(잔고조회/일별체결조회)은 output1/output2를 쓰지만, 단일
+  // 결과셋만 돌려주는 TR(주식현재가 시세 등)은 원장 JSON 키가 그냥 `output`
+  // 하나다(공식 예제 kis_auth.py의 APIResp가 응답 JSON 키를 그대로
+  // namedtuple 필드로 쓰는 걸 확인 — TR마다 실제 키가 다름, checked 2026-08-17).
+  output?: unknown;
   output1?: unknown;
   output2?: unknown;
   ctx_area_fk100?: string;
@@ -433,4 +438,35 @@ export async function fetchKisTradeHistory(
   opts: FetchOpts = {}
 ): Promise<KisDailyCcldItem[]> {
   return withCache(`kis:trades:${from}:${to}`, DEFAULT_TTL_MS, () => fetchKisTradeHistoryUncached(from, to), opts);
+}
+
+/**
+ * 국내주식 현재가 시세(`inquire-price`, TR `FHKST01010100`, 공식 예제
+ * examples_llm/domestic_stock/inquire_price/inquire_price.py 확인, checked
+ * 2026-08-17) — `inquire-balance`처럼 계좌 보유종목이 아니라 임의 종목코드의
+ * 공개 시세를 조회하는 API라 CANO가 필요 없다. 보유종목 CSV 가져오기에서
+ * 토스 미연동일 때의 현재가 대체 조회로 쓴다(`stockNameResolver.ts`의
+ * `resolveStockPrices`). **해외주식은 지원 안 함** — KIS의 해외 현재가
+ * API(`/uapi/overseas-price/v1/quotations/price`)는 거래소코드(EXCD, 예:
+ * NAS/NYS)가 필수인데 이 앱은 그 정보를 안 받고 있어서(CSV에 통화만 있고
+ * 거래소는 없음) 임의로 추측해 넣지 않는다 — 국내(KR) 6자리 종목코드만 지원.
+ * `output`(단수) 키를 쓰는 TR이라 `output1`이 아니라 `output`을 읽는다(위
+ * `KisEnvelope` 주석 참고).
+ */
+export async function fetchKisDomesticPrice(symbol: string, opts: FetchOpts = {}): Promise<number | null> {
+  return withCache(
+    `kis:price:${symbol}`,
+    DEFAULT_TTL_MS,
+    async () => {
+      const res = await kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', {
+        FID_COND_MRKT_DIV_CODE: 'J',
+        FID_INPUT_ISCD: symbol,
+      });
+      const output = res.output;
+      if (!output || typeof output !== 'object' || !('stck_prpr' in output)) return null;
+      const price = Number((output as { stck_prpr: string }).stck_prpr);
+      return Number.isFinite(price) ? price : null;
+    },
+    opts
+  );
 }

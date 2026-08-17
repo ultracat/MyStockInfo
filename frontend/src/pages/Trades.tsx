@@ -382,7 +382,7 @@ export default function Trades() {
       const records = dataRows
         .filter((r) => r.some((v) => v.trim() !== ''))
         .map((r) => ({
-          broker: (r[iBroker] ?? '').trim() as BrokerId,
+          broker: (r[iBroker] ?? '').trim().toLowerCase() as BrokerId,
           accountId: (r[iAccountId] ?? '').trim(),
           symbol: (r[iSymbol] ?? '').trim(),
           side: (r[iSide] ?? '').trim() as 'BUY' | 'SELL',

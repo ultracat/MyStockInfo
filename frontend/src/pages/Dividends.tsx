@@ -403,7 +403,7 @@ export default function Dividends() {
       let parsedRecords = dataRows
         .filter((r) => r.some((v) => v.trim() !== ''))
         .map((r) => ({
-          broker: (r[iBroker] ?? '').trim() as BrokerId,
+          broker: (r[iBroker] ?? '').trim().toLowerCase() as BrokerId,
           accountId: iAccountId !== -1 && (r[iAccountId] ?? '').trim() ? r[iAccountId].trim() : null,
           symbol: (r[iSymbol] ?? '').trim(),
           currency: (r[iCurrency] ?? '').trim() as DividendCurrency,

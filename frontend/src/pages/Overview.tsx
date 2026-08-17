@@ -67,7 +67,30 @@ export default function Overview() {
 
   async function loadAll() {
     setError(null);
-    const brokers = await api.listBrokers();
+
+    // FX rate는 아래 보유종목 합계 계산에 바로 쓰이므로 브로커/보유종목 조회보다
+    // 먼저 끝내야 한다 — 예전엔 이 fetch가 보유종목 루프 "뒤"에 있었는데,
+    // 그 루프 안의 toKrw()는 컴포넌트 렌더 시점의 state(manualFxRate/liveFxRate)를
+    // 읽는 클로저라 첫 마운트 시엔 항상 null이었다(state가 아직 이 fetch로
+    // 채워지기 전이라). 그래서 최초 진입 땐 매번 USD 보유종목이 전부
+    // "환율 미적용"으로 빠졌다가, 새로고침(re-render 이후 재호출)에서야 이미
+    // 채워진 state로 정상 계산됐다. 여기서는 state가 아니라 지금 막 받아온
+    // 값을 로컬 변수로 바로 써서 이 레이스를 없앤다.
+    const [fx, brokers] = await Promise.all([
+      api.getFxRate().catch(() => ({ usdKrwRate: null, eximbankAuthKey: null })),
+      api.listBrokers(),
+    ]);
+    // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
+    // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다.
+    const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
+    const resolvedLiveFxRate = live.rate ? live.midRate ?? live.rate : null;
+    const resolvedFxRate = fx.usdKrwRate ?? resolvedLiveFxRate;
+
+    function toKrwNow(amount: number, currency: string | null): number | null {
+      if (currency === 'USD') return resolvedFxRate ? amount * resolvedFxRate : null;
+      return amount;
+    }
+
     const configured = brokers.filter((b) => b.configured);
 
     const flat: FlatHolding[] = [];
@@ -90,8 +113,8 @@ export default function Overview() {
 
         for (const r of rows) {
           flat.push({ symbol: r.symbol, name: r.name, currency: r.currency, quantity: r.quantity, lastPrice: r.lastPrice });
-          const pv = toKrw(r.purchaseAmount, r.currency);
-          const mv = toKrw(r.marketValue, r.currency);
+          const pv = toKrwNow(r.purchaseAmount, r.currency);
+          const mv = toKrwNow(r.marketValue, r.currency);
           if (pv === null || mv === null) {
             unconverted = true;
             continue;
@@ -106,19 +129,12 @@ export default function Overview() {
     setTotalPurchaseKrw(purchaseKrw);
     setTotalMarketKrw(marketKrw);
     setUnconvertedUsdHoldings(unconverted);
+    setManualFxRate(fx.usdKrwRate);
+    setLiveFxRate(resolvedLiveFxRate);
 
-    const [divs, allTrades, fx] = await Promise.all([
-      api.listDividends(),
-      api.listTradesStore(),
-      api.getFxRate().catch(() => ({ usdKrwRate: null, eximbankAuthKey: null })),
-    ]);
+    const [divs, allTrades] = await Promise.all([api.listDividends(), api.listTradesStore()]);
     setDividends(divs);
     setTrades(allTrades);
-    setManualFxRate(fx.usdKrwRate);
-    // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
-    // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다.
-    const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
-    if (live.rate) setLiveFxRate(live.midRate ?? live.rate);
     setLastLoadedAt(new Date());
   }
 

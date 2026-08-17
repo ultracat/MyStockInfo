@@ -91,15 +91,25 @@ function formatAmount(amount: number, currency: string) {
   return currency === 'USD' ? usdFmt.format(amount) : `${krw.format(Math.round(amount))}원`;
 }
 
-// 체결금액(amount)은 브로커가 내려주는 체결 그 자체의 금액(수량*단가)이고,
-// 수수료/세금은 별도 필드다 — 표에 보여주는 "체결금액"은 실제 현금 흐름을
-// 체감할 수 있도록 수수료/세금까지 반영한 순액으로 계산한다: 매수는 수수료·세금만큼
-// 더 나가고(순지출 = 체결금액 + 수수료 + 세금), 매도는 그만큼 덜 들어온다(순수취 =
-// 체결금액 - 수수료 - 세금). KIS는 이 두 필드를 아직 안 내려줘서(commission/tax
-// 항상 null) 사실상 토스/KB증권/CSV·수동 입력 행에만 차이가 생긴다.
-function netTradeAmount(t: { side: 'BUY' | 'SELL'; amount: number; commission: number | null; tax: number | null }) {
-  const fees = (t.commission ?? 0) + (t.tax ?? 0);
-  return t.side === 'BUY' ? t.amount + fees : t.amount - fees;
+// 수동 입력(매매내역 추가)/인라인 수정 둘 다 체결금액을 따로 입력받지 않고
+// 수량*단가로 계산한다 — CSV 전용 브로커는 브로커가 내려주는 별도 체결금액이
+// 없어(사용자가 직접 기록하는 값) 수량/단가만 정확하면 체결금액은 항상 그 곱과
+// 같아야 하고, 따로 입력받으면 두 값이 어긋날 위험만 생긴다. 입력칸이 아직 비어
+// 있거나 숫자가 아니면 0을 보여준다(완성 전 중간 상태).
+function computeAmount(quantity: string, price: string): number {
+  const q = Number(quantity);
+  const p = Number(price);
+  return Number.isFinite(q) && Number.isFinite(p) ? q * p : 0;
+}
+
+// 체결금액(amount)은 체결 그 자체의 금액(수량*단가)이고 수수료/세금은 별도
+// 필드다 — 화면에 보여주는 "체결금액"은 수수료·세금을 더한 값으로 계산한다
+// (매수/매도 구분 없이 항상 더함 — 표에서도, 매매내역 추가/인라인 수정의
+// 자동계산 미리보기에서도 같은 공식을 쓴다). KIS는 이 두 필드를 아직 안
+// 내려줘서(commission/tax 항상 null) 사실상 토스/KB증권/CSV·수동 입력 행에만
+// 차이가 생긴다.
+function netTradeAmount(amount: number, commission: number | null, tax: number | null) {
+  return amount + (commission ?? 0) + (tax ?? 0);
 }
 
 function daysInMonth(year: number, month: number) {
@@ -148,7 +158,6 @@ export default function Trades() {
   const [addSide, setAddSide] = useState<'BUY' | 'SELL'>('BUY');
   const [addQuantity, setAddQuantity] = useState('');
   const [addPrice, setAddPrice] = useState('');
-  const [addAmount, setAddAmount] = useState('');
   const [addCurrency, setAddCurrency] = useState('KRW');
   const [addExecutedAt, setAddExecutedAt] = useState(today());
   const [addCommission, setAddCommission] = useState('');
@@ -176,7 +185,6 @@ export default function Trades() {
     side: 'BUY' | 'SELL';
     quantity: string;
     price: string;
-    amount: string;
     currency: string;
     executedAt: string;
     commission: string;
@@ -488,7 +496,6 @@ export default function Trades() {
 
     const quantityNum = Number(addQuantity);
     const priceNum = Number(addPrice);
-    const amountNum = Number(addAmount);
     if (
       !addAccountId.trim() ||
       !addSymbol.trim() ||
@@ -496,11 +503,9 @@ export default function Trades() {
       quantityNum <= 0 ||
       !Number.isFinite(priceNum) ||
       priceNum < 0 ||
-      !Number.isFinite(amountNum) ||
-      amountNum < 0 ||
       !addExecutedAt
     ) {
-      setAddError('계좌, 종목코드, 수량(양수), 단가(0 이상), 체결금액(0 이상), 체결일을 입력해주세요.');
+      setAddError('계좌, 종목코드, 수량(양수), 단가(0 이상), 체결일을 입력해주세요.');
       return;
     }
 
@@ -515,7 +520,7 @@ export default function Trades() {
           side: addSide,
           quantity: quantityNum,
           price: priceNum,
-          amount: amountNum,
+          amount: quantityNum * priceNum,
           currency: addCurrency,
           executedAt: addExecutedAt,
           commission: addCommission.trim() ? Number(addCommission) : null,
@@ -531,7 +536,6 @@ export default function Trades() {
       setAddName('');
       setAddQuantity('');
       setAddPrice('');
-      setAddAmount('');
       setAddCommission('');
       setAddTax('');
       setAddResult('추가되었습니다.');
@@ -562,7 +566,6 @@ export default function Trades() {
       side: t.side,
       quantity: String(t.quantity),
       price: String(t.price),
-      amount: String(t.amount),
       currency: t.currency,
       executedAt: t.executedAt,
       commission: t.commission === null ? '' : String(t.commission),
@@ -583,18 +586,15 @@ export default function Trades() {
     if (!editDraft) return;
     const quantityNum = Number(editDraft.quantity);
     const priceNum = Number(editDraft.price);
-    const amountNum = Number(editDraft.amount);
     if (
       !editDraft.symbol.trim() ||
       !Number.isFinite(quantityNum) ||
       quantityNum <= 0 ||
       !Number.isFinite(priceNum) ||
       priceNum < 0 ||
-      !Number.isFinite(amountNum) ||
-      amountNum < 0 ||
       !editDraft.executedAt
     ) {
-      setEditError('종목코드, 수량(양수), 단가(0 이상), 체결금액(0 이상), 체결일을 입력해주세요.');
+      setEditError('종목코드, 수량(양수), 단가(0 이상), 체결일을 입력해주세요.');
       return;
     }
     setEditSaving(true);
@@ -610,7 +610,7 @@ export default function Trades() {
           side: editDraft.side,
           quantity: quantityNum,
           price: priceNum,
-          amount: amountNum,
+          amount: quantityNum * priceNum,
           currency: editDraft.currency,
           executedAt: editDraft.executedAt,
           commission: editDraft.commission.trim() ? Number(editDraft.commission) : null,
@@ -1004,8 +1004,20 @@ export default function Trades() {
               </select>
             </div>
             <div className="form-row">
-              <label>체결금액</label>
-              <input type="number" min="0" step="any" value={addAmount} onChange={(e) => setAddAmount(e.target.value)} />
+              <label>체결금액 (자동계산)</label>
+              <input
+                type="text"
+                value={formatAmount(
+                  netTradeAmount(
+                    computeAmount(addQuantity, addPrice),
+                    addCommission.trim() ? Number(addCommission) : null,
+                    addTax.trim() ? Number(addTax) : null
+                  ),
+                  addCurrency
+                )}
+                readOnly
+                style={{ color: 'var(--text-muted)' }}
+              />
             </div>
             <div className="form-row">
               <label>체결일</label>
@@ -1088,7 +1100,7 @@ export default function Trades() {
               <th>단가</th>
               <th>수수료</th>
               <th>세금</th>
-              <th title="체결금액에 수수료·세금을 반영한 순액입니다(매수는 +, 매도는 -).">체결금액</th>
+              <th title="체결금액에 수수료·세금을 더한 값입니다.">체결금액</th>
               <th></th>
             </tr>
           </thead>
@@ -1190,7 +1202,7 @@ export default function Trades() {
                         />
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                           <select
                             value={editDraft.currency}
                             onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value })}
@@ -1198,14 +1210,16 @@ export default function Trades() {
                             <option value="KRW">원</option>
                             <option value="USD">USD</option>
                           </select>
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            value={editDraft.amount}
-                            onChange={(e) => setEditDraft({ ...editDraft, amount: e.target.value })}
-                            style={{ width: 90 }}
-                          />
+                          <span style={{ color: 'var(--text-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>
+                            {formatAmount(
+                              netTradeAmount(
+                                computeAmount(editDraft.quantity, editDraft.price),
+                                editDraft.commission.trim() ? Number(editDraft.commission) : null,
+                                editDraft.tax.trim() ? Number(editDraft.tax) : null
+                              ),
+                              editDraft.currency
+                            )}
+                          </span>
                         </div>
                       </td>
                       <td>
@@ -1257,8 +1271,8 @@ export default function Trades() {
                     <td>{formatAmount(t.price, t.currency)}</td>
                     <td>{t.commission === null ? '-' : formatAmount(t.commission, t.currency)}</td>
                     <td>{t.tax === null ? '-' : formatAmount(t.tax, t.currency)}</td>
-                    <td title={`체결금액 ${formatAmount(t.amount, t.currency)}${t.commission ? ` ${t.side === 'BUY' ? '+' : '-'} 수수료 ${formatAmount(t.commission, t.currency)}` : ''}${t.tax ? ` ${t.side === 'BUY' ? '+' : '-'} 세금 ${formatAmount(t.tax, t.currency)}` : ''}`}>
-                      {formatAmount(netTradeAmount(t), t.currency)}
+                    <td title={`체결금액 ${formatAmount(t.amount, t.currency)}${t.commission ? ` + 수수료 ${formatAmount(t.commission, t.currency)}` : ''}${t.tax ? ` + 세금 ${formatAmount(t.tax, t.currency)}` : ''}`}>
+                      {formatAmount(netTradeAmount(t.amount, t.commission, t.tax), t.currency)}
                     </td>
                     <td>
                       {editable ? (

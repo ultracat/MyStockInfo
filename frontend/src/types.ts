@@ -34,6 +34,9 @@ export interface HoldingPosition {
   profitLossRate: number;
   commission: number | null;
   tax: number | null;
+  /** CSV 가져오기에서만 채워진다(예: IRP 계좌의 "개인납입액"/"회사납입액") — 같은
+   *  심볼이 한 계좌에 여러 행으로 있을 때 구분하는 자유 텍스트. */
+  memo?: string | null;
 }
 
 export interface PortfolioOverview {
@@ -68,6 +71,7 @@ export interface StoredHolding {
   profitLossRate: number;
   commission: number | null;
   tax: number | null;
+  memo: string | null;
   updatedAt: string;
 }
 

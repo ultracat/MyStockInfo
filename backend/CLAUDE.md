@@ -203,6 +203,14 @@ symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩�
 (`normalizeSymbol`, `market === 'KR'`이고 숫자 1~6자리면 `padStart(6,'0')`) — CSV에
 "5930"처럼 앞자리 0이 빠진 채로 들어와도 이름/현재가 자동조회가 정상 동작하게.
 
+**보유종목은 선택 컬럼 `memo`로 같은 심볼의 중복 행을 구분한다** — IRP 계좌처럼 한
+계좌 안에 같은 종목을 "개인납입액"/"회사납입액"처럼 나눠서 관리하는 경우를 위한 것.
+`upsertHoldings`(`db/holdingsStore.ts`)의 upsert 식별자는 `(broker, accountId, symbol)`이
+아니라 `(broker, accountId, symbol, memo)` — memo가 다르면(또는 한쪽만 있으면) 같은
+심볼이어도 별도 행으로 쌓이고, memo까지 완전히 같은 행만 갱신 대상이 된다. 실시간
+동기화(`replaceSnapshot`)는 이 필드를 채우지 않는다(라이브 브로커 API가 이런 구분을
+안 줌) — CSV 가져오기 전용.
+
 ## 배당 기록 (`src/db/dividends.ts`)
 
 `currency`(`KRW`|`USD`) 기준 `amount`를 그대로 저장 — 크로스 통화 환산은 안 함(프론트가

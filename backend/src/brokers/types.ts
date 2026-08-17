@@ -25,6 +25,10 @@ export interface HoldingPosition {
   profitLossRate: number;
   commission: number | null;
   tax: number | null;
+  /** CSV 가져오기에서만 쓰인다(예: IRP 계좌의 "개인납입액"/"회사납입액") — 같은
+   *  심볼이 한 계좌에 여러 행으로 존재할 때 구분하기 위한 자유 텍스트. 라이브
+   *  브로커 어댑터는 채우지 않는다. */
+  memo?: string | null;
 }
 
 export interface PortfolioOverview {

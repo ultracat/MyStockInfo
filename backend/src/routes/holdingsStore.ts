@@ -28,6 +28,7 @@ interface ImportRowShape {
   profitLossRate?: number;
   commission?: number | null;
   tax?: number | null;
+  memo?: string | null;
 }
 
 // 국내(KR) 심볼은 6자리다 — CSV에 "5930"처럼 앞자리 0이 빠진 채로 입력되면
@@ -57,6 +58,7 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
     profitLossRate,
     commission,
     tax,
+    memo,
   } = (body ?? {}) as Record<string, unknown>;
 
   if (
@@ -102,6 +104,7 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
       profitLossRate: num(profitLossRate),
       commission: numOrNull(commission) ?? null,
       tax: numOrNull(tax) ?? null,
+      memo: typeof memo === 'string' && memo.trim() ? memo.trim() : null,
     },
   };
 }

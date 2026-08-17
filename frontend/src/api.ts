@@ -113,6 +113,7 @@ export const api = {
       commission?: number | null;
       tax?: number | null;
       market?: string | null;
+      memo?: string | null;
     }[]
   ) =>
     request<{ added: number; failed: { row: number; error: string }[] }>('/holdings-store/import', {

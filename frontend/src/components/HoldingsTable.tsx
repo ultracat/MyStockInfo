@@ -34,10 +34,11 @@ export default function HoldingsTable({ rows }: { rows: Row[] }) {
         </tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
-          <tr key={r.symbol}>
+        {rows.map((r, idx) => (
+          <tr key={`${r.symbol}:${r.memo ?? ''}:${idx}`}>
             <td>
               {r.name} <span style={{ color: 'var(--text-muted)' }}>({r.symbol})</span>
+              {r.memo && <span style={{ color: 'var(--text-muted)' }}> · {r.memo}</span>}
             </td>
             <td>{r.market ?? '-'}</td>
             <td>{r.quantity}</td>

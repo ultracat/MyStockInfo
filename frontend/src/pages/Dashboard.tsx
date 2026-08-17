@@ -68,6 +68,7 @@ function buildPortfolioFromStored(broker: BrokerId, accountId: string, rows: Sto
       profitLossRate: r.profitLossRate,
       commission: r.commission,
       tax: r.tax,
+      memo: r.memo,
     })),
   };
 }
@@ -87,6 +88,7 @@ const HOLDINGS_CSV_HEADER = [
   'tax',
   'currency',
   'market',
+  'memo',
 ];
 
 /**
@@ -433,6 +435,7 @@ export default function Dashboard() {
         h.tax === null ? '' : String(h.tax),
         h.currency ?? '',
         h.market ?? '',
+        h.memo ?? '',
       ]),
     ];
     downloadCsv(`holdings-${new Date().toISOString().slice(0, 10)}.csv`, rows);
@@ -473,6 +476,7 @@ export default function Dashboard() {
       const iTax = colIndex('tax');
       const iCurrency = colIndex('currency');
       const iMarket = colIndex('market');
+      const iMemo = colIndex('memo');
 
       if ([iBroker, iAccountId, iSymbol, iQuantity, iAvgPrice, iCurrency].some((i) => i === -1)) {
         setImportResult(
@@ -503,6 +507,7 @@ export default function Dashboard() {
           tax: iTax !== -1 ? (num(r[iTax]) ?? null) : null,
           currency: (r[iCurrency] ?? '').trim() as 'KRW' | 'USD',
           market: iMarket !== -1 && (r[iMarket] ?? '').trim() ? r[iMarket].trim() : null,
+          memo: iMemo !== -1 && (r[iMemo] ?? '').trim() ? r[iMemo].trim() : null,
         }));
 
       const result = await api.importHoldingsStore(records);

@@ -222,13 +222,16 @@ export default function Overview() {
     return slices;
   }
 
-  // ---- 4) 월별 매수 코호트 수익률(diverging 막대) ----
-  // "평균 구입금액 대비 현재가" 자체는 종목당 스냅샷 하나뿐이라 그 자체로는 월별
-  // 축이 없다 — 그래서 매수 시점(매매내역의 executedAt)으로 달을 나누고, 그 달에
-  // 산 뒤 지금도 보유 중인 물량이 지금 얼마나 벌었는지(가중평균, 가중치=매입금액)를
-  // 보여준다. 매매내역은 로컬 저장소(trades-store) 기준이라, 아직 한 번도 실시간
-  // 조회/동기화/CSV 가져오기를 안 한 계좌의 과거 매수는 안 잡힐 수 있다(다른 화면의
-  // "전체" 모드와 같은 한계 — write-through 캐시라 완전성보다 훑어보기가 목적).
+  // ---- 4) 매월 보유종목 투자금 대비 수익률(diverging 막대, 누적) ----
+  // 지금 보유 중인 종목들만 대상으로, 그 종목들의 매매내역을 시간순으로 훑으며
+  // "그 달 말 기준 누적 투자금(매입원가)"과 "그 시점 수량 × 오늘 현재가"를
+  // 계산한다 — 즉 한 달짜리 스냅샷이 아니라 "지금까지 얼마를 넣었고 그게 지금
+  // 얼마가 됐는지"를 매월 갱신해서 보여주는 누적 추이다. 매도는 평균원가법으로
+  // 투자금에서 그만큼 빼고 수량도 줄인다(가중평균 매입가 계산과 같은 방식).
+  // 거래가 없던 달은 직전 상태를 그대로 이어간다(forward-fill). 매매내역은
+  // 로컬 저장소(trades-store) 기준이라, 아직 한 번도 실시간 조회/동기화/CSV
+  // 가져오기를 안 한 계좌의 과거 매수는 안 잡힐 수 있다(다른 화면의 "전체"
+  // 모드와 같은 한계 — write-through 캐시라 완전성보다 훑어보기가 목적).
   const lastPriceBySymbol = useMemo(() => {
     const m = new Map<string, { lastPrice: number; currency: string | null }>();
     for (const h of holdings) {
@@ -238,28 +241,74 @@ export default function Overview() {
   }, [holdings]);
 
   const monthlyReturnRows = useMemo<MonthlyReturnRow[]>(() => {
-    const byMonth = new Map<string, { investedKrw: number; currentKrw: number }>();
+    const bySymbol = new Map<string, StoredTrade[]>();
     for (const t of trades) {
-      if (t.side !== 'BUY') continue;
-      const priceInfo = lastPriceBySymbol.get(t.symbol);
-      if (!priceInfo) continue; // 지금은 안 갖고 있는 종목(전량 매도됨)은 스킵
-      const investedKrw = toKrw(t.amount, t.currency);
-      const currentValueKrw = toKrw(t.quantity * priceInfo.lastPrice, t.currency);
-      if (investedKrw === null || currentValueKrw === null) continue;
-      const month = t.executedAt.slice(0, 7);
-      const existing = byMonth.get(month) ?? { investedKrw: 0, currentKrw: 0 };
-      existing.investedKrw += investedKrw;
-      existing.currentKrw += currentValueKrw;
-      byMonth.set(month, existing);
+      if (!lastPriceBySymbol.has(t.symbol)) continue; // 전량 매도해 지금은 안 갖고 있는 종목은 제외
+      if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, []);
+      bySymbol.get(t.symbol)!.push(t);
     }
-    return Array.from(byMonth.entries())
-      .map(([month, v]) => ({
-        month,
-        rate: v.investedKrw > 0 ? (v.currentKrw - v.investedKrw) / v.investedKrw : 0,
-        amountKrw: v.currentKrw - v.investedKrw,
-      }))
-      .sort((a, b) => (a.month < b.month ? -1 : 1))
-      .slice(-12);
+
+    // 종목별로 매매내역을 시간순으로 훑어 "그 달 말 기준" 누적 수량/투자금
+    // 체크포인트를 만든다. 같은 달에 거래가 여러 건이면 그 달의 마지막 상태로
+    // 덮어써진다(Map이라 자연히 그렇게 됨).
+    const perSymbolMonthly = new Map<string, Map<string, { qty: number; investedKrw: number }>>();
+    let earliestMonth: string | null = null;
+
+    for (const [symbol, symTrades] of bySymbol) {
+      const sorted = [...symTrades].sort((a, b) => (a.executedAt < b.executedAt ? -1 : 1));
+      let qty = 0;
+      let investedKrw = 0;
+      const checkpoints = new Map<string, { qty: number; investedKrw: number }>();
+      for (const t of sorted) {
+        const amountKrw = toKrw(t.amount, t.currency) ?? 0;
+        if (t.side === 'BUY') {
+          qty += t.quantity;
+          investedKrw += amountKrw;
+        } else {
+          const sellQty = Math.min(t.quantity, qty);
+          const avgCost = qty > 0 ? investedKrw / qty : 0;
+          investedKrw -= avgCost * sellQty;
+          qty -= sellQty;
+        }
+        const month = t.executedAt.slice(0, 7);
+        checkpoints.set(month, { qty, investedKrw });
+        if (!earliestMonth || month < earliestMonth) earliestMonth = month;
+      }
+      perSymbolMonthly.set(symbol, checkpoints);
+    }
+
+    if (!earliestMonth) return [];
+
+    const months: string[] = [];
+    const cursor = new Date(`${earliestMonth}-01T00:00:00`);
+    const end = new Date();
+    end.setDate(1);
+    while (cursor <= end) {
+      months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`);
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const lastState = new Map<string, { qty: number; investedKrw: number }>();
+    const rows: MonthlyReturnRow[] = [];
+    for (const month of months) {
+      let totalInvested = 0;
+      let totalCurrent = 0;
+      for (const [symbol, checkpoints] of perSymbolMonthly) {
+        const cp = checkpoints.get(month);
+        if (cp) lastState.set(symbol, cp);
+        const state = lastState.get(symbol);
+        if (!state || state.qty <= 0) continue;
+        const priceInfo = lastPriceBySymbol.get(symbol)!;
+        const currentKrw = toKrw(state.qty * priceInfo.lastPrice, priceInfo.currency) ?? 0;
+        totalInvested += state.investedKrw;
+        totalCurrent += currentKrw;
+      }
+      if (totalInvested > 0) {
+        rows.push({ month, rate: (totalCurrent - totalInvested) / totalInvested, amountKrw: totalCurrent - totalInvested });
+      }
+    }
+
+    return rows.slice(-12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trades, lastPriceBySymbol, effectiveFxRate]);
 
@@ -369,10 +418,11 @@ export default function Overview() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>월별 매수 종목 수익률</h3>
+        <h3 style={{ marginTop: 0 }}>매월 보유종목 투자금 대비 수익률</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
-          그 달에 매수해서 지금도 보유 중인 물량이, 매입가 대비 현재가 기준으로 지금 얼마나 벌었는지를
-          매입금액 가중평균으로 보여줍니다(최근 12개월). 전량 매도한 종목은 포함되지 않습니다.
+          지금 보유 중인 종목들만 대상으로, 그 달까지 누적 투자한 금액(매도분은 평균원가로 차감)이
+          오늘 현재가 기준으로 지금 얼마가 됐는지를 매월 누적으로 보여줍니다(최근 12개월). 전량
+          매도한 종목은 포함되지 않습니다.
         </p>
         <MonthlyReturnChart rows={monthlyReturnRows} />
       </div>

@@ -15,11 +15,12 @@ const BAR_GAP = 6;
 const AXIS_SPACE = 22;
 
 /**
- * 매수 코호트 수익률 — 그 달에 매수해서 지금도 보유 중인 종목들의, 매입가 대비
- * 현재가 손익을 가중평균한 값이다(가중치=매입금액). 기준선(0%) 위/아래로 막대가
- * 자라는 diverging 막대라 status 색(good/critical)을 쓴다 — 이 값 자체가 "좋다/
- * 나쁘다"를 뜻하는 손익이라 카테고리 색이 아니라 상태 색이 맞다(color-formula.md의
- * "series가 곧 good/bad를 뜻하면 status를 입는다" 규칙).
+ * 월별 손익률 diverging 막대 — 값의 의미(코호트 vs 누적 등)는 호출부가 정하고,
+ * 이 컴포넌트는 `{month, rate, amountKrw}` 배열만 그린다(Overview.tsx의 "매월
+ * 보유종목 투자금 대비 수익률" 카드가 씀 — 누적 투자금 대비 수익률 추이).
+ * 기준선(0%) 위/아래로 막대가 자라는 diverging 막대라 status 색(good/critical)을
+ * 쓴다 — 이 값 자체가 "좋다/나쁘다"를 뜻하는 손익이라 카테고리 색이 아니라 상태
+ * 색이 맞다(color-formula.md의 "series가 곧 good/bad를 뜻하면 status를 입는다" 규칙).
  */
 export default function MonthlyReturnChart({ rows }: { rows: MonthlyReturnRow[] }) {
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);

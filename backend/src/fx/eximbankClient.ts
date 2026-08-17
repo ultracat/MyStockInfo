@@ -1,14 +1,17 @@
 import { getSettings } from '../db/settings';
 
-// 한국수출입은행 Open API(환율, data=AP01). 도메인이 2025-06-25에
-// www.koreaexim.go.kr로 이전됐고 구 도메인(oapi.koreaexim.go.kr)은 2026-04-30
-// 폐쇄 예정이라 신 도메인만 쓴다(공공데이터포털 등록 페이지 공지 확인,
-// checked 2026-08-17). 요청/응답 형식은 공식 사용 예제(Java/Spring Boot,
-// Python) 여러 개와 실제 응답 샘플을 교차 확인해 반영했다 — 다만 이 저장소
-// 환경에서는 공식 도메인이 WAF/봇 차단 챌린지(302 리다이렉트 루프) 뒤에 있어
-// curl로 라이브 응답까지는 확인하지 못했다. 실제 인증키로 최초 사용 시 반드시
-// 재검증할 것.
-const BASE_URL = 'https://www.koreaexim.go.kr/site/program/financial/exchangeJSON';
+// 한국수출입은행 Open API(환율, data=AP01). 공공데이터포털 공지("도메인이
+// 2025-06-25에 www.koreaexim.go.kr로 이전, 구 도메인은 2026-04-30 폐쇄 예정")를
+// 보고 처음엔 신 도메인(www.koreaexim.go.kr)을 썼는데, **실측 결과 신 도메인은
+// 쿼리 파라미터가 붙은 요청에 응답 자체를 안 주고(WAF/봇 차단 추정 — authkey만
+// 붙여도 재현됨), 오히려 "폐쇄 예정"이라던 구 도메인(oapi.koreaexim.go.kr)이
+// 실제 인증키로 정상 응답했다**(200 OK, 사용자 실제 발급 키로 확인,
+// checked 2026-08-17) — 그래서 문서상 공지와 반대로 구 도메인을 쓴다. 응답
+// 필드(result/cur_unit/ttb/tts/deal_bas_r/cur_nm 등)는 이 실제 응답과 공식 사용
+// 예제(Java/Spring Boot, Python)를 교차 확인해 반영했다. 구 도메인이 나중에 진짜
+// 폐쇄되면 이 URL도 www.koreaexim.go.kr로 다시 바꿔야 한다 — 그땐 이 파일의
+// 타임아웃/재시도 로직이 그대로 안전망 역할을 한다.
+const BASE_URL = 'https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON';
 
 export function isEximbankConfigured(): boolean {
   return !!getSettings().eximbankAuthKey;
@@ -34,15 +37,12 @@ function yyyymmdd(date: Date): string {
   return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
 }
 
-// 이 저장소 개발 환경에서 실제로 이 도메인이 응답 없이 계속 걸리는(hang) 걸
-// 확인했다(WAF/봇 차단 챌린지로 추정, 302 리다이렉트 루프 — 실제 인증키로도
-// 64초(=8회×8초) 동안 전부 타임아웃, `_debug-eximbank`로 실측, 2026-08-17) —
-// 이 환경 자체의 네트워크 제약일 가능성이 높지만(Java/Python 공식 사용 예제가
-// 여럿 존재), fetch에 기본 타임아웃이 없어서 대비는 필요하다: 타임아웃이 없으면
-// "토스 실패 시 몇 초 안에 대체"라는 이 기능의 목적이 최악의 경우 무한 대기로
-// 무너진다. 5초로 잡은 이유: 정상 응답이면 국내 API라 1~2초면 충분하고, 실패
-// 시나리오(worst case, 아래 5일 재시도 전부 실패)의 총 대기 시간을 30초 안으로
-// 묶어두기 위함.
+// fetch엔 기본 타임아웃이 없다 — 위 BASE_URL 주석에 적은 대로 신 도메인이
+// 응답 없이 계속 걸리는(hang) 걸 실제로 겪어봐서, 도메인을 구 도메인으로
+// 바꾼 지금도 방어적으로 타임아웃을 건다(구 도메인이 정상 응답할 땐 0.1초
+// 남짓이라 5초면 넉넉하다). 타임아웃이 없으면 "토스 실패 시 몇 초 안에 대체"
+// 라는 이 기능의 목적이 최악의 경우 무한 대기로 무너진다 — 5초 × 아래 최대
+// 6회 재시도로 총 대기 시간을 30초 안쪽으로 묶어둔다.
 const REQUEST_TIMEOUT_MS = 5_000;
 
 async function fetchWithTimeout(url: string): Promise<Response> {

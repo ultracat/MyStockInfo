@@ -323,8 +323,15 @@ button.ghost {
   padding: 6px 10px;
   border-radius: 6px;
   font-size: 12px;
+  line-height: 1.4;
   pointer-events: none;
   transform: translate(-50%, -110%);
-  white-space: nowrap;
+  /* 예전엔 white-space:nowrap이라 내용이 길면(금액이 큰 손익률 차트 등) 한
+     줄로 쭉 늘어나서, 그래프 컨테이너의 overflow-x:auto 클리핑 영역이나 화면
+     가장자리에 잘리는 경우가 많았다 — max-width로 폭을 제한해 필요하면 줄바꿈
+     되게 한다(짧은 내용은 지금처럼 한 줄 그대로 유지됨). */
+  white-space: normal;
+  max-width: 200px;
+  text-align: center;
   z-index: 10;
 }

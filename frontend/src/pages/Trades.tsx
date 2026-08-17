@@ -9,12 +9,14 @@ import { API_BROKER_IDS, BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, formatAccountOption } from '../accountLabels';
 
 // CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
-// TradeRecord 모양으로 바꾼다 — name은 항상 null(화면이 심볼 폴백을 지원).
+// TradeRecord 모양으로 바꾼다 — name은 백엔드가 이미 채워서 저장해준 값을 그대로
+// 쓴다(자동조회는 KB 동기화/CSV 가져오기 시점에 백엔드에서 끝남, backend/CLAUDE.md
+// "매매내역 종목명" 절 참고).
 function mapStoredTrade(t: StoredTrade): TradeRecord {
   return {
     id: t.id,
     symbol: t.symbol,
-    name: null,
+    name: t.name,
     side: t.side,
     quantity: t.quantity,
     price: t.price,
@@ -26,13 +28,15 @@ function mapStoredTrade(t: StoredTrade): TradeRecord {
   };
 }
 
-// name·id 둘 다 없다 — name은 TradeRecord가 원래도 선택적이고 화면이 이미 심볼로
-// 폴백 표시하므로 자동조회가 불필요(배당금/보유종목과 다른 점), id는 브로커 고유
-// 체결번호라 CSV 입력행엔 없고 없으면 서버가 새로 발급한다.
+// id는 브로커 고유 체결번호라 CSV 입력행엔 없고 없으면 서버가 새로 발급한다.
+// name(종목명)은 선택 컬럼 — 비워두면 백엔드가 토스→KIS→KB 순으로 자동조회해서
+// 채운다(backend/CLAUDE.md 참고), 값을 채우면 그 값을 그대로 쓴다(API 연동이
+// 전혀 없을 때의 유일한 채움 경로).
 const TRADES_CSV_HEADER = [
   'broker',
   'accountId',
   'symbol',
+  'name',
   'side',
   'quantity',
   'price',
@@ -87,6 +91,17 @@ function formatAmount(amount: number, currency: string) {
   return currency === 'USD' ? usdFmt.format(amount) : `${krw.format(Math.round(amount))}원`;
 }
 
+// 체결금액(amount)은 브로커가 내려주는 체결 그 자체의 금액(수량*단가)이고,
+// 수수료/세금은 별도 필드다 — 표에 보여주는 "체결금액"은 실제 현금 흐름을
+// 체감할 수 있도록 수수료/세금까지 반영한 순액으로 계산한다: 매수는 수수료·세금만큼
+// 더 나가고(순지출 = 체결금액 + 수수료 + 세금), 매도는 그만큼 덜 들어온다(순수취 =
+// 체결금액 - 수수료 - 세금). KIS는 이 두 필드를 아직 안 내려줘서(commission/tax
+// 항상 null) 사실상 토스/KB증권/CSV·수동 입력 행에만 차이가 생긴다.
+function netTradeAmount(t: { side: 'BUY' | 'SELL'; amount: number; commission: number | null; tax: number | null }) {
+  const fees = (t.commission ?? 0) + (t.tax ?? 0);
+  return t.side === 'BUY' ? t.amount + fees : t.amount - fees;
+}
+
 function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
@@ -129,6 +144,7 @@ export default function Trades() {
   const [addBroker, setAddBroker] = useState<BrokerId>(CSV_ONLY_BROKER_IDS[0]);
   const [addAccountId, setAddAccountId] = useState('');
   const [addSymbol, setAddSymbol] = useState('');
+  const [addName, setAddName] = useState('');
   const [addSide, setAddSide] = useState<'BUY' | 'SELL'>('BUY');
   const [addQuantity, setAddQuantity] = useState('');
   const [addPrice, setAddPrice] = useState('');
@@ -156,6 +172,7 @@ export default function Trades() {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<{
     symbol: string;
+    name: string;
     side: 'BUY' | 'SELL';
     quantity: string;
     price: string;
@@ -319,6 +336,7 @@ export default function Trades() {
         t.broker,
         t.accountId,
         t.symbol,
+        t.name ?? '',
         t.side,
         String(t.quantity),
         String(t.price),
@@ -356,6 +374,7 @@ export default function Trades() {
       const iBroker = colIndex('broker');
       const iAccountId = colIndex('accountId');
       const iSymbol = colIndex('symbol');
+      const iName = colIndex('name');
       const iSide = colIndex('side');
       const iQuantity = colIndex('quantity');
       const iPrice = colIndex('price');
@@ -385,6 +404,7 @@ export default function Trades() {
           broker: (r[iBroker] ?? '').trim().toLowerCase() as BrokerId,
           accountId: (r[iAccountId] ?? '').trim(),
           symbol: (r[iSymbol] ?? '').trim(),
+          name: iName !== -1 && (r[iName] ?? '').trim() ? r[iName].trim() : null,
           side: (r[iSide] ?? '').trim() as 'BUY' | 'SELL',
           quantity: Number((r[iQuantity] ?? '').trim()),
           price: Number((r[iPrice] ?? '').trim()),
@@ -459,6 +479,7 @@ export default function Trades() {
           broker: addBroker,
           accountId: accountIdTrimmed,
           symbol: addSymbol.trim(),
+          name: addName.trim() ? addName.trim() : null,
           side: addSide,
           quantity: quantityNum,
           price: priceNum,
@@ -475,6 +496,7 @@ export default function Trades() {
       }
 
       setAddSymbol('');
+      setAddName('');
       setAddQuantity('');
       setAddPrice('');
       setAddAmount('');
@@ -504,6 +526,7 @@ export default function Trades() {
     setEditingKey(tradeKey(t));
     setEditDraft({
       symbol: t.symbol,
+      name: t.name ?? '',
       side: t.side,
       quantity: String(t.quantity),
       price: String(t.price),
@@ -551,6 +574,7 @@ export default function Trades() {
           accountId: t.accountId,
           id: t.id,
           symbol: editDraft.symbol.trim(),
+          name: editDraft.name.trim() ? editDraft.name.trim() : null,
           side: editDraft.side,
           quantity: quantityNum,
           price: priceNum,
@@ -905,6 +929,14 @@ export default function Trades() {
               <input value={addSymbol} onChange={(e) => setAddSymbol(e.target.value)} placeholder="예: 005930" />
             </div>
             <div className="form-row">
+              <label>종목명 (선택)</label>
+              <input
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="비우면 자동조회"
+              />
+            </div>
+            <div className="form-row">
               <label>구분</label>
               <select value={addSide} onChange={(e) => setAddSide(e.target.value as 'BUY' | 'SELL')}>
                 <option value="BUY">매수</option>
@@ -1009,14 +1041,16 @@ export default function Trades() {
               <th>구분</th>
               <th>수량</th>
               <th>단가</th>
-              <th>체결금액</th>
+              <th>수수료</th>
+              <th>세금</th>
+              <th title="체결금액에 수수료·세금을 반영한 순액입니다(매수는 +, 매도는 -).">체결금액</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {sortedTrades.length === 0 ? (
               <tr>
-                <td colSpan={isAllMode ? 9 : 7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={isAllMode ? 11 : 9} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {viewMode === 'year' ? `${year}년` : `${year}년 ${month}월`} 거래 내역이 없습니다.
                 </td>
               </tr>
@@ -1044,11 +1078,20 @@ export default function Trades() {
                         </td>
                       )}
                       <td>
-                        <input
-                          value={editDraft.symbol}
-                          onChange={(e) => setEditDraft({ ...editDraft, symbol: e.target.value })}
-                          style={{ width: 80 }}
-                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <input
+                            value={editDraft.symbol}
+                            onChange={(e) => setEditDraft({ ...editDraft, symbol: e.target.value })}
+                            style={{ width: 80 }}
+                            placeholder="종목코드"
+                          />
+                          <input
+                            value={editDraft.name}
+                            onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                            style={{ width: 80 }}
+                            placeholder="종목명 (선택)"
+                          />
+                        </div>
                       </td>
                       <td>
                         <select
@@ -1077,6 +1120,28 @@ export default function Trades() {
                           value={editDraft.price}
                           onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
                           style={{ width: 90 }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editDraft.commission}
+                          onChange={(e) => setEditDraft({ ...editDraft, commission: e.target.value })}
+                          placeholder="선택"
+                          style={{ width: 70 }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editDraft.tax}
+                          onChange={(e) => setEditDraft({ ...editDraft, tax: e.target.value })}
+                          placeholder="선택"
+                          style={{ width: 70 }}
                         />
                       </td>
                       <td>
@@ -1145,7 +1210,11 @@ export default function Trades() {
                     </td>
                     <td>{t.quantity}</td>
                     <td>{formatAmount(t.price, t.currency)}</td>
-                    <td>{formatAmount(t.amount, t.currency)}</td>
+                    <td>{t.commission === null ? '-' : formatAmount(t.commission, t.currency)}</td>
+                    <td>{t.tax === null ? '-' : formatAmount(t.tax, t.currency)}</td>
+                    <td title={`체결금액 ${formatAmount(t.amount, t.currency)}${t.commission ? ` ${t.side === 'BUY' ? '+' : '-'} 수수료 ${formatAmount(t.commission, t.currency)}` : ''}${t.tax ? ` ${t.side === 'BUY' ? '+' : '-'} 세금 ${formatAmount(t.tax, t.currency)}` : ''}`}>
+                      {formatAmount(netTradeAmount(t), t.currency)}
+                    </td>
                     <td>
                       {editable ? (
                         <div style={{ display: 'flex', gap: 4 }}>

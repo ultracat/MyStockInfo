@@ -256,18 +256,40 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `selectedBroker`/`accountId`를 채워 넣고, "전체" 모드는 행 자체의 값을 그대로
   쓴다. 표의 증권사/계좌 컬럼은 `isAllMode`일 때만 보여준다(개별 모드는 이미
   위쪽 select로 보이므로 매 행 반복이 불필요) — "종목" 컬럼은 `name`이 있으면
-  (개별 모드의 KIS 라이브 데이터, `prdt_name`) 이름+심볼을, 없으면(전체 모드는
-  `StoredTrade`에 `name` 자체가 없어 항상, 개별 모드의 토스는 원래도 null이라)
-  심볼만 보여준다.
+  이름+심볼을, 없으면 심볼만 보여준다. **`name`은 이제 거의 항상 채워진다** —
+  `StoredTrade`도 `HoldingPosition`의 `memo`처럼 `name` 필드를 갖고, 백엔드가
+  실시간 조회/KB 동기화/CSV 가져오기 세 경로 전부에서 토스→KIS→KB 순으로 자동
+  조회해 채운다(backend/CLAUDE.md의 "매매내역 종목명" 절 참고) — 프론트는 그냥
+  받은 값을 표시만 하면 된다. `mapStoredTrade`가 예전엔 `name: null`을
+  하드코딩했었는데 지금은 `t.name`을 그대로 넘긴다.
 
   **CSV 내보내기**는 Dashboard.tsx와 같은 이유로 `GET /api/trades-store` 전체를
   대상으로 하고, **가져오기**도 대상 선택 없이 CSV 행 자체의 `broker`/`accountId`를
-  그대로 쓴다. **"매매내역 추가"**(수동 입력) 폼은 `CSV_ONLY_BROKER_IDS`만 증권사
+  그대로 쓴다. `TRADES_CSV_HEADER`에 선택 컬럼 `name`이 있다 — 비우면 백엔드가
+  자동조회하고, 채우면 그 값을 그대로 쓴다(API 연동이 전혀 없을 때의 유일한 채움
+  경로). **"매매내역 추가"**(수동 입력) 폼은 `CSV_ONLY_BROKER_IDS`만 증권사
   선택지로 준다(Dividends.tsx의 배당 기록 추가 폼과 다른 점 — 토스/KIS는 실시간
   API로 실제 체결 내역이 write-through 동기화되므로, 그 위에 수동 입력을 섞으면
   어느 쪽이 진짜 체결 내역인지 알 수 없어진다) — 별도 백엔드 라우트 없이 기존 CSV
   가져오기 엔드포인트(`POST /trades-store/import`)를 행 1개짜리 배열로 호출한다
-  (`id`를 안 주면 서버가 새로 발급).
+  (`id`를 안 주면 서버가 새로 발급). 폼에도 "종목명 (선택)" 입력칸이 있고(비우면
+  자동조회), 인라인 수정 행도 종목코드 입력 바로 아래에 같은 칸을 하나 더
+  둔다(별도 테이블 컬럼을 안 늘리려고 한 `<td>` 안에 세로로 쌓음).
+
+  **수수료/세금은 표에 전용 컬럼이 있고 인라인 수정으로 고칠 수 있다** — 상태
+  (`editDraft.commission`/`tax`)는 원래부터 있었는데(저장 시 그대로 넘김) 입력
+  UI가 없어서 사실상 못 고쳤던 걸, 단가 컬럼 뒤에 "수수료"/"세금" `<input>` 두 칸을
+  새로 추가해 실제로 편집 가능하게 했다. **"체결금액" 컬럼은 원본 `amount`가 아니라
+  수수료·세금을 반영한 순액**(`netTradeAmount`)을 보여준다 — 매수는
+  `amount + commission + tax`(수수료·세금만큼 더 나감), 매도는
+  `amount - commission - tax`(그만큼 덜 들어옴). 셀에 `title` 툴팁으로 원본
+  체결금액과 가/감 내역을 풀어서 보여준다. **KIS는 `commission`/`tax`를 항상
+  `null`로 내려줘서**(`kisAdapter.ts`의 `mapTrade`, backend가 이 TR에서 해당 필드를
+  아직 안 채움) 순액 계산이 사실상 원본과 같다 — 실제 차이는 토스/KB증권/CSV·수동
+  입력 행에서만 보인다. **차트(`chartRows`)와 상단 스탯 타일(`totals`)은 여전히
+  원본 `amount` 합계를 쓴다** — 이 요청은 "표에 보이는 체결금액"만 지정했고, 집계
+  숫자까지 순액으로 바꾸면 기존에 보던 총 매수/매도금액 숫자가 달라지는 더 큰
+  범위의 변경이 돼서 범위를 좁혔다.
 
   **인라인 수정/삭제는 `CSV_ONLY_BROKER_IDS` 행에만 허용한다**(그 외 행은
   "실시간 연동" 텍스트만 표시) — 토스/KIS 행은 write-through로 실시간 조회가

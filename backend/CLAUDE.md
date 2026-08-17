@@ -180,13 +180,14 @@ limit 수치가 공식 문서에 없어 KIS(4tps)보다 보수적인 2tps로 시
 `routes/tradesStore.ts`) 모두 `{ records: [...] }`를 받아 행별로 검증하고, 실패해도
 나머지는 계속 저장한 뒤 `{ added, failed: [{row, error}] }`로 응답한다(수동 작성 CSV라
 오타가 흔해서, 몇백 건 중 실패한 몇 건만 골라 고칠 수 있게). CSV 파싱/직렬화 자체는
-프론트(`frontend/src/csv.ts`)가 하고 백엔드는 파싱된 배열만 받는다. **세 라우트 다
-`name`(종목명)을 CSV 컬럼으로 안 받는다** — 배당금/보유종목은 심볼로 자동조회하고
-(`src/stockNameResolver.ts`의 `resolveStockNames`, 캐시 우선 + 토스 종목 정보 API 최대
-200개 청크 — `refresh-names`가 쓰던 것과 같은 조합을 공용 함수로 뺐다), 매매내역은
-`TradeRecord.name`이 원래도 선택적이고 화면이 이미 심볼로 폴백 표시해서 자동조회 자체가
-불필요하다. 매매내역은 `id`도 안 받는다(브로커 고유 체결번호라 CSV 행엔 없음 — 없으면
-서버가 `randomUUID()`로 발급).
+프론트(`frontend/src/csv.ts`)가 하고 백엔드는 파싱된 배열만 받는다. 세 라우트 다
+`name`(종목명)을 심볼로 자동조회한다(`src/stockNameResolver.ts`의 `resolveStockNames` —
+아래 "종목명 자동조회" 절의 토스→KIS→KB 3단계 우선순위 참고). **배당금/보유종목은 이름
+조회 실패를 행 실패로 처리**하지만(이름이 화면 표시에 필수), **매매내역은 CSV에 `name`
+컬럼이 있으면 그 값을 그대로 쓰고(override), 없거나 조회에 실패해도 행을 막지 않는다**
+(`routes/tradesStore.ts`) — 화면이 이미 심볼로 폴백 표시하므로, API 연동이 하나도 없는
+사용자도 이름을 직접 CSV에 적어 넣으면 되게 하려는 것. 매매내역은 `id`도 안 받는다
+(브로커 고유 체결번호라 CSV 행엔 없음 — 없으면 서버가 `randomUUID()`로 발급).
 
 **보유종목 CSV는 현재가/평가금액/손익도 자동으로 채운다** — 필수 컬럼(`broker,accountId,
 symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩용으로 사실상
@@ -242,19 +243,41 @@ holdings-store/trades-store/dividends 세 로컬 저장소에 실제로 CSV/수�
 
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/stockNameResolver.ts`, `src/routes/stockInfo.ts`)
 
-토스 종목 기본 정보 조회(`GET /api/v1/stocks?symbols=`, 최대 200개 콤마 동시조회)로 자동
-조회 — 계좌와 무관한 시세 참조 데이터라 브로커가 `kis`/CSV 전용인 기록에도 그대로 쓴다(토스
-미연동이면 409, 프론트는 직접 입력으로 폴백). **`name`이 심볼과 같은 경우가 있다** —
-한글명이 없는 종목(주로 미국 ETF)은 `name`이 티커 그대로 내려와서, `displayNameOf(info)`가
-`name === symbol`(대소문자 무시)일 때만 `englishName`으로 대체한다. 조회 결과는
-**SQLite**(`node:sqlite`, `stockNames.sqlite`, 심볼 하나로 키잉 — 브로커 무관)에
-영구 캐시 — 이 테이블만 SQLite고 나머지는 전부 `JsonStore`다. `node:sqlite`를 쓰는 이유:
-네이티브 addon이 없어야 electron-builder의 `asar: true` + `npmRebuild: false` 전제가
-유지된다(`better-sqlite3`는 네이티브라 이 전제를 깬다) — 이 프로젝트가 실제 쓰는
+**두 개의 서로 다른 조회 경로가 있다.** `GET /api/stock-info/:symbol`(`routes/stockInfo.ts`,
+Dividends.tsx의 "직접 입력" 단건 조회용)은 토스 전용이다(토스 종목 기본 정보 조회
+`GET /api/v1/stocks?symbols=`, 최대 200개 콤마 동시조회 — 계좌와 무관한 시세 참조
+데이터라 브로커가 `kis`/CSV 전용인 기록에도 그대로 쓴다, 토스 미연동이면 409, 프론트는
+직접 입력으로 폴백). 반면 CSV 가져오기 세 라우트(배당금/보유종목/매매내역)가 공유하는
+`resolveStockNames`는 **토스 → 한국투자증권 → KB증권 순으로 시도한다**(`stockNameResolver.ts`) —
+1) 토스 종목 기본 정보(위와 같은 API, 국내/해외 다 지원, 배치 최대 200개), 2) 한국투자증권
+주식기본조회(`kisClient.ts`의 `fetchKisStockName`, TR `CTPF1002R`, 국내 6자리만, 건별),
+3) KB증권 종목기본정보(`kbClient.ts`의 `fetchKbStockName`, TR `SIQM4900`, 국내 6자리만,
+건별, 앱에 이 TR 권한이 없으면 그냥 null). 두 경로 다 같은 SQLite 캐시를 공유한다.
+**`name`이 심볼과 같은 경우가 있다** — 한글명이 없는 종목(주로 미국 ETF)은 토스 응답의
+`name`이 티커 그대로 내려와서, `displayNameOf(info)`가 `name === symbol`(대소문자 무시)일
+때만 `englishName`으로 대체한다(KIS/KB 대체 조회는 국내 종목만 다뤄서 이 문제가 없다).
+조회 결과는 **SQLite**(`node:sqlite`, `stockNames.sqlite`, 심볼 하나로 키잉 — 브로커
+무관)에 영구 캐시 — 이 테이블만 SQLite고 나머지는 전부 `JsonStore`다. `node:sqlite`를
+쓰는 이유: 네이티브 addon이 없어야 electron-builder의 `asar: true` + `npmRebuild: false`
+전제가 유지된다(`better-sqlite3`는 네이티브라 이 전제를 깬다) — 이 프로젝트가 실제 쓰는
 Electron/Node 버전에서 플래그 없이 동작함을 직접 확인함.
 
 일괄 갱신(`POST /api/dividends/refresh-names`)은 이미 저장된 기록의 이름을 전부
 다시 채운다(오타 정리용) — `updateDividendNames`로 일괄 반영, 동시에 SQLite 캐시도 채운다.
+
+### 매매내역 종목명
+
+`StoredTrade.name`(선택, `string | null`)은 세 경로로 채워진다. **1) 실시간 조회**
+(`routes/trades.ts`) — KIS는 체결 내역 TR(`inquire-daily-ccld`)이 `prdt_name`을 같이
+내려줘서 그대로 쓰고, 토스는 Order 스키마 자체에 이름 필드가 없어서(`tossAdapter.ts`의
+`mapOrder`, 항상 `name: null`) 응답 직전에 `resolveStockNames`로 채운 뒤 write-through
+한다. **2) KB증권 동기화**(`routes/kb.ts`의 `sync-trades`) — `fetchKbTradeHistory`가
+이미 `is_nm`(종목명)을 내려주므로 보통 그대로 쓰고, 혹시 비어 있으면 같은
+`resolveStockNames`로 보충한다. **3) CSV 가져오기/수동 입력**(`routes/tradesStore.ts`) —
+CSV의 `name` 컬럼이 선택 컬럼이라, 값이 있으면 그대로 쓰고(override) 없으면
+`resolveStockNames`로 채운다 — 위 "CSV 가져오기" 절 참고. 세 경로 다 실패해도(API 연동이
+전혀 없고 CSV에도 이름이 없으면) `name: null`로 저장되고, 화면은 심볼로 폴백 표시한다
+(기존부터 있던 동작 — 이름이 필수는 아님).
 
 ## 검증 방식
 

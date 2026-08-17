@@ -3,6 +3,7 @@ import { fetchKbPortfolio, fetchKbTradeHistory, getKbLinkedAccountId, isKbConfig
 import { replaceSnapshot } from '../db/holdingsStore';
 import { upsertTrades } from '../db/tradesStore';
 import { handleBrokerApiError } from '../brokers/errors';
+import { resolveStockNames } from '../stockNameResolver';
 
 export const kbRouter = Router();
 
@@ -59,7 +60,17 @@ kbRouter.post('/sync-trades', async (req, res) => {
   }
 
   try {
-    const trades = await fetchKbTradeHistory(from, to);
+    let trades = await fetchKbTradeHistory(from, to);
+
+    // KB의 체결 내역(is_nm)이 어쩌다 비어 있는 행이 있으면(실측 미검증 — 연결된
+    // 계좌가 비어 있어 non-zero 응답을 아직 못 봄, kbClient.ts 주석 참고) 토스→KIS→KB
+    // 순서로 대체 조회한다 — routes/trades.ts와 같은 안전망.
+    const missingNameSymbols = Array.from(new Set(trades.filter((t) => !t.name).map((t) => t.symbol)));
+    if (missingNameSymbols.length > 0) {
+      const { namesBySymbol } = await resolveStockNames(missingNameSymbols);
+      trades = trades.map((t) => (t.name ? t : { ...t, name: namesBySymbol[t.symbol.toUpperCase()] ?? null }));
+    }
+
     upsertTrades('kb', resolved.accountId, trades);
     res.json({ synced: trades.length, accountId: resolved.accountId });
   } catch (err) {

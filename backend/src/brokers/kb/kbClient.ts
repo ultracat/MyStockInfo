@@ -256,6 +256,26 @@ export async function fetchKbPortfolio(): Promise<HoldingPosition[]> {
 // 비매매 거래를 서버 단에서 제외한다 — smry_nm(적요명)의 "매수"/"매도" 텍스트로
 // side를 가른다(dl_typ_cd 같은 숫자 코드의 정확한 의미를 실측으로 확인 못 해서,
 // KB가 이미 한글로 내려주는 라벨을 그대로 신뢰하는 쪽이 더 안전하다고 판단).
+// SIQM4900(종목기본정보, "투자정보" 카테고리 — 계좌 무관) — 종목코드로 종목명을
+// 조회하는 마스터데이터 API. 공식 스펙(kbsecurities/kb-openapi
+// frontend/src/app/openapi-test/samples.generated.json, id "Tkb_SIQM4900_B2C",
+// checked 2026-08-17) 확인 — input `stnd_is_cd`(표준종목코드, 예시가 6자리
+// "005930"), output `hngl_is_nm`(한글종목명). `stockNameResolver.ts`의
+// `resolveStockNames`가 토스/KIS 둘 다 실패한 나머지에 대한 마지막 대체 조회로
+// 쓴다(토스 → KIS → KB 순서 중 3번째). **다른 KB TR들처럼 앱 등록 시 이 TR에 대한
+// 권한이 없으면 호출이 거부될 수 있다**(SSQM0005가 그랬던 전례, backend/CLAUDE.md
+// "KB증권 Open API" 절 참고) — 그 경우도 예외를 던지지 않고 null을 돌려줘서 다음
+// 단계(CSV의 name 컬럼 직접 입력)로 자연스럽게 넘어가게 한다.
+export async function fetchKbStockName(symbol: string): Promise<string | null> {
+  try {
+    const res = await kbPost<{ hngl_is_nm?: string }>('/api/v1/siqm4900', { stnd_is_cd: symbol });
+    const name = res.dataBody?.hngl_is_nm?.trim();
+    return name || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchKbTradeHistory(from: string, to: string): Promise<TradeRecord[]> {
   const res = await kbPost<{ Record1?: Record<string, unknown>[] }>('/api/v1/swqa2301', {
     inq_clsf: '0',

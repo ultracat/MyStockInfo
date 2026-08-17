@@ -8,6 +8,11 @@ export interface StoredTrade {
   accountId: string;
   id: string;
   symbol: string;
+  /** KIS/KB는 체결 내역 API가 종목명을 같이 내려줘서 write-through로 바로
+   *  채워진다. 토스는 체결 API에 종목명이 없어 routes/trades.ts가
+   *  stockNameResolver.ts로 별도 조회해 채운다. CSV 가져오기는 name 컬럼이
+   *  있으면 그 값을, 없으면 같은 조회로 채운다 — routes/tradesStore.ts 참고. */
+  name: string | null;
   side: 'BUY' | 'SELL';
   quantity: number;
   price: number;
@@ -23,6 +28,7 @@ export interface ImportTradeInput {
   accountId: string;
   id?: string;
   symbol: string;
+  name?: string | null;
   side: 'BUY' | 'SELL';
   quantity: number;
   price: number;
@@ -37,11 +43,20 @@ function store() {
   return new JsonStore<StoredTrade[]>('trades.json', getDataDir(), []);
 }
 
+// 기존 저장분엔 name 필드 자체가 없던 레코드가 있다(이 필드가 생기기 전에 저장된
+// 행) — JsonStore가 그대로 읽으면 undefined가 되는데, holdings의 memo/dividends의
+// accountId와 같은 이유로 여기서 null로 정규화해 프론트가 항상 string | null만
+// 다루게 한다.
+function normalize(t: StoredTrade): StoredTrade {
+  return { ...t, name: t.name ?? null };
+}
+
 export function listTrades(filter?: { broker?: BrokerId; accountId?: string }): StoredTrade[] {
   return store()
     .read()
     .filter((t) => (filter?.broker ? t.broker === filter.broker : true))
-    .filter((t) => (filter?.accountId ? t.accountId === filter.accountId : true));
+    .filter((t) => (filter?.accountId ? t.accountId === filter.accountId : true))
+    .map(normalize);
 }
 
 /** 실시간 동기화(routes/trades.ts)용 — 브로커가 내려준 `id` 기준 upsert. 매매내역은
@@ -57,6 +72,7 @@ export function upsertTrades(broker: BrokerId, accountId: string, records: Trade
         accountId,
         id: r.id,
         symbol: r.symbol,
+        name: r.name ?? null,
         side: r.side,
         quantity: r.quantity,
         price: r.price,
@@ -87,6 +103,7 @@ export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
         accountId: row.accountId,
         id,
         symbol: row.symbol,
+        name: row.name ?? null,
         side: row.side,
         quantity: row.quantity,
         price: row.price,

@@ -470,3 +470,25 @@ export async function fetchKisDomesticPrice(symbol: string, opts: FetchOpts = {}
     opts
   );
 }
+
+/**
+ * 주식기본조회(`search-stock-info`, TR `CTPF1002R`, 공식 예제
+ * examples_llm/domestic_stock/search_stock_info/search_stock_info.py +
+ * chk_search_stock_info.py의 COLUMN_MAPPING 확인, checked 2026-08-17) — 종목코드로
+ * 종목명(`prdt_name`)을 조회하는 마스터데이터 API(계좌 무관). `inquire-price`의
+ * `output`엔 종목명이 없어서(`bstp_kor_isnm`은 업종명이지 종목명이 아님) 이 TR이
+ * 따로 필요했다. `stockNameResolver.ts`의 `resolveStockNames`가 토스 미연동/조회
+ * 실패 시 대체 조회로 쓴다(토스 → KIS → KB 순서 중 2번째). **국내(KR) 6자리
+ * 종목코드만 지원**(`PRDT_TYPE_CD: '300'` = 주식/ETF/ETN/ELW) — 해외 종목은 이
+ * TR로 조회 안 함(`fetchKisDomesticPrice`와 같은 이유).
+ */
+export async function fetchKisStockName(symbol: string): Promise<string | null> {
+  const res = await kisGet('/uapi/domestic-stock/v1/quotations/search-stock-info', 'CTPF1002R', {
+    PRDT_TYPE_CD: '300',
+    PDNO: symbol,
+  });
+  const output = res.output;
+  if (!output || typeof output !== 'object' || !('prdt_name' in output)) return null;
+  const name = String((output as { prdt_name: string }).prdt_name).trim();
+  return name || null;
+}

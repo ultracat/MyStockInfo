@@ -84,6 +84,10 @@ export interface StoredTrade {
   accountId: string;
   id: string;
   symbol: string;
+  /** KIS/KB는 체결 내역 API가 종목명을 같이 내려줘서 자동으로 채워진다. 토스는
+   *  체결 API에 종목명이 없어 백엔드가 stockNameResolver로 별도 조회해 채운다.
+   *  CSV 가져오기는 name 컬럼이 있으면 그 값을, 없으면 같은 조회로 채운다. */
+  name: string | null;
   side: 'BUY' | 'SELL';
   quantity: number;
   price: number;

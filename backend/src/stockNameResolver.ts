@@ -1,23 +1,37 @@
 import { getCachedStockName, cacheStockName } from './db/stockNames';
 import { displayNameOf, fetchTossPrices, fetchTossStockInfo, isTossConfigured } from './brokers/toss/tossClient';
-import { fetchKisDomesticPrice, isKisConfigured } from './brokers/kis/kisClient';
+import { fetchKisDomesticPrice, fetchKisStockName, isKisConfigured } from './brokers/kis/kisClient';
+import { fetchKbStockName, isKbConfigured } from './brokers/kb/kbClient';
+
+const KR_SYMBOL_RE = /^\d{6}$/;
 
 export interface ResolveStockNamesResult {
   /** Keyed by `symbol.toUpperCase()`. */
   namesBySymbol: Record<string, string>;
-  /** `symbol.toUpperCase()` values that couldn't be resolved (not cached, and either
-   *  토스 미연동 or the symbol wasn't found via `fetchTossStockInfo`). */
+  /** `symbol.toUpperCase()` values that couldn't be resolved by any configured
+   *  broker(토스/KIS/KB 전부 실패했거나 아무 것도 연동 안 됨). */
   unresolved: Set<string>;
 }
 
-/** Symbol → 종목명 조회 (캐시 우선 + 토스 종목 기본 정보 API, 최대 200개씩 청크) —
- *  배당금/보유종목 CSV 가져오기가 공유하는 로직. `refresh-names`(routes/dividends.ts)와
- *  같은 조합이지만 그쪽은 "이미 저장된 기록의 이름을 다시 채우는" 용도라 실패를 신경 안
- *  써도 되고, 이건 "가져오기 행 하나하나를 성공/실패로 나눠야" 해서 별도 함수로 뺐다. */
+/** Symbol → 종목명 조회 (캐시 우선, **토스 → 한국투자증권 → KB증권 순으로 시도**) —
+ *  배당금/보유종목/매매내역 CSV 가져오기와 매매내역 실시간 조회(routes/trades.ts,
+ *  Toss는 체결 API 자체에 종목명이 없어서 필요)가 공유하는 로직.
+ *  `refresh-names`(routes/dividends.ts)와 같은 조합이지만 그쪽은 "이미 저장된
+ *  기록의 이름을 다시 채우는" 용도라 실패를 신경 안 써도 되고, 이건 "가져오기 행
+ *  하나하나를 성공/실패로 나눠야" 해서 별도 함수로 뺐다.
+ *
+ *  **3단계 우선순위**: 1) 토스 종목 기본정보(`fetchTossStockInfo`, 배치 최대 200개) —
+ *  국내/해외 다 지원. 2) 남은 심볼 중 국내(KR) 6자리만 KIS 주식기본조회
+ *  (`fetchKisStockName`, 건별) — 해외는 KIS로 조회 불가라 스킵. 3) 그래도 남은
+ *  국내 심볼만 KB 종목기본정보(`fetchKbStockName`, 건별, 권한 없으면 null) 순으로
+ *  시도한다. 각 단계는 "그 브로커가 연동돼 있을 때만" 실행하고, 이전 단계에서 이미
+ *  풀린 심볼은 다시 조회하지 않는다 — `resolveStockPrices`의 토스→KIS 2단계
+ *  폴백과 같은 패턴을 한 단계 더 늘린 것. KIS/KB로 해결된 항목은 국내 종목이라는
+ *  전제로 market/currency를 'KR'/'KRW'로 캐싱한다(토스처럼 API가 직접 알려주지
+ *  않으므로). */
 export async function resolveStockNames(symbols: string[]): Promise<ResolveStockNamesResult> {
   const namesBySymbol: Record<string, string> = {};
-  const unresolved = new Set<string>();
-  const toFetch: string[] = [];
+  let toFetch: string[] = [];
 
   for (const raw of symbols) {
     const key = raw.toUpperCase();
@@ -29,44 +43,83 @@ export async function resolveStockNames(symbols: string[]): Promise<ResolveStock
     }
   }
 
-  if (toFetch.length === 0) return { namesBySymbol, unresolved };
-
-  if (!isTossConfigured()) {
-    for (const s of toFetch) unresolved.add(s);
-    return { namesBySymbol, unresolved };
+  // 1) 토스 — 국내/해외 다 지원, 배치 조회.
+  if (toFetch.length > 0 && isTossConfigured()) {
+    const stillUnresolved: string[] = [];
+    for (let i = 0; i < toFetch.length; i += 200) {
+      const chunk = toFetch.slice(i, i + 200);
+      const infos = await fetchTossStockInfo(chunk);
+      const found = new Set<string>();
+      for (const info of infos) {
+        const key = info.symbol.toUpperCase();
+        const name = displayNameOf(info);
+        namesBySymbol[key] = name;
+        found.add(key);
+        cacheStockName({
+          symbol: key,
+          name,
+          market: info.market ?? null,
+          currency: info.currency ?? null,
+          cachedAt: new Date().toISOString(),
+        });
+      }
+      for (const s of chunk) {
+        if (!found.has(s)) stillUnresolved.push(s);
+      }
+    }
+    toFetch = stillUnresolved;
   }
 
-  for (let i = 0; i < toFetch.length; i += 200) {
-    const chunk = toFetch.slice(i, i + 200);
-    const infos = await fetchTossStockInfo(chunk);
-    const found = new Set<string>();
-    for (const info of infos) {
-      const key = info.symbol.toUpperCase();
-      const name = displayNameOf(info);
-      namesBySymbol[key] = name;
-      found.add(key);
-      cacheStockName({
-        symbol: key,
-        name,
-        market: info.market ?? null,
-        currency: info.currency ?? null,
-        cachedAt: new Date().toISOString(),
-      });
+  // 2) 한국투자증권 — 국내 6자리 종목코드만, 건별 조회.
+  if (toFetch.length > 0 && isKisConfigured()) {
+    const stillUnresolved: string[] = [];
+    for (const symbol of toFetch) {
+      if (!KR_SYMBOL_RE.test(symbol)) {
+        stillUnresolved.push(symbol);
+        continue;
+      }
+      let name: string | null = null;
+      try {
+        name = await fetchKisStockName(symbol);
+      } catch (err) {
+        console.error('[stockNameResolver] KIS 종목명 조회 실패:', err);
+      }
+      if (name) {
+        namesBySymbol[symbol] = name;
+        cacheStockName({ symbol, name, market: 'KR', currency: 'KRW', cachedAt: new Date().toISOString() });
+      } else {
+        stillUnresolved.push(symbol);
+      }
     }
-    for (const s of chunk) {
-      if (!found.has(s)) unresolved.add(s);
-    }
+    toFetch = stillUnresolved;
   }
 
-  return { namesBySymbol, unresolved };
+  // 3) KB증권 — 국내 6자리 종목코드만, 건별 조회(권한 없으면 fetchKbStockName이 null).
+  if (toFetch.length > 0 && isKbConfigured()) {
+    const stillUnresolved: string[] = [];
+    for (const symbol of toFetch) {
+      if (!KR_SYMBOL_RE.test(symbol)) {
+        stillUnresolved.push(symbol);
+        continue;
+      }
+      const name = await fetchKbStockName(symbol);
+      if (name) {
+        namesBySymbol[symbol] = name;
+        cacheStockName({ symbol, name, market: 'KR', currency: 'KRW', cachedAt: new Date().toISOString() });
+      } else {
+        stillUnresolved.push(symbol);
+      }
+    }
+    toFetch = stillUnresolved;
+  }
+
+  return { namesBySymbol, unresolved: new Set(toFetch) };
 }
 
 export interface ResolveStockPricesResult {
   /** Keyed by `symbol.toUpperCase()`. */
   pricesBySymbol: Record<string, number>;
 }
-
-const KR_SYMBOL_RE = /^\d{6}$/;
 
 /** Symbol → 현재가 조회 — 보유종목 CSV 가져오기에서 사용자가 안 채운
  *  lastPrice/marketValue/profitLossAmount/profitLossRate를 자동으로 채우는

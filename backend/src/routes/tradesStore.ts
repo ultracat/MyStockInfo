@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { deleteTrade, listTrades, upsertFromImport, type ImportTradeInput } from '../db/tradesStore';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
+import { resolveStockNames } from '../stockNameResolver';
 
 export const tradesStoreRouter = Router();
 
@@ -14,7 +15,7 @@ tradesStoreRouter.get('/', (req, res) => {
 });
 
 function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { error: string } {
-  const { broker, accountId, id, symbol, side, quantity, price, amount, currency, commission, tax, executedAt } =
+  const { broker, accountId, id, symbol, name, side, quantity, price, amount, currency, commission, tax, executedAt } =
     (body ?? {}) as Record<string, unknown>;
 
   if (
@@ -55,6 +56,7 @@ function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { err
       accountId,
       id: typeof id === 'string' && id ? id : undefined,
       symbol,
+      name: typeof name === 'string' && name.trim() ? name.trim() : null,
       side,
       quantity,
       price,
@@ -67,10 +69,13 @@ function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { err
   };
 }
 
-// CSV 가져오기 — name/id 둘 다 CSV에 없다. name은 TradeRecord가 원래도 선택적이고
-// 화면이 이미 심볼로 폴백 표시하므로 자동조회 자체가 불필요(배당금/보유종목과
-// 다른 점). id는 브로커 고유 체결번호라 CSV 입력행엔 없고, 없으면 서버가 새로 발급.
-tradesStoreRouter.post('/import', (req, res) => {
+// CSV 가져오기 — id는 브로커 고유 체결번호라 CSV 입력행엔 없고, 없으면 서버가 새로
+// 발급한다. name(종목명)은 선택 컬럼 — API 연동이 있으면(토스/KIS/KB 중 하나라도)
+// stockNameResolver.ts로 자동조회해서 채우고, CSV에 값이 있으면 그 값을 그대로
+// 쓴다(override, 연동이 전혀 없는 경우의 유일한 채움 경로). 보유종목/배당금 CSV와
+// 달리 이름 조회 실패를 행 실패로 처리하지 않는다 — 매매내역은 화면이 이미
+// 심볼로 폴백 표시하므로, 이름을 못 채워도 가져오기 자체를 막을 이유가 없다.
+tradesStoreRouter.post('/import', async (req, res) => {
   const records = (req.body as { records?: unknown })?.records;
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
@@ -82,7 +87,15 @@ tradesStoreRouter.post('/import', (req, res) => {
     .filter((r): r is { row: number; error: string } => 'error' in r)
     .map(({ row, error }) => ({ row, error }));
 
-  const inserted = upsertFromImport(validRows.map((r) => r.input));
+  const needsResolve = Array.from(new Set(validRows.filter((r) => !r.input.name).map((r) => r.input.symbol)));
+  const namesBySymbol: Record<string, string> =
+    needsResolve.length > 0 ? (await resolveStockNames(needsResolve)).namesBySymbol : {};
+  const toInsert = validRows.map((r) => ({
+    ...r.input,
+    name: r.input.name ?? namesBySymbol[r.input.symbol.toUpperCase()] ?? null,
+  }));
+
+  const inserted = upsertFromImport(toInsert);
   failed.sort((a, b) => a.row - b.row);
   res.json({ added: inserted.length, failed });
 });

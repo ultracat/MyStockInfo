@@ -135,6 +135,7 @@ export const api = {
       accountId: string;
       id?: string;
       symbol: string;
+      name?: string | null;
       side: 'BUY' | 'SELL';
       quantity: number;
       price: number;

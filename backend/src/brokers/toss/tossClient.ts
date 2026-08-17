@@ -586,6 +586,15 @@ interface TossCandle {
  * 월봉 자체는 API에 없어서, 일봉을 모아 이 파일 아래 `fetchTossMonthlyClosePrices`가
  * 달마다 마지막 거래일 종가를 직접 뽑는다.
  */
+// 이미 지나간 달의 종가는 다시 바뀌지 않는다(오늘이 속한 달의 봉만 장중에
+// 계속 움직임) — 다른 broker 응답처럼 5초짜리 DEFAULT_TTL_MS를 쓰면 대시보드를
+// 새로고침할 때마다(또는 여러 종목이 겹칠 때마다) 매번 다시 받아오게 되고,
+// 종목 수만큼 호출이 늘어나는 이 엔드포인트 특성상(Overview.tsx가 대시보드
+// 진입/새로고침마다 부름) 그 비용이 특히 크다. 몇 시간 단위로 넉넉히 캐싱해도
+// "오늘 달의 종가가 몇 시간 묵을 수 있다"는 정도의 오차만 생기고, 그마저도
+// 이미 fallback(오늘 현재가)이 있는 값이라 감수할 만하다.
+const CANDLE_CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4시간
+
 async function fetchTossDailyCandlesPage(
   symbol: string,
   before: string | undefined,
@@ -595,7 +604,7 @@ async function fetchTossDailyCandlesPage(
   if (before) params.set('before', before);
   return withCache(
     `toss:candles:${symbol}:${before ?? 'latest'}`,
-    DEFAULT_TTL_MS,
+    CANDLE_CACHE_TTL_MS,
     async () => {
       const raw = await tossFetch<any>(`/api/v1/candles?${params}`, 'MARKET_DATA_CHART');
       const data = (raw?.result ?? raw) as RawTossCandlesResponse;

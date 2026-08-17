@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import type { DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
 import { API_BROKER_IDS } from '../brokers';
@@ -58,6 +58,7 @@ export default function Overview() {
   const [monthlyClosePrices, setMonthlyClosePrices] = useState<
     Record<string, { month: string; closePrice: number; currency: string }[]>
   >({});
+  const [loadingClosePrices, setLoadingClosePrices] = useState(false);
   const [year, setYear] = useState(CURRENT_YEAR);
   const [refreshing, setRefreshing] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
@@ -72,6 +73,33 @@ export default function Overview() {
     return amount;
   }
 
+  // 종목별 월별 종가 조회(loadMonthlyClosePrices)는 종목 수만큼 토스 API를
+  // 호출해서(각 1~2페이지) 보유종목이 많으면 수 초가 걸린다(41개 종목 기준
+  // 실측 약 4초, backend/CLAUDE.md의 "월별 종가 조회" 절 참고) — 이걸
+  // loadAll() 안에서 기다리면 "대시보드 진입 시 몇 초간 빈 화면"이 되는 원인이
+  // 된다. `monthlyAmountRows`가 이미 종가를 못 구한 종목/달은 오늘 현재가로
+  // 대체하는 fallback을 갖고 있어서, 이 조회를 loadAll()과 분리해 화면이 이미
+  // (오늘 현재가 기준으로) 뜬 뒤 백그라운드로 이어가고 끝나면 그 두 카드만
+  // 조용히 더 정확한 값으로 갱신한다.
+  const monthlyCloseRequestId = useRef(0);
+
+  async function loadMonthlyClosePrices(heldSymbols: Set<string>, allTrades: StoredTrade[]) {
+    const requestId = ++monthlyCloseRequestId.current;
+    const tradedSymbols = [...new Set(allTrades.map((t) => t.symbol))].filter((s) => heldSymbols.has(s));
+    if (tradedSymbols.length === 0) {
+      if (requestId === monthlyCloseRequestId.current) setMonthlyClosePrices({});
+      return;
+    }
+    setLoadingClosePrices(true);
+    const closePrices = await api.getMonthlyClosePrices(tradedSymbols).catch(() => ({}));
+    // 그 사이 새로고침이 다시 눌려 더 최신 요청이 나갔다면, 늦게 도착한 이
+    // 응답으로 덮어쓰지 않는다.
+    if (requestId === monthlyCloseRequestId.current) {
+      setMonthlyClosePrices(closePrices);
+      setLoadingClosePrices(false);
+    }
+  }
+
   async function loadAll() {
     setError(null);
 
@@ -82,14 +110,17 @@ export default function Overview() {
     // 채워지기 전이라). 그래서 최초 진입 땐 매번 USD 보유종목이 전부
     // "환율 미적용"으로 빠졌다가, 새로고침(re-render 이후 재호출)에서야 이미
     // 채워진 state로 정상 계산됐다. 여기서는 state가 아니라 지금 막 받아온
-    // 값을 로컬 변수로 바로 써서 이 레이스를 없앤다.
-    const [fx, brokers] = await Promise.all([
+    // 값을 로컬 변수로 바로 써서 이 레이스를 없앤다. getUsdKrwRate는 fx/brokers
+    // 결과에 의존하지 않으므로 셋 다 병렬로 시작한다(예전엔 fx/brokers를 먼저
+    // 기다린 다음에야 getUsdKrwRate를 불렀는데, 서로 독립적이라 직렬화할
+    // 이유가 없었다).
+    const [fx, brokers, live] = await Promise.all([
       api.getFxRate().catch(() => ({ usdKrwRate: null, eximbankAuthKey: null })),
       api.listBrokers(),
+      // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
+      // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다.
+      api.getUsdKrwRate().catch(() => ({ rate: null })),
     ]);
-    // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
-    // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다.
-    const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
     const resolvedLiveFxRate = live.rate ? live.midRate ?? live.rate : null;
     const resolvedFxRate = fx.usdKrwRate ?? resolvedLiveFxRate;
 
@@ -105,39 +136,48 @@ export default function Overview() {
     let marketKrw = 0;
     let unconverted = false;
 
-    await Promise.all(
-      configured.map(async (b) => {
-        const rows = API_BROKER_IDS.includes(b.id)
-          ? await api
-              .listAccounts(b.id)
-              .then((accounts) => Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id).catch(() => null))))
-              .then((portfolios) =>
-                portfolios
-                  .filter((p): p is NonNullable<typeof p> => p !== null)
-                  .flatMap((p) => p.positions)
-              )
-          : await api.listHoldingsStore({ broker: b.id });
+    // 배당금/매매내역은 보유종목 결과와 무관하므로 그 Promise.all과 동시에
+    // 시작한다(예전엔 보유종목 루프가 끝난 "뒤"에야 불렀는데, 서로 독립적인
+    // 호출을 직렬화할 이유가 없었다) — heldSymbols는 holdings 루프가 끝난
+    // 뒤에만 계산할 수 있어서, allTrades 자체는 여기서 먼저 받아두고
+    // loadMonthlyClosePrices 호출 시점에 가서야 그 교집합을 구한다.
+    const [, divs, allTrades] = await Promise.all([
+      Promise.all(
+        configured.map(async (b) => {
+          const rows = API_BROKER_IDS.includes(b.id)
+            ? await api
+                .listAccounts(b.id)
+                .then((accounts) => Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id).catch(() => null))))
+                .then((portfolios) =>
+                  portfolios
+                    .filter((p): p is NonNullable<typeof p> => p !== null)
+                    .flatMap((p) => p.positions)
+                )
+            : await api.listHoldingsStore({ broker: b.id });
 
-        for (const r of rows) {
-          flat.push({
-            symbol: r.symbol,
-            name: r.name,
-            currency: r.currency,
-            quantity: r.quantity,
-            lastPrice: r.lastPrice,
-            purchaseAmount: r.purchaseAmount,
-          });
-          const pv = toKrwNow(r.purchaseAmount, r.currency);
-          const mv = toKrwNow(r.marketValue, r.currency);
-          if (pv === null || mv === null) {
-            unconverted = true;
-            continue;
+          for (const r of rows) {
+            flat.push({
+              symbol: r.symbol,
+              name: r.name,
+              currency: r.currency,
+              quantity: r.quantity,
+              lastPrice: r.lastPrice,
+              purchaseAmount: r.purchaseAmount,
+            });
+            const pv = toKrwNow(r.purchaseAmount, r.currency);
+            const mv = toKrwNow(r.marketValue, r.currency);
+            if (pv === null || mv === null) {
+              unconverted = true;
+              continue;
+            }
+            purchaseKrw += pv;
+            marketKrw += mv;
           }
-          purchaseKrw += pv;
-          marketKrw += mv;
-        }
-      })
-    );
+        })
+      ),
+      api.listDividends(),
+      api.listTradesStore(),
+    ]);
 
     setHoldings(flat);
     setTotalPurchaseKrw(purchaseKrw);
@@ -145,27 +185,12 @@ export default function Overview() {
     setUnconvertedUsdHoldings(unconverted);
     setManualFxRate(fx.usdKrwRate);
     setLiveFxRate(resolvedLiveFxRate);
-
-    const [divs, allTrades] = await Promise.all([api.listDividends(), api.listTradesStore()]);
     setDividends(divs);
     setTrades(allTrades);
-
-    // "월별 총 투자금 · 총 수입금" 카드가 오늘 현재가 대신 그 달의 실제 종가로
-    // 평가금액을 계산하도록 토스 일봉을 가져온다 — 지금 보유 중이면서
-    // 매매내역도 있는(=그 카드에 실제로 쓰이는, monthlyAmountRows와 같은 필터)
-    // 종목만 대상으로 해서 호출 수를 줄인다(전량 매도해 더는 안 갖고 있는
-    // 과거 거래 종목까지 조회할 필요는 없다). 실패해도(토스 미연동 등) 빈
-    // 객체를 주고, 그 경우 아래 monthlyAmountRows가 오늘 현재가로 자동 대체한다.
-    const heldSymbols = new Set(flat.filter((h) => h.quantity > 0).map((h) => h.symbol));
-    const tradedSymbols = [...new Set(allTrades.map((t) => t.symbol))].filter((s) => heldSymbols.has(s));
-    if (tradedSymbols.length > 0) {
-      const closePrices = await api.getMonthlyClosePrices(tradedSymbols).catch(() => ({}));
-      setMonthlyClosePrices(closePrices);
-    } else {
-      setMonthlyClosePrices({});
-    }
-
     setLastLoadedAt(new Date());
+
+    const heldSymbols = new Set(flat.filter((h) => h.quantity > 0).map((h) => h.symbol));
+    void loadMonthlyClosePrices(heldSymbols, allTrades);
   }
 
   useEffect(() => {
@@ -511,6 +536,7 @@ export default function Overview() {
           투자금이 그 달의 실제 종가(토스 일봉 기준, 못 구하면 오늘 현재가로 대체) 기준으로
           당시 얼마였는지를 매월 누적으로 보여줍니다(최근 12개월). 전량 매도한 종목은
           포함되지 않습니다.
+          {loadingClosePrices && ' 실제 월별 종가를 불러오는 중 — 그동안 오늘 현재가로 표시됩니다.'}
         </p>
         <MonthlyReturnChart rows={monthlyReturnRows} />
       </div>
@@ -522,6 +548,7 @@ export default function Overview() {
           투자금(총 투자금)과 그 수량에 그 달의 실제 종가(토스 일봉 기준, 못 구하면 오늘
           현재가로 대체)를 곱한 평가금액(총 수입금)을 매월 누적으로 보여줍니다(최근 12개월).
           전량 매도한 종목은 포함되지 않습니다.
+          {loadingClosePrices && ' 실제 월별 종가를 불러오는 중 — 그동안 오늘 현재가로 표시됩니다.'}
         </p>
         <MonthlyInvestmentChart rows={monthlyAmountRows} />
       </div>

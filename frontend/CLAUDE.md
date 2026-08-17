@@ -102,6 +102,17 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `monthlyAmountRows` 계산에서 그 종목·그 달의 종가가 있으면 그걸, 없으면
   (토스 미연동, 그 달 봉을 못 찾음 등) 오늘 현재가로 그대로 대체한다 — 이
   fallback 덕에 토스 연동이 없어도 카드 자체는 예전처럼 계속 동작한다.
+  **이 종가 조회는 `loadAll()`을 안 막는다** — 종목 수만큼 API를 호출해서(종목당
+  1~2페이지) 콜드 캐시 기준 수 초가 걸리는데(`backend/CLAUDE.md`의 "월별 종가
+  조회" 절 참고), 처음엔 `loadAll()` 안에서 그냥 `await`해서 대시보드 진입 시
+  화면 전체가 몇 초간 "불러오는 중..."으로 멈추는 문제가 있었다. 지금은
+  `loadMonthlyClosePrices(heldSymbols, allTrades)`를 `loadAll()`의 나머지가
+  끝나고 `setLoading(false)` 되기 전에 `void`로(=await 안 하고) 호출만 해두고,
+  응답이 오면 그때 `monthlyClosePrices` state만 갱신한다 — 화면은 오늘
+  현재가로 즉시 뜨고, 이 두 카드만 몇 초 뒤 조용히 더 정확한 값으로 바뀐다.
+  진행 중엔 두 카드 설명문 아래에 안내 문구가 붙는다(`loadingClosePrices`
+  state). 새로고침을 연타해도 오래된 응답이 최신 상태를 덮어쓰지 않도록
+  `monthlyCloseRequestId`(useRef 카운터)로 마지막 호출만 반영한다.
 - `src/accountLabels.ts` — `(broker, accountId) → label`(백엔드 `account-labels`) 조회용
   공용 유틸. `accountLabelKey(broker, accountId)`(맵 키 조합 — accountId만으로는 브로커
   간에 우연히 겹칠 수 있어서 broker도 같이 묶는다), `formatAccountOption(account, label?)`

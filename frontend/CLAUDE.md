@@ -182,6 +182,31 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `id`를 안 주면 서버가 새로 발급하므로 항상 새 매매내역으로 추가된다. 추가에 성공하면
   지금 보고 있는 증권사가 방금 추가한 증권사와 같을 때만 계좌 목록/매매내역을 즉시
   다시 읽어 반영한다(CSV 가져오기 성공 후 처리와 같은 패턴).
+
+  **"매매내역 목록"(하단 표)은 위쪽 증권사/계좌 select(차트·스탯 타일 전용)와
+  완전히 독립된 별도 데이터 소스를 쓴다** — `GET /trades-store`(필터 없이, 모든
+  브로커/계좌)로 로컬 저장소 전체를 받아와(`allTrades`) 목록 전용 증권사 필터
+  (`listBroker`, "전체" 포함)로 좁힌다. Dividends.tsx의 `chartBroker`/`listBroker`
+  분리와 같은 패턴 — 위쪽 연도/월(`year`/`viewMode`/`month`)은 차트와 이 목록
+  양쪽에 공통으로 적용되는 전역 필터로 그대로 재사용한다. 로컬 저장소는
+  write-through 캐시라 API 브로커(토스/KIS)는 실제로 한 번 라이브 조회한 적
+  있는 연도만 여기 나타난다("CSV 내보내기 (전체)"가 이미 같은 전제로 동작함) —
+  완전성보다 "여러 증권사를 한 표에서 훑어보고 CSV 전용 계좌는 바로 고칠 수
+  있게" 하는 게 목적이라 허용 가능한 트레이드오프. `StoredTrade`엔 `name`이
+  없어(백엔드가 애초에 저장 안 함) 이 목록은 항상 심볼만 보여준다 —
+  `mapStoredTrade()` 기반 위쪽 단일 브로커 표(이 목록으로 대체되기 전 예전
+  버전)와 달리 라이브 소스의 실제 종목명은 이 목록에서 못 보여준다.
+
+  **인라인 수정/삭제는 `CSV_ONLY_BROKER_IDS` 행에만 허용한다**(그 외 행은
+  "실시간 연동" 텍스트만 표시) — 토스/KIS 행은 write-through로 실시간 조회가
+  성공할 때마다 같은 `id`로 덮어써지므로, 여기서 고쳐도 다음 라이브 조회에 그대로
+  되돌아가 의미가 없다. 수정 저장은 추가와 같은 엔드포인트(`POST
+  /trades-store/import`)를 그 행의 기존 `(broker, accountId, id)`를 그대로 실어
+  재호출한다 — `upsertFromImport`가 같은 키를 찾아 덮어쓰므로(`backend/src/db/
+  tradesStore.ts`) 별도 수정 전용 라우트가 필요 없다. 삭제는 `DELETE
+  /trades-store/:broker/:accountId/:id`(`api.deleteTradeStore`). 행 식별은
+  `id` 하나만으로는 브로커 간 우연히 겹칠 수 있어 `tradeKey(t)` =
+  `broker|accountId|id` 조합을 React key와 편집 상태(`editingKey`) 양쪽에 쓴다.
 - `src/components/TradesChart.tsx` — 월별 매수(`--series-1`)/매도(`--series-2`) 그룹형
   막대 그래프. **원화·달러를 환율로 합쳐서 하나의 막대로 그리지 않는다**(단위/스케일이
   달라서 — dataviz 스킬의 "두 측정값은 두 차트로" 원칙) — 달러 거래가 있으면 원화

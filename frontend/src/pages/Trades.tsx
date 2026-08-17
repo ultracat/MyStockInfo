@@ -5,7 +5,7 @@ import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart'
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
-import { API_BROKER_IDS, BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../brokers';
+import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, formatAccountOption } from '../accountLabels';
 
 // CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
@@ -52,6 +52,11 @@ const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 type ViewMode = 'year' | 'month';
 type PageSize = 10 | 20 | 30 | 'ALL';
+type BrokerFilter = 'ALL' | BrokerId;
+
+function tradeKey(t: StoredTrade): string {
+  return `${t.broker}|${t.accountId}|${t.id}`;
+}
 
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 20, 30, 'ALL'];
 const PAGE_GROUP_SIZE = 10;
@@ -112,6 +117,43 @@ export default function Trades() {
   const [addTax, setAddTax] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [addResult, setAddResult] = useState<string | null>(null);
+
+  // 매매내역 목록(하단 표)은 위쪽 증권사/계좌 select(차트·스탯 타일 전용, 실시간
+  // 조회 기준)와 완전히 독립된 별도 데이터 소스를 쓴다 — 로컬 저장소
+  // 전체(trades-store, 모든 브로커/계좌)를 받아와 목록 전용 증권사 필터
+  // (listBroker)로 좁힌다. Dividends.tsx의 chartBroker/listBroker 분리와 같은
+  // 패턴. 로컬 저장소는 write-through 캐시라 API 브로커는 실제로 한 번 라이브
+  // 조회한 적 있는 연도만 여기 나타난다(CSV 내보내기(전체)가 이미 같은 전제로
+  // 동작함) — 완전성보다 "여러 증권사를 한 표에서 훑어보고 CSV 전용 계좌는 바로
+  // 고칠 수 있게" 하는 게 목적이라 허용 가능한 트레이드오프.
+  const [allTrades, setAllTrades] = useState<StoredTrade[]>([]);
+  const [listBroker, setListBroker] = useState<BrokerFilter>('ALL');
+
+  // 매매내역 목록의 인라인 수정/삭제 — CSV 전용 브로커 행에만 허용한다. 토스/KIS
+  // 행은 write-through로 실시간 조회가 성공할 때마다 같은 id로 덮어써지므로,
+  // 여기서 고쳐도 다음 라이브 조회에 그대로 되돌아가 의미가 없다.
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<{
+    symbol: string;
+    side: 'BUY' | 'SELL';
+    quantity: string;
+    price: string;
+    amount: string;
+    currency: string;
+    executedAt: string;
+    commission: string;
+    tax: string;
+  } | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  async function refreshAllTrades() {
+    setAllTrades(await api.listTradesStore());
+  }
+
+  useEffect(() => {
+    refreshAllTrades().catch((e) => setError((e as Error).message));
+  }, []);
 
   const configuredBrokers = brokers.filter((b) => b.configured);
 
@@ -331,6 +373,7 @@ export default function Trades() {
               .join('; ')})`
           : `${result.added}건 추가됨`
       );
+      await refreshAllTrades();
 
       // 지금 보고 있는 브로커가 CSV 전용이면, 브로커 재선택 없이 방금 가져온
       // 데이터가 바로 보이도록 계좌 목록/매매내역을 다시 읽는다.
@@ -408,6 +451,7 @@ export default function Trades() {
       setAddCommission('');
       setAddTax('');
       setAddResult('추가되었습니다.');
+      await refreshAllTrades();
 
       // 지금 보고 있는 화면이 방금 추가한 브로커와 같으면 계좌 목록/매매내역을
       // 바로 다시 읽어서 화면 전환 없이 반영한다(CSV 가져오기와 같은 패턴).
@@ -423,6 +467,97 @@ export default function Trades() {
       }
     } catch (e) {
       setAddError((e as Error).message);
+    }
+  }
+
+  function startEditTrade(t: StoredTrade) {
+    setEditingKey(tradeKey(t));
+    setEditDraft({
+      symbol: t.symbol,
+      side: t.side,
+      quantity: String(t.quantity),
+      price: String(t.price),
+      amount: String(t.amount),
+      currency: t.currency,
+      executedAt: t.executedAt,
+      commission: t.commission === null ? '' : String(t.commission),
+      tax: t.tax === null ? '' : String(t.tax),
+    });
+    setEditError(null);
+  }
+
+  function cancelEditTrade() {
+    setEditingKey(null);
+    setEditDraft(null);
+    setEditError(null);
+  }
+
+  // 같은 (broker, accountId, id)로 다시 import를 호출하면 upsertFromImport가
+  // 기존 행을 찾아 덮어쓴다(신규 라우트 불필요 — 수동 추가와 같은 엔드포인트).
+  async function saveEditTrade(t: StoredTrade) {
+    if (!editDraft) return;
+    const quantityNum = Number(editDraft.quantity);
+    const priceNum = Number(editDraft.price);
+    const amountNum = Number(editDraft.amount);
+    if (
+      !editDraft.symbol.trim() ||
+      !Number.isFinite(quantityNum) ||
+      quantityNum <= 0 ||
+      !Number.isFinite(priceNum) ||
+      priceNum < 0 ||
+      !Number.isFinite(amountNum) ||
+      amountNum < 0 ||
+      !editDraft.executedAt
+    ) {
+      setEditError('종목코드, 수량(양수), 단가(0 이상), 체결금액(0 이상), 체결일을 입력해주세요.');
+      return;
+    }
+    setEditSaving(true);
+    setEditError(null);
+    try {
+      const result = await api.importTradesStore([
+        {
+          broker: t.broker,
+          accountId: t.accountId,
+          id: t.id,
+          symbol: editDraft.symbol.trim(),
+          side: editDraft.side,
+          quantity: quantityNum,
+          price: priceNum,
+          amount: amountNum,
+          currency: editDraft.currency,
+          executedAt: editDraft.executedAt,
+          commission: editDraft.commission.trim() ? Number(editDraft.commission) : null,
+          tax: editDraft.tax.trim() ? Number(editDraft.tax) : null,
+        },
+      ]);
+      if (result.failed.length > 0) {
+        setEditError(result.failed[0].error);
+        return;
+      }
+
+      setEditingKey(null);
+      setEditDraft(null);
+      await refreshAllTrades();
+
+      // 지금 보고 있는 화면(위쪽 차트/스탯 기준 브로커·계좌)이 이 행과 같으면
+      // 거기도 바로 반영한다.
+      if (selectedBroker === t.broker && accountId === t.accountId) {
+        const stored = await api.listTradesStore({ broker: t.broker, accountId: t.accountId });
+        setTrades(stored.map(mapStoredTrade));
+      }
+    } catch (e) {
+      setEditError((e as Error).message);
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function onDeleteTrade(t: StoredTrade) {
+    await api.deleteTradeStore(t.broker, t.accountId, t.id);
+    await refreshAllTrades();
+    if (selectedBroker === t.broker && accountId === t.accountId) {
+      setTrades((prev) => prev.filter((x) => x.id !== t.id));
     }
   }
 
@@ -490,10 +625,21 @@ export default function Trades() {
     return { buyKrw, buyUsd, sellKrw, sellUsd, buyCount, sellCount };
   }, [visibleTrades]);
 
-  const sortedTrades = useMemo(
-    () => [...visibleTrades].sort((a, b) => (a.executedAt < b.executedAt ? 1 : -1)),
-    [visibleTrades]
+  // 매매내역 목록 전용 증권사 필터 옵션 — 실제로 로컬 저장소에 있는 브로커만.
+  const listBrokerOptions = useMemo(
+    () => BROKER_ORDER.filter((id) => allTrades.some((t) => t.broker === id)),
+    [allTrades]
   );
+
+  // 목록은 위쪽 차트와 같은 연도/월 필터를 적용하되(같은 "지금 보고 있는 기간"
+  // 개념을 공유), 증권사/계좌는 위쪽 select와 무관하게 listBroker 하나로만 좁힌다.
+  const sortedTrades = useMemo(() => {
+    let rows = allTrades;
+    if (listBroker !== 'ALL') rows = rows.filter((t) => t.broker === listBroker);
+    const prefix = viewMode === 'year' ? String(year) : `${year}-${String(month).padStart(2, '0')}`;
+    rows = rows.filter((t) => t.executedAt.startsWith(prefix));
+    return [...rows].sort((a, b) => (a.executedAt < b.executedAt ? 1 : -1));
+  }, [allTrades, listBroker, viewMode, year, month]);
 
   // Dividends.tsx의 배당 기록 목록과 같은 페이지네이션 패턴 — `page`를 effect로
   // 되돌리지 않고 매 렌더마다 pageCount 안으로 clamp해서 쓴다. 페이지 번호 버튼도
@@ -754,6 +900,23 @@ export default function Trades() {
       </div>
 
       <div className="card">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
+          <select
+            value={listBroker}
+            onChange={(e) => {
+              setListBroker(e.target.value as BrokerFilter);
+              setPage(1);
+            }}
+          >
+            <option value="ALL">전체</option>
+            {listBrokerOptions.map((id) => (
+              <option key={id} value={id}>
+                {BROKER_LABELS[id]}
+              </option>
+            ))}
+          </select>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
           {pageCount > 1 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -802,43 +965,158 @@ export default function Trades() {
           <thead>
             <tr>
               <th>일자</th>
-              <th>종목</th>
+              <th>증권사</th>
+              <th>계좌</th>
+              <th>종목코드</th>
               <th>구분</th>
               <th>수량</th>
               <th>단가</th>
               <th>체결금액</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
             {sortedTrades.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {viewMode === 'year' ? `${year}년` : `${year}년 ${month}월`} 거래 내역이 없습니다.
+                  {listBroker !== 'ALL' ? ` (${BROKER_LABELS[listBroker]} 기준)` : ''}
                 </td>
               </tr>
             ) : (
-              pagedTrades.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.executedAt}</td>
-                  <td>{t.name ? `${t.name} (${t.symbol})` : t.symbol}</td>
-                  <td>
-                    <span
-                      style={{
-                        display: 'inline-block',
-                        width: 8,
-                        height: 8,
-                        borderRadius: 2,
-                        marginRight: 6,
-                        background: t.side === 'BUY' ? 'var(--series-1)' : 'var(--series-2)',
-                      }}
-                    />
-                    {t.side === 'BUY' ? '매수' : '매도'}
-                  </td>
-                  <td>{t.quantity}</td>
-                  <td>{formatAmount(t.price, t.currency)}</td>
-                  <td>{formatAmount(t.amount, t.currency)}</td>
-                </tr>
-              ))
+              pagedTrades.map((t) => {
+                const editable = CSV_ONLY_BROKER_IDS.includes(t.broker);
+                const key = tradeKey(t);
+                if (editingKey === key && editDraft) {
+                  return (
+                    <tr key={key}>
+                      <td>
+                        <input
+                          type="date"
+                          value={editDraft.executedAt}
+                          onChange={(e) => setEditDraft({ ...editDraft, executedAt: e.target.value })}
+                        />
+                      </td>
+                      <td>{BROKER_LABELS[t.broker]}</td>
+                      <td>{formatAccountOption({ id: t.accountId }, accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label)}</td>
+                      <td>
+                        <input
+                          value={editDraft.symbol}
+                          onChange={(e) => setEditDraft({ ...editDraft, symbol: e.target.value })}
+                          style={{ width: 80 }}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          value={editDraft.side}
+                          onChange={(e) => setEditDraft({ ...editDraft, side: e.target.value as 'BUY' | 'SELL' })}
+                        >
+                          <option value="BUY">매수</option>
+                          <option value="SELL">매도</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editDraft.quantity}
+                          onChange={(e) => setEditDraft({ ...editDraft, quantity: e.target.value })}
+                          style={{ width: 70 }}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={editDraft.price}
+                          onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
+                          style={{ width: 90 }}
+                        />
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <select
+                            value={editDraft.currency}
+                            onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value })}
+                          >
+                            <option value="KRW">원</option>
+                            <option value="USD">USD</option>
+                          </select>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={editDraft.amount}
+                            onChange={(e) => setEditDraft({ ...editDraft, amount: e.target.value })}
+                            style={{ width: 90 }}
+                          />
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="ghost" onClick={() => saveEditTrade(t)} disabled={editSaving}>
+                            {editSaving ? '저장 중...' : '저장'}
+                          </button>
+                          <button className="ghost" onClick={cancelEditTrade} disabled={editSaving}>
+                            취소
+                          </button>
+                        </div>
+                        {editError && (
+                          <div className="text-critical" style={{ fontSize: 12, marginTop: 4, whiteSpace: 'pre-wrap' }}>
+                            {editError}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }
+
+                return (
+                  <tr key={key}>
+                    <td>{t.executedAt}</td>
+                    <td>{BROKER_LABELS[t.broker]}</td>
+                    <td>
+                      {formatAccountOption(
+                        { id: t.accountId },
+                        accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label
+                      )}
+                    </td>
+                    <td>{t.symbol}</td>
+                    <td>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          width: 8,
+                          height: 8,
+                          borderRadius: 2,
+                          marginRight: 6,
+                          background: t.side === 'BUY' ? 'var(--series-1)' : 'var(--series-2)',
+                        }}
+                      />
+                      {t.side === 'BUY' ? '매수' : '매도'}
+                    </td>
+                    <td>{t.quantity}</td>
+                    <td>{formatAmount(t.price, t.currency)}</td>
+                    <td>{formatAmount(t.amount, t.currency)}</td>
+                    <td>
+                      {editable ? (
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="ghost" onClick={() => startEditTrade(t)}>
+                            수정
+                          </button>
+                          <button className="ghost" onClick={() => onDeleteTrade(t)}>
+                            삭제
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>실시간 연동</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

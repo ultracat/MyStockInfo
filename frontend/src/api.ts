@@ -145,6 +145,8 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ records }),
     }),
+  deleteTradeStore: (broker: BrokerId, accountId: string, id: string) =>
+    request<void>(`/trades-store/${broker}/${encodeURIComponent(accountId)}/${id}`, { method: 'DELETE' }),
 
   // (broker, accountId) → 사람이 읽을 수 있는 별칭. 관리는 Settings.tsx에서만
   // 하고, Dashboard.tsx/Trades.tsx/Dividends.tsx는 읽기만 한다.

@@ -55,6 +55,9 @@ export default function Overview() {
   const [trades, setTrades] = useState<StoredTrade[]>([]);
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
+  const [monthlyClosePrices, setMonthlyClosePrices] = useState<
+    Record<string, { month: string; closePrice: number; currency: string }[]>
+  >({});
   const [year, setYear] = useState(CURRENT_YEAR);
   const [refreshing, setRefreshing] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
@@ -146,6 +149,22 @@ export default function Overview() {
     const [divs, allTrades] = await Promise.all([api.listDividends(), api.listTradesStore()]);
     setDividends(divs);
     setTrades(allTrades);
+
+    // "월별 총 투자금 · 총 수입금" 카드가 오늘 현재가 대신 그 달의 실제 종가로
+    // 평가금액을 계산하도록 토스 일봉을 가져온다 — 지금 보유 중이면서
+    // 매매내역도 있는(=그 카드에 실제로 쓰이는, monthlyAmountRows와 같은 필터)
+    // 종목만 대상으로 해서 호출 수를 줄인다(전량 매도해 더는 안 갖고 있는
+    // 과거 거래 종목까지 조회할 필요는 없다). 실패해도(토스 미연동 등) 빈
+    // 객체를 주고, 그 경우 아래 monthlyAmountRows가 오늘 현재가로 자동 대체한다.
+    const heldSymbols = new Set(flat.filter((h) => h.quantity > 0).map((h) => h.symbol));
+    const tradedSymbols = [...new Set(allTrades.map((t) => t.symbol))].filter((s) => heldSymbols.has(s));
+    if (tradedSymbols.length > 0) {
+      const closePrices = await api.getMonthlyClosePrices(tradedSymbols).catch(() => ({}));
+      setMonthlyClosePrices(closePrices);
+    } else {
+      setMonthlyClosePrices({});
+    }
+
     setLastLoadedAt(new Date());
   }
 
@@ -286,6 +305,19 @@ export default function Overview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holdings, effectiveFxRate]);
 
+  // 종목별 · 월별 실제 종가(토스 일봉 기반, loadAll이 채움) — 그 달에 해당
+  // 종목의 종가를 못 구했으면(토스 미연동, 상장 전이라 그 달 봉이 없음 등)
+  // 조회가 없고, 아래 monthlyAmountRows가 그 경우 오늘 현재가로 대체한다.
+  const closePriceBySymbolMonth = useMemo(() => {
+    const m = new Map<string, Map<string, { closePrice: number; currency: string }>>();
+    for (const [symbol, rows] of Object.entries(monthlyClosePrices)) {
+      const byMonth = new Map<string, { closePrice: number; currency: string }>();
+      for (const r of rows) byMonth.set(r.month, { closePrice: r.closePrice, currency: r.currency });
+      m.set(symbol, byMonth);
+    }
+    return m;
+  }, [monthlyClosePrices]);
+
   // MonthlyReturnChart(비율)와 MonthlyInvestmentChart(절대금액) 둘 다 같은
   // 월별 체크포인트(그 달까지 누적 보유수량)에서 파생되므로 여기서 한 번만
   // 계산해서 공유한다. 거래가 없던 달은 직전 수량을 그대로 이어간다
@@ -341,7 +373,12 @@ export default function Overview() {
         const priceInfo = lastPriceBySymbol.get(symbol)!;
         const avgCostKrw = avgCostKrwBySymbol.get(symbol)!;
         totalInvested += qty * avgCostKrw;
-        totalCurrent += toKrw(qty * priceInfo.lastPrice, priceInfo.currency) ?? 0;
+        // 그 달의 실제 종가(토스 일봉)가 있으면 그걸, 없으면 오늘 현재가로
+        // 대체한다(closePriceBySymbolMonth 주석 참고) — 최근 달일수록 그 달
+        // 종가와 오늘 현재가가 사실상 같아지므로 자연스럽게 이어진다.
+        const monthClose = closePriceBySymbolMonth.get(symbol)?.get(month);
+        const price = monthClose ?? { closePrice: priceInfo.lastPrice, currency: priceInfo.currency };
+        totalCurrent += toKrw(qty * price.closePrice, price.currency) ?? 0;
       }
       if (totalInvested > 0) {
         rows.push({ month, investedKrw: totalInvested, currentKrw: totalCurrent });
@@ -350,7 +387,7 @@ export default function Overview() {
 
     return rows.slice(-12);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trades, lastPriceBySymbol, avgCostKrwBySymbol, effectiveFxRate]);
+  }, [trades, lastPriceBySymbol, avgCostKrwBySymbol, closePriceBySymbolMonth, effectiveFxRate]);
 
   const monthlyReturnRows = useMemo<MonthlyReturnRow[]>(
     () =>
@@ -471,8 +508,9 @@ export default function Overview() {
         <h3 style={{ marginTop: 0 }}>매월 보유종목 투자금 대비 수익률</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
           지금 보유 중인 종목들만 대상으로, 그 달까지 보유했던 수량에 오늘 기준 평단가를 곱한
-          투자금이 오늘 현재가 기준으로 지금 얼마가 됐는지를 매월 누적으로 보여줍니다(최근 12개월).
-          전량 매도한 종목은 포함되지 않습니다.
+          투자금이 그 달의 실제 종가(토스 일봉 기준, 못 구하면 오늘 현재가로 대체) 기준으로
+          당시 얼마였는지를 매월 누적으로 보여줍니다(최근 12개월). 전량 매도한 종목은
+          포함되지 않습니다.
         </p>
         <MonthlyReturnChart rows={monthlyReturnRows} />
       </div>
@@ -481,8 +519,9 @@ export default function Overview() {
         <h3 style={{ marginTop: 0 }}>월별 총 투자금 · 총 수입금</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
           지금 보유 중인 종목들만 대상으로, 그 달까지 보유했던 수량에 오늘 기준 평단가를 곱한
-          투자금(총 투자금)과 그 수량에 오늘 현재가를 곱한 평가금액(총 수입금)을 매월 누적으로
-          보여줍니다(최근 12개월). 전량 매도한 종목은 포함되지 않습니다.
+          투자금(총 투자금)과 그 수량에 그 달의 실제 종가(토스 일봉 기준, 못 구하면 오늘
+          현재가로 대체)를 곱한 평가금액(총 수입금)을 매월 누적으로 보여줍니다(최근 12개월).
+          전량 매도한 종목은 포함되지 않습니다.
         </p>
         <MonthlyInvestmentChart rows={monthlyAmountRows} />
       </div>

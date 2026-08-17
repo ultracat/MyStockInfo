@@ -76,6 +76,14 @@ export const api = {
     request<{ rate: number | null; midRate?: number | null; asOf?: string | null; source?: 'toss' | 'eximbank' }>(
       `/market-info/exchange-rate/usd-krw${opts?.forceRefresh ? '?refresh=true' : ''}`
     ),
+  // 종목별 월별 종가(토스 일봉 기반) — 토스 미연동이거나 그 종목/달을 못 찾으면
+  // 그 심볼의 배열이 비어있거나 일부 달만 채워진다(backend/CLAUDE.md의
+  // "월별 종가 조회" 절 참고). 호출부가 오늘 현재가로 대체하는 fallback을 갖고
+  // 있어서 이 호출 자체는 절대 던지지 않는다.
+  getMonthlyClosePrices: (symbols: string[], months = 12) =>
+    request<Record<string, { month: string; closePrice: number; currency: string }[]>>(
+      `/market-info/monthly-close-prices?symbols=${encodeURIComponent(symbols.join(','))}&months=${months}`
+    ),
 
   listDividends: () => request<DividendRecord[]>('/dividends'),
   addDividend: (input: Omit<DividendRecord, 'id'>) =>

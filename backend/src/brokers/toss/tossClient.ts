@@ -556,6 +556,116 @@ export async function fetchTossPrices(symbols: string[], opts: FetchOpts = {}): 
   );
 }
 
+interface RawTossCandle {
+  timestamp: string;
+  openPrice: string;
+  highPrice: string;
+  lowPrice: string;
+  closePrice: string;
+  volume: string;
+  currency: string;
+}
+
+interface RawTossCandlesResponse {
+  candles: RawTossCandle[];
+  nextBefore: string | null;
+}
+
+interface TossCandle {
+  timestamp: string;
+  closePrice: number;
+  currency: string;
+}
+
+/**
+ * 일봉 한 페이지 조회 (`GET /api/v1/candles`, `MARKET_DATA_CHART` group, 공식
+ * 스펙 openapi.tossinvest.com/openapi-docs/latest/openapi.json 확인, checked
+ * 2026-08-17) — `/api/v1/prices`처럼 계좌 무관, KR/US 심볼 공통. 한 번에 최대
+ * 200봉까지만 주므로(`count`), 여러 달치가 필요하면 `before`(직전 응답의
+ * `nextBefore`)로 과거로 페이지네이션한다. `interval`은 `1d`(일봉)만 쓴다 —
+ * 월봉 자체는 API에 없어서, 일봉을 모아 이 파일 아래 `fetchTossMonthlyClosePrices`가
+ * 달마다 마지막 거래일 종가를 직접 뽑는다.
+ */
+async function fetchTossDailyCandlesPage(
+  symbol: string,
+  before: string | undefined,
+  opts: FetchOpts = {}
+): Promise<{ candles: TossCandle[]; nextBefore: string | null }> {
+  const params = new URLSearchParams({ symbol, interval: '1d', count: '200' });
+  if (before) params.set('before', before);
+  return withCache(
+    `toss:candles:${symbol}:${before ?? 'latest'}`,
+    DEFAULT_TTL_MS,
+    async () => {
+      const raw = await tossFetch<any>(`/api/v1/candles?${params}`, 'MARKET_DATA_CHART');
+      const data = (raw?.result ?? raw) as RawTossCandlesResponse;
+
+      if (!data || !Array.isArray(data.candles)) {
+        console.error('[toss] Unexpected /api/v1/candles response shape:', JSON.stringify(raw));
+        throw new Error('토스증권 일봉 조회 응답 형식이 예상과 다릅니다.');
+      }
+
+      return {
+        candles: data.candles.map((c) => ({
+          timestamp: c.timestamp,
+          closePrice: toNum(c.closePrice),
+          currency: c.currency,
+        })),
+        nextBefore: data.nextBefore ?? null,
+      };
+    },
+    opts
+  );
+}
+
+export interface MonthlyClosePrice {
+  /** "YYYY-MM" */
+  month: string;
+  closePrice: number;
+  currency: string;
+}
+
+/**
+ * 종목 하나의 최근 `months`개월치 "월별 종가"(그 달의 마지막 거래일 종가)를
+ * 구한다 — 일봉을 과거로 페이지네이션하며 모은 뒤 달마다 가장 최근(=timestamp가
+ * 가장 큰) 봉의 종가를 고른다. 달력상 마지막 날이 아니라 "그 달 마지막 거래일"
+ * 기준이라 휴장일/공휴일과 무관하게 항상 값이 나온다. 실패해도(토스 미연동,
+ * 상장폐지/오타 등으로 종목을 못 찾음, 네트워크 오류) 예외를 던지지 않고 빈
+ * 배열을 준다 — 호출부(Overview.tsx)가 그 종목/그 달은 오늘 현재가로 대체하는
+ * fallback을 이미 갖고 있어서, 여기서 막을 이유가 없다.
+ */
+export async function fetchTossMonthlyClosePrices(
+  symbol: string,
+  months: number,
+  opts: FetchOpts = {}
+): Promise<MonthlyClosePrice[]> {
+  if (!isTossConfigured()) return [];
+  try {
+    const byMonth = new Map<string, TossCandle>();
+    let before: string | undefined;
+    // 하루 평균 거래일 ~21일 기준 200봉 ≈ 9~10개월치라, 대부분 1~2페이지면
+    // 충분하다. 상장 시작이 얼마 안 된 종목처럼 nextBefore가 일찍 null이 되는
+    // 경우를 대비해 페이지 수 상한만 넉넉히(5) 둔다.
+    for (let page = 0; page < 5; page++) {
+      const { candles, nextBefore } = await fetchTossDailyCandlesPage(symbol, before, opts);
+      if (candles.length === 0) break;
+      for (const c of candles) {
+        const month = c.timestamp.slice(0, 7);
+        const existing = byMonth.get(month);
+        if (!existing || c.timestamp > existing.timestamp) byMonth.set(month, c);
+      }
+      if (!nextBefore || byMonth.size >= months + 2) break;
+      before = nextBefore;
+    }
+    return Array.from(byMonth.entries())
+      .map(([month, c]) => ({ month, closePrice: c.closePrice, currency: c.currency }))
+      .sort((a, b) => (a.month < b.month ? -1 : 1));
+  } catch (err) {
+    console.error(`[toss] 월별 종가 조회 실패 (${symbol}):`, err);
+    return [];
+  }
+}
+
 /**
  * Toss's own `name` falls back to the bare ticker (e.g. `"SPY"`, `"NVDY"`)
  * for securities with no registered Korean short name — confirmed against

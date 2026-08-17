@@ -18,6 +18,12 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   라이브러리 없이 최소한의 인라인 SVG로 직접 그렸다(Feather 아이콘 스타일: grid/
   percent/repeat/sliders). 접기/펼치기 토글 버튼(`ChevronIcon`)은 사이드바 상단
   `sidebar-header`에 있고, 접힌 상태에서 `title`(hover 툴팁)로 라벨을 대신 보여준다.
+  **레이아웃(`styles.css`)**: `html,body,#root`를 `height:100%`로 고정하고 `body`에
+  `overflow:hidden`을 줘야 `.main`의 `overflow-y:auto`가 실제로 동작한다 — 예전엔
+  `#root`가 `min-height:100vh`라 컨테이너 높이가 콘텐츠만큼 계속 늘어났고, 그래서
+  `.main`이 절대 자기 안에서 스크롤 못 하고 body(문서 전체)가 스크롤돼 사이드바까지
+  같이 밀려 올라갔다. `.sidebar`도 `height:100%`+`overflow:hidden`으로 뷰포트에 고정해
+  스크롤에 안 따라오게 한다(메뉴가 4개뿐이라 넘칠 일도 없음).
 - `src/api.ts` — 백엔드 호출 레이어. `BASE_URL`이 `electron/src/main.ts`의
   `BACKEND_PORT`와 일치해야 한다. 에러 응답은 `{error, detail?}`을 기대.
 - `src/types.ts` — 백엔드 응답 타입 미러링(`brokers/types.ts`와 형태 유지). CSV 관련

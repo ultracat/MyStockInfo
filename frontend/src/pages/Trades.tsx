@@ -243,7 +243,8 @@ export default function Trades() {
 
   // 배당금 화면과 같은 방식: 달러 거래를 원화로 환산해 보여주기 위한 환율.
   // 선택된 브로커와 무관하게 한 번만 가져온다(KIS만 보고 있어도 나중에
-  // 토스로 전환할 수 있으므로) — 토스만 환율 API를 제공한다.
+  // 토스로 전환할 수 있으므로) — getUsdKrwRate가 토스→한국수출입은행 순으로
+  // 처리해준다(backend/CLAUDE.md의 "환율 조회" 절 참고).
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
   const effectiveFxRate = manualFxRate ?? liveFxRate;
@@ -251,15 +252,11 @@ export default function Trades() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null }));
+      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null, eximbankAuthKey: null }));
       if (cancelled) return;
       setManualFxRate(fx.usdKrwRate);
-      try {
-        const live = await api.getExchangeRate('toss', 'USD', 'KRW');
-        if (!cancelled) setLiveFxRate(live.midRate ?? live.rate);
-      } catch {
-        // 토스 미연동 등 — 수동 환율 또는 미환산으로 대체됨
-      }
+      const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
+      if (!cancelled && live.rate) setLiveFxRate(live.midRate ?? live.rate);
     })();
     return () => {
       cancelled = true;

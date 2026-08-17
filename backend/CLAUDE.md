@@ -289,6 +289,45 @@ CSV의 `name` 컬럼이 선택 컬럼이라, 값이 있으면 그대로 쓰고(o
 이미 있는 이름도 전부 덮어쓴다(오타 정리 목적), 이쪽은 다중 브로커 폴백 + 빈 행만
 채우기다. 아무 브로커도 연동 안 돼 있으면 그냥 0건 갱신으로 끝난다(에러 아님).
 
+## 환율 조회 (`src/exchangeRateResolver.ts`, `src/fx/eximbankClient.ts`)
+
+USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`resolveUsdKrwRate`) —
+종목명 조회의 토스→KIS→KB 3단계 폴백과 같은 방향(위 절 참고), 토스 환율 API
+(`GET /api/v1/exchange-rate`)가 가끔씩 실패하는 문제를 완화하려고 만들었다.
+`GET /api/market-info/exchange-rate/usd-krw`(브로커 무관, `routes/marketInfo.ts`)가
+이 리졸버를 호출한다 — 기존 `GET /api/market-info/:broker/exchange-rate`(브로커
+지정 필수, 그 브로커 어댑터가 없거나 실패하면 그대로 에러)와 달리, 이 라우트는
+둘 다 실패해도 예외를 던지지 않고 `{rate: null}`을 응답한다 — 프론트는 그걸 보고
+설정에 저장된 수동 환율로 마지막 폴백한다(`manualFxRate ?? liveFxRate` 패턴,
+`Dashboard.tsx`/`Trades.tsx`/`Dividends.tsx`/`Overview.tsx` 전부 동일).
+
+**한국수출입은행 Open API**(`eximbankClient.ts`, `exchangeJSON`, `data=AP01`) —
+매 영업일 11시경 갱신되는 일별 매매기준율(`deal_bas_r`)을 준다. 도메인이
+2025-06-25에 `www.koreaexim.go.kr`로 이전됐고 구 도메인(`oapi.koreaexim.go.kr`)은
+2026-04-30 폐쇄 예정이라 신 도메인만 쓴다(공공데이터포털 등록 페이지 공지 확인).
+요청/응답 형식은 공식 사용 예제(Java/Spring Boot, Python) 여러 개와 실제 응답
+샘플을 교차 확인해 반영했다(`cur_unit`이 "USD"로 오는 것 포함, checked
+2026-08-17) — **다만 이 저장소 개발 환경에서는 공식 도메인이 WAF/봇 차단으로
+추정되는 302 리다이렉트 루프에 걸려 실제 인증키로도 응답을 못 받았다**(6회 재시도
+×5초 타임아웃 전부 소진 = 30초, `_debug-eximbank` 임시 라우트로 실측 후 제거).
+Java/Python 공식 연동 예제가 여럿 존재해 이 API 자체는 정상 동작하는 것으로
+보이고, 이 환경 특유의 네트워크 제약일 가능성이 높다 — **실제 인증키로 처음 쓸
+때 반드시 재검증할 것.**
+
+`searchdate`를 오늘부터 최대 5일 전까지 하루씩 거슬러 올라가며 USD 항목이 있는
+첫 응답을 쓴다(주말/공휴일엔 그날 데이터가 없어서). 각 시도는 `AbortController`로
+5초 타임아웃을 건다 — 위 WAF 걸림 현상을 실제로 겪어봐서, 타임아웃이 없으면
+"토스 실패 시 몇 초 안에 대체"라는 이 기능의 목적 자체가 무한 대기로 무너진다는
+걸 확인했기 때문(최악의 경우도 총 대기 30초 안쪽으로 묶임).
+
+**인증키 저장**(`db/settings.ts`의 `eximbankAuthKey`, `POST /api/settings/eximbank-key`)은
+브로커 자격증명(`credentials.ts`)의 `safeStorage` 암호화 경로를 안 쓰고 기존
+`usdKrwRate`와 같은 평문 `settings.json`에 둔다 — 계좌 접근·거래 권한이 전혀 없는
+공개 일별 환율 조회 전용 키라 유출돼도 실질적 피해가 없는 수준이라고 판단했고,
+`credentials.ts`는 `BrokerId`로 타입이 고정돼 있어 브로커가 아닌 이 키를 넣으려면
+그 파일의 타입을 넓혀야 해서(다른 브로커 자격증명 코드 경로에 영향 줄 위험) 굳이
+그러지 않았다.
+
 ## 검증 방식
 
 증권사 API 관련 코드는 실제 공식 문서(토스: developers.tossinvest.com, KIS:

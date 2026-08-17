@@ -150,15 +150,14 @@ export default function Dividends() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null }));
+      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null, eximbankAuthKey: null }));
       if (cancelled) return;
       setManualFxRate(fx.usdKrwRate);
-      try {
-        const live = await api.getExchangeRate('toss', 'USD', 'KRW');
-        if (!cancelled) setLiveFxRate(live.midRate ?? live.rate);
-      } catch {
-        // 토스 미연동 등 — 수동 환율 또는 미환산으로 대체됨
-      }
+      // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
+      // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다 — 그럼 수동
+      // 환율 또는 미환산으로 대체됨.
+      const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
+      if (!cancelled && live.rate) setLiveFxRate(live.midRate ?? live.rate);
     })();
     return () => {
       cancelled = true;

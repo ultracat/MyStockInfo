@@ -15,6 +15,7 @@ export default function Settings() {
   const [broker, setBroker] = useState<BrokerId>('toss');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [fxRate, setFxRate] = useState('');
+  const [eximbankKey, setEximbankKey] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +28,7 @@ export default function Settings() {
     ]);
     setStatus(s);
     setFxRate(fx.usdKrwRate ? String(fx.usdKrwRate) : '');
+    setEximbankKey(fx.eximbankAuthKey ?? '');
     setFieldSpecs(specs);
     setCredentialInfo(info);
   }
@@ -79,6 +81,17 @@ export default function Settings() {
     try {
       await api.setFxRate(rate);
       setMessage('환율이 저장되었습니다.');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function onSaveEximbankKey() {
+    setError(null);
+    setMessage(null);
+    try {
+      await api.setEximbankKey(eximbankKey.trim() ? eximbankKey.trim() : null);
+      setMessage('저장되었습니다.');
     } catch (e) {
       setError((e as Error).message);
     }
@@ -382,10 +395,23 @@ export default function Settings() {
         <h3 style={{ marginTop: 0 }}>USD/KRW 환율</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           해외 종목 비중(%) 계산에 사용됩니다. 기본적으로 토스증권 Open API(GET /api/v1/exchange-rate)에서
-          실시간으로 조회합니다. 아래에 값을 입력하면 실시간 조회 대신 이 값을 우선 사용합니다 — 특정
+          실시간으로 조회하고, 실패하면(가끔씩 일시 오류가 날 수 있음) 아래 한국수출입은행 환율 API로
+          자동 대체됩니다. 그 아래에 값을 입력하면 실시간 조회 대신 이 값을 우선 사용합니다 — 특정
           환율로 고정하고 싶을 때만 입력하고, 평소엔 비워두세요. (한국투자증권 국내주식 잔고는 전부
           원화라 이 설정이 필요 없습니다.)
         </p>
+        <div className="form-row">
+          <label>한국수출입은행 Open API 인증키 (선택 — 토스 실패 시 대체 조회용)</label>
+          <input
+            type="text"
+            value={eximbankKey}
+            onChange={(e) => setEximbankKey(e.target.value)}
+            placeholder="한국수출입은행 홈페이지에서 무료로 발급받은 인증키"
+          />
+        </div>
+        <button className="ghost" onClick={onSaveEximbankKey} style={{ marginBottom: 16 }}>
+          인증키 저장
+        </button>
         <div className="form-row">
           <label>1 USD = ? KRW (선택 — 비워두면 실시간 조회)</label>
           <input type="number" min="0" step="0.01" value={fxRate} onChange={(e) => setFxRate(e.target.value)} />

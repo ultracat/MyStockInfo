@@ -104,6 +104,11 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   채우고, 그 결과(`{synced: n, accountId}`)를 그대로 보여준다 — 동기화 후에는
   보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
   완전히 동일하게 보인다(별도 프론트 분기 없음).
+  "USD/KRW 환율" 카드에 한국수출입은행 Open API 인증키 입력칸이 있다
+  (`eximbankKey` 상태, `api.setEximbankKey`/`POST /settings/eximbank-key`) — 토스
+  환율 조회가 실패했을 때의 대체 소스(backend/CLAUDE.md의 "환율 조회" 절 참고).
+  이 값도 `api.getFxRate()`가 `usdKrwRate`와 함께 평문으로 돌려준다(브로커
+  자격증명처럼 암호화 안 함 — 계좌 접근 권한 없는 공개 데이터 조회 키라서).
 
 ## 공용 패턴 (여러 페이지가 공유)
 
@@ -121,9 +126,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `pageCount`가 줄어도 이 값 하나로 슬라이스/표시를 다 처리한다. 필터/표시개수를 바꿀
   때만 명시적으로 `setPage(1)`. 페이지 번호 버튼은 `PAGE_GROUP_SIZE`(10) 단위로만
   그리고 그룹 양 끝에 "이전 10개"/"다음 10개" 버튼으로 그룹 자체를 점프시킨다.
-- **환율 처리**: `manualFxRate`(설정에서 직접 입력) > `liveFxRate`(토스 실시간 조회,
-  토스만 환율 API 제공)를 `effectiveFxRate`로 합친다. 환율을 못 가져오면 "환율
-  미적용"으로 표시하고 합산을 생략한다(조용히 틀린 숫자를 보여주지 않기 위함).
+- **환율 처리**: `manualFxRate`(설정에서 직접 입력) > `liveFxRate`(실시간 조회)를
+  `effectiveFxRate`로 합친다. 환율을 못 가져오면 "환율 미적용"으로 표시하고 합산을
+  생략한다(조용히 틀린 숫자를 보여주지 않기 위함). `liveFxRate`는 `api.getUsdKrwRate()`
+  (`Dashboard.tsx`/`Trades.tsx`/`Dividends.tsx`/`Overview.tsx` 네 곳 전부 동일 호출) —
+  브로커를 지정하는 `api.getExchangeRate('toss', ...)`를 예전엔 하드코딩해서 호출하고
+  실패를 `try/catch`로 삼켰는데, 지금은 백엔드가 토스→한국수출입은행 순으로 대체
+  조회를 해주는 브로커 무관 엔드포인트로 바뀌면서(backend/CLAUDE.md의 "환율 조회"
+  절 참고) 프론트 쪽 `try/catch`가 필요 없어졌다 — 이 엔드포인트는 완전히 실패해도
+  예외를 안 던지고 `{rate: null}`을 주므로, `.catch(() => ({rate: null}))`로 방어한
+  뒤 `live.rate`만 확인하면 된다.
 - **CSV 내보내기/가져오기**(배당금/보유종목/매매내역 공통): 컬럼 헤더는 백엔드 필드명
   그대로 써서 내보낸 파일을 그대로 다시 가져올 수 있게 한다(헤더 이름으로 컬럼을
   찾으므로 순서가 바뀐 파일도 읽음). **`name`(종목명)은 어느 CSV에도 없다** — 배당금/

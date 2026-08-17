@@ -340,9 +340,9 @@ export default function Dashboard() {
         setAccounts(accs);
         if (accs.length > 0) setAccountId(accs[0].id);
 
-        // Only Toss publishes GET /api/v1/exchange-rate today — other
-        // brokers' getExchangeRate is unset server-side (404), and their
-        // holdings so far are KRW-only anyway, so this is skippable.
+        // USD 보유분이 있을 수 있는 건 지금은 토스뿐이라(다른 브로커는 KRW만) 그
+        // 화면에서만 환율을 조회한다 — 환율 조회 자체는 토스 연동 여부와 무관하게
+        // getUsdKrwRate가 토스→수출입은행 순으로 처리한다(아래).
         if (selectedBroker === 'toss') {
           const fx = await api.getFxRate();
           if (cancelled) return;
@@ -350,12 +350,10 @@ export default function Dashboard() {
 
           // Non-fatal: live rate is a nice-to-have (falls back to the
           // manual rate above, or to excluding USD positions from weight).
-          try {
-            const live = await api.getExchangeRate('toss', 'USD', 'KRW');
-            if (!cancelled) setLiveFxRate(live.midRate ?? live.rate);
-          } catch {
-            // ignore
-          }
+          // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md
+          // 참고) 실패해도 예외 없이 {rate:null}을 준다.
+          const live = await api.getUsdKrwRate();
+          if (!cancelled && live.rate) setLiveFxRate(live.midRate ?? live.rate);
         }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);

@@ -13,16 +13,32 @@ const AXIS_SPACE = 24; // room below the baseline for month labels
  * approach as Dashboard.tsx's portfolio-weight conversion. Rows with USD
  * dividends but no fxRate available show a "환율 미적용" caveat instead of
  * silently under-counting them.
+ *
+ * fxRate accepts either a single flat rate (old behavior) or a per-month
+ * resolver — Dividends.tsx/Overview.tsx pass a resolver so each row (a
+ * calendar month) converts at *that* month's average rate instead of one
+ * rate applied to every bar, since a dividend's KRW value should reflect
+ * the rate around when it was actually paid, not today's.
  */
-export default function DividendsChart({ rows, fxRate }: { rows: MonthlySummaryRow[]; fxRate: number | null }) {
+export default function DividendsChart({
+  rows,
+  fxRate,
+}: {
+  rows: MonthlySummaryRow[];
+  fxRate: number | null | ((month: string) => number | null);
+}) {
   const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
 
   if (rows.length === 0) {
     return <p style={{ color: 'var(--text-muted)' }}>배당 기록이 없습니다.</p>;
   }
 
-  const hasUnconvertedUsd = !fxRate && rows.some((r) => r.totalUsd > 0);
-  const valueKrw = (r: MonthlySummaryRow) => r.totalKrw + (fxRate ? r.totalUsd * fxRate : 0);
+  const rateFor = typeof fxRate === 'function' ? fxRate : () => fxRate;
+  const hasUnconvertedUsd = rows.some((r) => r.totalUsd > 0 && !rateFor(r.month));
+  const valueKrw = (r: MonthlySummaryRow) => {
+    const rate = rateFor(r.month);
+    return r.totalKrw + (rate ? r.totalUsd * rate : 0);
+  };
 
   const total = rows.reduce((sum, r) => sum + valueKrw(r), 0);
   const max = Math.max(...rows.map(valueKrw), 1);

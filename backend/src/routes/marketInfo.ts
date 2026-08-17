@@ -4,6 +4,7 @@ import type { BrokerId } from '../brokers/types';
 import { handleBrokerApiError } from '../brokers/errors';
 import { resolveUsdKrwRate } from '../exchangeRateResolver';
 import { fetchTossMonthlyClosePrices, type MonthlyClosePrice } from '../brokers/toss/tossClient';
+import { fetchEximbankMonthlyAvgUsdKrwRate } from '../fx/eximbankClient';
 
 export const marketInfoRouter = Router();
 
@@ -37,6 +38,27 @@ marketInfoRouter.get('/monthly-close-prices', async (req, res) => {
       symbol,
       await fetchTossMonthlyClosePrices(symbol, months),
     ])
+  );
+  res.json(Object.fromEntries(entries));
+});
+
+// 여러 달의 USD/KRW 월평균 환율을 한 번에 조회한다(Dividends.tsx/Overview.tsx가
+// 배당금을 "오늘 환율"이 아니라 "그 배당금이 지급된 달의 평균 환율"로 환산하는
+// 데 쓴다) — 토스는 과거 환율을 지원하지 않아(현재가만 있음) 한국수출입은행이
+// 유일한 소스다(fx/eximbankClient.ts의 fetchEximbankMonthlyAvgUsdKrwRate 참고).
+// 달마다 독립적으로 실패할 수 있어(그 달 데이터를 하나도 못 구함 등) 위
+// monthly-close-prices와 같은 패턴으로 개별 호출을 모은다.
+marketInfoRouter.get('/exchange-rate/monthly-avg', async (req, res) => {
+  const monthsParam = typeof req.query.months === 'string' ? req.query.months : '';
+  const months = [...new Set(monthsParam.split(',').map((s) => s.trim()).filter(Boolean))];
+
+  const entries = await Promise.all(
+    months.map(
+      async (month): Promise<[string, { rate: number; sampleCount: number } | null]> => [
+        month,
+        await fetchEximbankMonthlyAvgUsdKrwRate(month),
+      ]
+    )
   );
   res.json(Object.fromEntries(entries));
 });

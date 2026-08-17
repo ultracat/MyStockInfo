@@ -49,6 +49,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/components/CollapseToggle.tsx` — 카드 헤더 우측 접기/펼치기 토글(공용, 처음엔
   Dividends.tsx 안에 있다가 Trades.tsx도 필요해져서 공용 컴포넌트로 뺌).
 - `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트.
+  `DividendsChart`의 `fxRate` prop은 고정 숫자(`number|null`)뿐 아니라
+  `(month: string) => number|null` 형태의 함수도 받는다 — Dividends.tsx/
+  Overview.tsx 둘 다 이제 함수를 넘겨서, 막대 하나(= 한 달)마다 그 달의
+  평균 환율로 환산한다(오늘 환율 하나로 전체 막대를 환산하던 예전 방식
+  대신 — 아래 "배당금 월평균 환율" 절 참고). 내부에서
+  `typeof fxRate === 'function' ? fxRate : () => fxRate`로 감싸서 두 형태를
+  같은 코드 경로로 처리한다.
 - `src/components/DonutChart.tsx` — 범용 도넛 차트(Overview.tsx의 보유종목/배당금
   비중 카드가 씀). `slices: {label,value,color}[]`만 받는다 — "어떤 데이터를
   카테고리로 접을지"는 전부 호출부 책임이고, 이 컴포넌트는 그리기만 한다. dataviz
@@ -223,7 +230,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `listAccounts`→`getPortfolio`(계좌별), CSV 전용 브로커는 `listHoldingsStore
   ({broker})`로 모아서 하나의 `FlatHolding[]`으로 정규화한다. 배당금/매매내역은
   이미 전체를 한 번에 주는 기존 엔드포인트(`listDividends`/`listTradesStore`)를
-  그대로 쓴다 — 새 백엔드 라우트가 필요 없었다(순수 클라이언트 집계).
+  그대로 쓴다 — 새 백엔드 라우트가 필요 없었다(순수 클라이언트 집계). 2)/3)
+  카드의 달러 배당금은 `toKrw`(오늘/수동 환율)가 아니라 `dividendFxRateFor`
+  (그 배당금 지급월의 평균 환율, `backend/CLAUDE.md`의 "배당금 월평균 환율"
+  절 참고)로 환산한다 — `loadAll()`이 `loadMonthlyAvgFxRates(divs)`를
+  `void`로(=await 안 하고) 호출해 두고, 응답이 오기 전까진
+  `dividendFxRateFor`가 `effectiveFxRate`로 자동 대체하므로 화면 자체는
+  느려지지 않는다(아래 종가 조회와 같은 비동기 분리 패턴).
   **"매월 보유종목 투자금 대비 수익률"의 의미**: "평균 구입금액 대비 현재가"는
   종목당 스냅샷 하나뿐이라 그 자체로는 월별 축이 없다 — 처음엔 매수 시점(월)별로
   "코호트"를 나눠 그 달 매수분만 따로 보여주는 방식으로 만들었다가(격리형), "매월
@@ -306,7 +319,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   필터(별도 드롭다운)는 의도적으로 안 만들었다** — 목록에 계좌 컬럼이 보이는 것만으로
   "구분 가능"이라는 요청은 충족된다고 판단, 필요해지면 추가 요청으로 처리. "증권사별 배당금 총계" 표는 달러 투자금/배당금이
   있으면 원화/달러/합계(환산) 3행(별도 "구분" 컬럼 없이 첫 컬럼 안에 들여쓴 라벨로
-  표현). 투자금(`totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없어 마운트 시 브로커별로
+  표현). **"합계(환산)" 행의 배당금은 투자금과 환산 방식이 다르다** —
+  투자금(매입원가)은 지금 이 순간의 값이라 `effectiveFxRate`(오늘/수동 환율)
+  하나로 환산하지만, 배당금은 `brokerDividendKrwByBroker`(useMemo)가 기록 하나
+  하나를 그 기록의 지급월 평균 환율로 먼저 환산한 뒤 브로커별로 더한 값이다
+  (브로커 합계를 낸 뒤 환율 하나로 한꺼번에 곱하면 서로 다른 달의 환율을 반영할
+  수 없어서 — 사용자 요청으로 추가, `backend/CLAUDE.md`의 "배당금 월평균 환율"
+  절 참고). `grandTotal`(총합계 스탯 타일)도 같은 맵을 그대로 합산해서 쓴다.
+  "환율 미적용" 표시도 투자금 쪽(`effectiveFxRate` 유무)과 배당금 쪽(레코드별
+  변환 성공 여부, `unconvertedUsd`)을 따로 판단한다 — 둘 중 하나만 환산이
+  안 됐는데 나머지까지 같이 숨기지 않기 위함. 투자금(`totalPurchaseAmountKrw`/`Usd`)은 배당 DB에 없어 마운트 시 브로커별로
   따로 조회해 합산한다(브로커 하나 실패해도 나머지는 보여야 하므로 개별 try/catch) —
   **연도 필터를 안 탄다**(지금 시점의 실제 투자 원금이라 연도별로 안 나뉨). API
   브로커(`API_BROKER_IDS`)는 `listAccounts`→`getPortfolio`로, **CSV 전용 브로커는

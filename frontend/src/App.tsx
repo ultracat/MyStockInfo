@@ -1,10 +1,11 @@
 import { useState } from 'react';
+import Overview from './pages/Overview';
 import Dashboard from './pages/Dashboard';
 import Dividends from './pages/Dividends';
 import Trades from './pages/Trades';
 import Settings from './pages/Settings';
 
-type Page = 'dashboard' | 'dividends' | 'trades' | 'settings';
+type Page = 'overview' | 'dashboard' | 'dividends' | 'trades' | 'settings';
 
 // 사이드바가 접혔을 때 라벨 대신 보여줄 아이콘 — 외부 아이콘 라이브러리를 새로
 // 추가하지 않으려고 최소한의 인라인 SVG로 직접 그린다(Feather 아이콘 스타일).
@@ -18,6 +19,15 @@ const ICON_PROPS = {
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
+
+function PieIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3v9l7.5 4.5" />
+    </svg>
+  );
+}
 
 function GridIcon() {
   return (
@@ -76,6 +86,7 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 }
 
 const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] = [
+  { id: 'overview', label: '대시보드', icon: PieIcon },
   { id: 'dashboard', label: '보유 종목', icon: GridIcon },
   { id: 'dividends', label: '배당금', icon: PercentIcon },
   { id: 'trades', label: '매매내역', icon: RepeatIcon },
@@ -83,7 +94,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] =
 ];
 
 export default function App() {
-  const [page, setPage] = useState<Page>('dashboard');
+  const [page, setPage] = useState<Page>('overview');
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -115,6 +126,7 @@ export default function App() {
         })}
       </nav>
       <main className="main">
+        {page === 'overview' && <Overview />}
         {page === 'dashboard' && <Dashboard />}
         {page === 'dividends' && <Dividends />}
         {page === 'trades' && <Trades />}

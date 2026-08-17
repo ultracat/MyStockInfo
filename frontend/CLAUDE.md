@@ -9,8 +9,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   **렌더 바디나 행마다 호출되는 함수 안에서 `new Intl.NumberFormat(...)`을 직접 만들지
   않는다** — 로케일 데이터 조회가 있어 공짜가 아니라서, 행마다 새로 만들면 포지션
   30~50개짜리 렌더 한 번에 수백 번 생성된다(과거 `HoldingsTable.tsx`에서 실제 발생).
-- `src/App.tsx` — 좌측 네비 + `page` 상태(`'dashboard'|'dividends'|'trades'|'settings'`).
+- `src/App.tsx` — 좌측 네비 + `page` 상태
+  (`'overview'|'dashboard'|'dividends'|'trades'|'settings'`, 기본값 `'overview'`).
   새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
+  **`'overview'`(대시보드, `pages/Overview.tsx`)와 `'dashboard'`(보유 종목,
+  `pages/Dashboard.tsx`) 이름이 헷갈리기 쉽다** — `Dashboard.tsx`는 이 세션
+  훨씬 이전부터 있던 "보유 종목" 화면 파일명이라 그대로 두고, 나중에 추가된
+  진짜 "대시보드"(전체 브로커/계좌 요약)는 이름 충돌을 피해 `Overview.tsx`로
+  만들었다 — 페이지 id도 `'dashboard'`가 이미 선점돼 있어서 새 페이지는
+  `'overview'`를 쓴다.
   **사이드바 접기**: `collapsed` 상태(로컬, 새로고침 시 초기화됨 — 영속화 안 함) +
   `.sidebar.collapsed` CSS(너비만 200px→56px로 줄임, `transition`으로 애니메이션).
   접힌 상태에서는 라벨(`<span>`)을 숨기고 아이콘만 남긴다(`nav-item`이 항상
@@ -42,6 +49,19 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/components/CollapseToggle.tsx` — 카드 헤더 우측 접기/펼치기 토글(공용, 처음엔
   Dividends.tsx 안에 있다가 Trades.tsx도 필요해져서 공용 컴포넌트로 뺌).
 - `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트.
+- `src/components/DonutChart.tsx` — 범용 도넛 차트(Overview.tsx의 보유종목/배당금
+  비중 카드가 씀). `slices: {label,value,color}[]`만 받는다 — "어떤 데이터를
+  카테고리로 접을지"는 전부 호출부 책임이고, 이 컴포넌트는 그리기만 한다. dataviz
+  스킬은 파이/도넛을 기본으로는 권장하지 않지만(값이 비슷하면 구분이 어려움)
+  사용자가 "원형 그래프"를 명시적으로 요청해서 그대로 쓰되, 품질 기준은 지킨다:
+  카테고리 최대 6개(그 이상은 "기타"로 접어서 호출부가 넘김 — `--baseline` 회색),
+  색은 검증된 categorical 팔레트(`--series-1`~`6`, `styles.css`), 조각마다 항상
+  라벨을 보여주는 범례(호버에만 의존하지 않음 — 3~5번 슬롯이 대비 WARN이라 라벨이
+  완화 조건이기도 함), 호버 시 해당 조각 강조 + 범례 항목 딤아웃.
+- `src/components/MonthlyReturnChart.tsx` — 월별 diverging 막대(0% 기준선 위/아래로
+  자람, Overview.tsx의 "월별 매수 종목 수익률" 카드가 씀). 카테고리 색이 아니라
+  `--good`/`--critical`(status 색)을 쓴다 — 이 값 자체가 손익(좋다/나쁘다)을
+  뜻해서 color-formula.md의 "series가 곧 good/bad면 status를 입는다" 규칙에 해당.
 - `src/accountLabels.ts` — `(broker, accountId) → label`(백엔드 `account-labels`) 조회용
   공용 유틸. `accountLabelKey(broker, accountId)`(맵 키 조합 — accountId만으로는 브로커
   간에 우연히 겹칠 수 있어서 broker도 같이 묶는다), `formatAccountOption(account, label?)`
@@ -128,6 +148,29 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 
 ## 페이지
 
+- `src/pages/Overview.tsx` — 대시보드(기본 랜딩 페이지). 다른 화면은 전부 브로커/
+  계좌 하나를 골라 파고드는 화면인데, 이 화면만 유일하게 **모든 브로커·모든 계좌를
+  합쳐서** 보여준다 — 카드 4개: 1) 전체 계좌 보유종목 비중(도넛, 종목별 평가금액
+  상위 5 + 기타), 2) 선택 연도 월별 배당금(막대, `DividendsChart` 재사용), 3) 같은
+  연도 배당금 비중(도넛, 종목별), 4) 월별 매수 종목 수익률(diverging 막대,
+  `MonthlyReturnChart`). 데이터는 마운트 시 한 번만 불러온다(자동 새로고침 없음,
+  수동 "새로고침" 버튼만) — 브로커마다 계좌 목록 조회 + 계좌마다 보유종목 조회를
+  전부 병렬로 하는 호출량이 다른 화면보다 훨씬 많아서(Dashboard.tsx의 "전체 계좌"
+  모드를 브로커 여러 개로 넓힌 것), 1분 간격 폴링까지 얹으면 과함. API 브로커는
+  `listAccounts`→`getPortfolio`(계좌별), CSV 전용 브로커는 `listHoldingsStore
+  ({broker})`로 모아서 하나의 `FlatHolding[]`으로 정규화한다. 배당금/매매내역은
+  이미 전체를 한 번에 주는 기존 엔드포인트(`listDividends`/`listTradesStore`)를
+  그대로 쓴다 — 새 백엔드 라우트가 필요 없었다(순수 클라이언트 집계).
+  **"월별 매수 종목 수익률"의 의미**: "평균 구입금액 대비 현재가"는 종목당 스냅샷
+  하나뿐이라 그 자체로는 월별 축이 없다 — 그래서 매매내역의 `executedAt`(매수
+  시점)으로 달을 나누고, 그 달에 사서 **지금도 보유 중인** 물량이 지금 얼마나
+  벌었는지(매입금액 가중평균, 최근 12개월)를 보여준다. 전량 매도한 종목은 "지금
+  보유 중"이 아니라서 빠진다 — 이 한계를 카드 설명 문구에 그대로 적어뒀다. 매매내역이
+  로컬 저장소(`trades-store`) 기준이라 한 번도 조회/동기화/가져오기를 안 한 계좌의
+  과거 매수는 안 잡힐 수 있다(다른 화면의 "전체" 모드와 같은 한계).
+  **환율 처리**는 다른 화면들과 같은 패턴(`toKrw(amount, currency)` — KRW 1:1,
+  USD는 `effectiveFxRate` 있을 때만 곱하고 없으면 `null` 반환해 그 항목을 집계에서
+  뺀 뒤 배너로 안내).
 - `src/pages/Dashboard.tsx` — 보유 종목. 브로커 선택 → 계좌/환율 조회 → 포트폴리오
   조회, 3단계 `useEffect` 체인(환율은 토스일 때만). 네 스탯 타일(`AmountTile`/
   `RateTile`)은 달러 보유분이 있으면(`hasUsdHoldings`) 원화/달러/합계(환산) 3줄,

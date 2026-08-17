@@ -10,6 +10,10 @@
   --border: rgba(11, 11, 11, 0.1);
   --series-1: #2a78d6; /* categorical slot 1 (blue) — weight bars, dividend bars, 매수 */
   --series-2: #eb6834; /* categorical slot 2 (orange) — 매도, adjacent to slot 1 in the validated hue order */
+  --series-3: #1baf7a; /* categorical slot 3 (aqua) */
+  --series-4: #eda100; /* categorical slot 4 (yellow) */
+  --series-5: #e87ba4; /* categorical slot 5 (magenta) */
+  --series-6: #4a3aa7; /* categorical slot 6 (violet) — Overview.tsx 도넛 차트(보유종목/배당금 비중)가 slot 1~6을 씀, "기타"는 --baseline */
   --good: #006300; /* profit text */
   --critical: #d03b3b; /* loss text */
 }
@@ -27,6 +31,10 @@
     --border: rgba(255, 255, 255, 0.1);
     --series-1: #3987e5;
     --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #9085e9;
     --good: #0ca30c;
     --critical: #e66767;
   }

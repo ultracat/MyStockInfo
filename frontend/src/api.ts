@@ -84,6 +84,15 @@ export const api = {
     request<Record<string, { month: string; closePrice: number; currency: string }[]>>(
       `/market-info/monthly-close-prices?symbols=${encodeURIComponent(symbols.join(','))}&months=${months}`
     ),
+  // 월별 USD/KRW 평균 환율(한국수출입은행 영업일 매매기준율 평균) — 토스는
+  // 과거 환율을 지원하지 않아 이 조회의 유일한 소스다. 배당금처럼 특정 날짜에
+  // 귀속되는 달러 금액을 "오늘 환율"이 아니라 "그 달 평균 환율"로 환산하는 데
+  // 쓴다(backend/CLAUDE.md의 "월별 종가 조회" 절 인근 참고). 그 달을 못 구했으면
+  // 해당 키가 null이고, 호출부가 effectiveFxRate(오늘/수동 환율)로 대체한다.
+  getMonthlyAvgUsdKrwRates: (months: string[]) =>
+    request<Record<string, { rate: number; sampleCount: number } | null>>(
+      `/market-info/exchange-rate/monthly-avg?months=${encodeURIComponent(months.join(','))}`
+    ),
 
   listDividends: () => request<DividendRecord[]>('/dividends'),
   addDividend: (input: Omit<DividendRecord, 'id'>) =>

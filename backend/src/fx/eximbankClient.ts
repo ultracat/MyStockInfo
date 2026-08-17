@@ -1,4 +1,5 @@
 import { getSettings } from '../db/settings';
+import { withCache } from '../brokers/responseCache';
 
 // 한국수출입은행 Open API(환율, data=AP01). 공공데이터포털 공지("도메인이
 // 2025-06-25에 www.koreaexim.go.kr로 이전, 구 도메인은 2026-04-30 폐쇄 예정")를
@@ -55,14 +56,36 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
+// 인증키가 없으면 즉시 null(예외 아님 — 미연동은 정상 상태). 그 외 실패
+// 사유(주말/공휴일이라 그날 데이터가 없음, 타임아웃, 응답 형식 이상 등)는
+// 세분화하지 않고 전부 null로 뭉뚱그린다 — 호출부(아래 두 함수) 각자가
+// "그 날짜는 없다"는 사실만 알면 되고, 왜 없는지는 알 필요가 없어서다.
+async function fetchEximbankRateForDate(authKey: string, searchdate: string): Promise<number | null> {
+  let items: unknown;
+  try {
+    const res = await fetchWithTimeout(
+      `${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`
+    );
+    if (!res.ok) return null;
+    items = await res.json();
+  } catch {
+    return null; // 타임아웃(AbortError) 포함
+  }
+  if (!Array.isArray(items)) return null;
+
+  const usd = (items as EximbankRateItem[]).find((i) => i.cur_unit === 'USD');
+  if (!usd || usd.result !== 1) return null;
+
+  const rate = parseKoreanNumber(usd.deal_bas_r);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
 /**
  * USD/KRW 매매기준율(`deal_bas_r`) 조회 — 매 영업일 11시경 갱신되는 일별
  * 환율이라 주말/공휴일엔 그날 데이터가 없다. `searchdate`를 오늘부터 최대
- * 5일 전까지 하루씩 거슬러 올라가며 USD 항목이 있는 첫 응답을 쓴다(성공/실패
- * 사유를 세분화하진 않는다 — 인증키가 아예 잘못됐어도 같은 방식으로 계속
- * 재시도하다 5일 뒤 null을 반환한다. 5일이면 주말 낀 연휴는 대부분 커버되고,
- * 매 시도 최대 5초 타임아웃(위)과 곱해도 최악의 경우 총 대기가 30초 안쪽이다).
- * 인증키가 설정 안 돼 있으면 즉시 null.
+ * 5일 전까지 하루씩 거슬러 올라가며 USD 항목이 있는 첫 응답을 쓴다(5일이면
+ * 주말 낀 연휴는 대부분 커버되고, 매 시도 최대 5초 타임아웃(위)과 곱해도
+ * 최악의 경우 총 대기가 30초 안쪽이다). 인증키가 설정 안 돼 있으면 즉시 null.
  */
 export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: string } | null> {
   const authKey = getSettings().eximbankAuthKey;
@@ -73,26 +96,70 @@ export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: s
     date.setDate(date.getDate() - daysAgo);
     const searchdate = yyyymmdd(date);
 
-    let items: unknown;
-    try {
-      const res = await fetchWithTimeout(
-        `${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`
-      );
-      if (!res.ok) continue;
-      items = await res.json();
-    } catch {
-      continue; // 타임아웃(AbortError) 포함 — 이 날짜는 포기하고 다음 날짜로
-    }
-    if (!Array.isArray(items)) continue;
-
-    const usd = (items as EximbankRateItem[]).find((i) => i.cur_unit === 'USD');
-    if (!usd || usd.result !== 1) continue;
-
-    const rate = parseKoreanNumber(usd.deal_bas_r);
-    if (!Number.isFinite(rate) || rate <= 0) continue;
+    const rate = await fetchEximbankRateForDate(authKey, searchdate);
+    if (rate === null) continue;
 
     return { rate, asOf: `${searchdate.slice(0, 4)}-${searchdate.slice(4, 6)}-${searchdate.slice(6, 8)}` };
   }
 
   return null;
+}
+
+async function computeEximbankMonthlyAvgUsdKrwRate(
+  month: string
+): Promise<{ rate: number; sampleCount: number } | null> {
+  const authKey = getSettings().eximbankAuthKey;
+  if (!authKey) return null;
+
+  const [yearStr, monthStr] = month.split('-');
+  const year = Number(yearStr);
+  const monthNum = Number(monthStr);
+  if (!Number.isInteger(year) || !Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) return null;
+
+  const daysInMonth = new Date(year, monthNum, 0).getDate();
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === monthNum;
+  const lastDay = isCurrentMonth ? Math.min(daysInMonth, today.getDate()) : daysInMonth;
+
+  const weekdaySearchdates: string[] = [];
+  for (let day = 1; day <= lastDay; day++) {
+    const date = new Date(year, monthNum - 1, day);
+    const weekday = date.getDay(); // 0=일, 6=토
+    if (weekday === 0 || weekday === 6) continue;
+    weekdaySearchdates.push(yyyymmdd(date));
+  }
+  if (weekdaySearchdates.length === 0) return null;
+
+  const rates = await Promise.all(weekdaySearchdates.map((d) => fetchEximbankRateForDate(authKey, d)));
+  const valid = rates.filter((r): r is number => r !== null);
+  if (valid.length === 0) return null;
+
+  return { rate: valid.reduce((sum, r) => sum + r, 0) / valid.length, sampleCount: valid.length };
+}
+
+// 이미 끝난 달의 평균은 다시 안 바뀌니 길게(30일, 이 프로세스가 사는 동안은
+// 사실상 영구) 캐싱한다. 아직 진행 중인 이번 달만 새 영업일이 마감될 때마다
+// 평균이 계속 움직이므로 짧게(4시간, 토스 일봉 캐시(tossClient.ts의
+// CANDLE_CACHE_TTL_MS)와 같은 근거) 캐싱한다.
+const PAST_MONTH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const CURRENT_MONTH_TTL_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * 어느 한 달("YYYY-MM")의 영업일별 매매기준율 평균 — 배당금처럼 특정 날짜에
+ * 귀속되는 달러 금액을 "오늘 환율"이 아니라 "그 달 평균 환율"로 환산하고
+ * 싶을 때 쓴다(`Overview.tsx`/`Dividends.tsx`의 배당금 원화 환산이 이걸
+ * 쓴다). 그 달의 평일(주말은 애초에 데이터가 없어 API를 아예 안 부름)마다
+ * `fetchEximbankRateForDate`를 병렬로 호출해 값이 나온 날짜만 평균낸다 —
+ * 공휴일은 그 날짜만 자연히 null로 빠지므로 별도 휴일 목록이 필요 없다.
+ * 이번 달처럼 아직 안 끝난 달은 오늘까지만 센다. 값을 하나도 못 구했으면
+ * (인증키 없음, 그 달 전체가 응답 실패 등) null.
+ */
+export async function fetchEximbankMonthlyAvgUsdKrwRate(
+  month: string
+): Promise<{ rate: number; sampleCount: number } | null> {
+  const now = new Date();
+  const isCurrentMonth = month === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return withCache(`eximbank:monthly-avg:${month}`, isCurrentMonth ? CURRENT_MONTH_TTL_MS : PAST_MONTH_TTL_MS, () =>
+    computeEximbankMonthlyAvgUsdKrwRate(month)
+  );
 }

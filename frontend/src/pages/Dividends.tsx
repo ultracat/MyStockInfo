@@ -87,6 +87,17 @@ export default function Dividends() {
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
   const effectiveFxRate = manualFxRate ?? liveFxRate;
 
+  // 배당금은 오늘 환율이 아니라 그 배당금이 지급된 달의 평균 환율로 환산한다
+  // (한국수출입은행 영업일 매매기준율 평균 — Overview.tsx와 같은 이유/방식,
+  // backend/CLAUDE.md의 "월별 종가 조회" 절 인근 참고). 그 달을 못 구했으면
+  // effectiveFxRate(오늘/수동 환율)로 대체한다.
+  const [monthlyAvgFxRates, setMonthlyAvgFxRates] = useState<
+    Record<string, { rate: number; sampleCount: number } | null>
+  >({});
+  function dividendFxRateFor(month: string): number | null {
+    return monthlyAvgFxRates[month]?.rate ?? effectiveFxRate;
+  }
+
   async function refresh() {
     setRecords(await api.listDividends());
   }
@@ -94,6 +105,29 @@ export default function Dividends() {
   useEffect(() => {
     refresh().catch((e) => setError((e as Error).message));
   }, []);
+
+  // records가 바뀔 때마다(최초 로드/추가/수정/가져오기 등) 그 안의 달러 배당
+  // 기록이 걸쳐 있는 달들의 평균 환율을 다시 구한다 — 연도 필터(year)는 이
+  // records 전체에서 클라이언트 쪽으로만 좁히는 필터라 여기 의존성에 안 넣는다
+  // (연도를 바꿔도 이미 가진 records 범위 안이면 새로 조회할 게 없다). 백엔드가
+  // 달마다 이미 강하게 캐싱해서(4시간~30일) 반복 호출이 비싸지 않다.
+  useEffect(() => {
+    let cancelled = false;
+    const months = [...new Set(records.filter((r) => r.currency === 'USD').map((r) => r.paidDate.slice(0, 7)))];
+    if (months.length === 0) {
+      setMonthlyAvgFxRates({});
+      return;
+    }
+    api
+      .getMonthlyAvgUsdKrwRates(months)
+      .then((rates) => {
+        if (!cancelled) setMonthlyAvgFxRates(rates);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [records]);
 
   // 계좌 별칭 — 관리는 Settings.tsx에서만 하고 여기선 읽기만 한다(마운트 시 한 번).
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
@@ -520,6 +554,30 @@ export default function Dividends() {
     return byBroker;
   }, [visibleRecords]);
 
+  // 브로커별 "합계(환산)" 행이 쓰는, 배당금을 각 기록의 지급월 평균 환율로
+  // 환산해 이미 원화로 합쳐둔 값 — 위 brokerDividendTotals(원화/달러 각 행이
+  // 쓰는 통화별 원본 합계)와 달리, 여기서는 레코드 단위로 그 달 환율을 먼저
+  // 적용한 뒤에 브로커별로 더한다(브로커 합계를 낸 뒤 환율 하나로 한꺼번에
+  // 곱하면 달마다 다른 환율을 반영할 수 없다). 그 달 환율도 fallback
+  // (effectiveFxRate)도 없는 기록은 unconvertedUsd에 따로 모아 "환율 미적용"
+  // 여부를 표로 알려준다.
+  const brokerDividendKrwByBroker = useMemo(() => {
+    const byBroker = new Map<BrokerId, { krwTotal: number; unconvertedUsd: number }>();
+    for (const r of visibleRecords) {
+      const existing = byBroker.get(r.broker) ?? { krwTotal: 0, unconvertedUsd: 0 };
+      if (r.currency === 'USD') {
+        const rate = dividendFxRateFor(r.paidDate.slice(0, 7));
+        if (rate) existing.krwTotal += r.amount * rate;
+        else existing.unconvertedUsd += r.amount;
+      } else {
+        existing.krwTotal += r.amount;
+      }
+      byBroker.set(r.broker, existing);
+    }
+    return byBroker;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleRecords, effectiveFxRate, monthlyAvgFxRates]);
+
   function investedPlaceholder(brokerError: string | null | undefined) {
     if (investedLoading) return '불러오는 중...';
     return brokerError ? '조회 실패' : '-';
@@ -567,8 +625,14 @@ export default function Dividends() {
       const krwYield = investedKrw && investedKrw > 0 ? dividend.krw / investedKrw : null;
       const usdYield = investedUsd && investedUsd > 0 ? dividend.usd / investedUsd : null;
       const investedTotalKrw = (investedKrw ?? 0) + (effectiveFxRate ? (investedUsd ?? 0) * effectiveFxRate : 0);
-      const dividendTotalKrw = dividend.krw + (effectiveFxRate ? dividend.usd * effectiveFxRate : 0);
-      const totalYield = effectiveFxRate && investedTotalKrw > 0 ? dividendTotalKrw / investedTotalKrw : null;
+      // 투자금(매입원가)은 지금 이 순간의 값이라 effectiveFxRate(오늘/수동
+      // 환율)로 환산하지만, 배당금은 위 brokerDividendKrwByBroker가 각 기록의
+      // 지급월 평균 환율로 이미 환산해둔 값을 그대로 쓴다.
+      const dividendConv = brokerDividendKrwByBroker.get(brokerId) ?? { krwTotal: 0, unconvertedUsd: 0 };
+      const dividendTotalKrw = dividendConv.krwTotal;
+      const dividendFxMissing = dividendConv.unconvertedUsd > 0;
+      const totalYield =
+        effectiveFxRate && !dividendFxMissing && investedTotalKrw > 0 ? dividendTotalKrw / investedTotalKrw : null;
 
       lines.push({
         broker: brokerId,
@@ -591,33 +655,33 @@ export default function Dividends() {
         label: '　합계(환산)',
         muted: true,
         invested: effectiveFxRate ? `${krw.format(Math.round(investedTotalKrw))}원` : '환율 미적용',
-        dividend: effectiveFxRate ? `${krw.format(Math.round(dividendTotalKrw))}원` : '환율 미적용',
+        dividend: !dividendFxMissing ? `${krw.format(Math.round(dividendTotalKrw))}원` : '환율 미적용',
         yieldText: totalYield !== null ? `${(totalYield * 100).toFixed(2)}%` : '-',
       });
     }
 
     return lines;
-  }, [brokerDividendTotals, investedByBroker, investedErrors, investedLoading, effectiveFxRate]);
+  }, [brokerDividendTotals, brokerDividendKrwByBroker, investedByBroker, investedErrors, investedLoading, effectiveFxRate]);
 
   // "총합계" 스탯 타일 — 증권사별 표는 이미 통화별 상세를 보여주므로, 여기서는
   // 환산된 단일 숫자만 보여준다(중복 표시 방지). 브로커 하나라도 투자금 조회가
   // 안 됐으면(로딩/에러) 부분합을 총합처럼 보여주지 않고 그 사실을 그대로 알린다.
   const grandTotal = useMemo(() => {
     const ids = new Set<BrokerId>([
-      ...brokerDividendTotals.keys(),
+      ...brokerDividendKrwByBroker.keys(),
       ...(Object.keys(investedByBroker) as BrokerId[]),
     ]);
-    let dividendKrw = 0;
-    let dividendUsd = 0;
+    let dividendKrwTotal = 0;
+    let dividendUnconvertedUsd = 0;
     let investedKrw = 0;
     let investedUsd = 0;
     let missingInvested = false;
 
     for (const id of ids) {
-      const div = brokerDividendTotals.get(id);
+      const div = brokerDividendKrwByBroker.get(id);
       if (div) {
-        dividendKrw += div.krw;
-        dividendUsd += div.usd;
+        dividendKrwTotal += div.krwTotal;
+        dividendUnconvertedUsd += div.unconvertedUsd;
       }
       const inv = investedByBroker[id];
       if (inv) {
@@ -628,26 +692,31 @@ export default function Dividends() {
       }
     }
 
-    const dividendTotal = dividendKrw + (effectiveFxRate ? dividendUsd * effectiveFxRate : 0);
+    // 투자금(매입원가)은 지금 이 순간의 값이라 effectiveFxRate로 환산하고,
+    // 배당금은 위 brokerDividendKrwByBroker가 각 기록의 지급월 평균 환율로
+    // 이미 환산해둔 값을 그대로 더한다 — 두 값의 "환율 미적용" 조건이 서로
+    // 다르므로(투자금은 effectiveFxRate 유무, 배당금은 레코드별 변환 성공
+    // 여부) 따로 판단한다.
     const investedTotal = investedKrw + (effectiveFxRate ? investedUsd * effectiveFxRate : 0);
-    const fxMissing = !effectiveFxRate && (dividendUsd > 0 || investedUsd > 0);
+    const investedFxMissing = !effectiveFxRate && investedUsd > 0;
+    const dividendFxMissing = dividendUnconvertedUsd > 0;
 
     return {
       hasAny: ids.size > 0,
-      dividendText: fxMissing ? '환율 미적용' : `${krw.format(Math.round(dividendTotal))}원`,
+      dividendText: dividendFxMissing ? '환율 미적용' : `${krw.format(Math.round(dividendKrwTotal))}원`,
       investedText: investedLoading
         ? '불러오는 중...'
         : missingInvested
           ? '일부 조회 실패'
-          : fxMissing
+          : investedFxMissing
             ? '환율 미적용'
             : `${krw.format(Math.round(investedTotal))}원`,
       yieldText:
-        !missingInvested && !fxMissing && investedTotal > 0
-          ? `${((dividendTotal / investedTotal) * 100).toFixed(2)}%`
+        !missingInvested && !investedFxMissing && !dividendFxMissing && investedTotal > 0
+          ? `${((dividendKrwTotal / investedTotal) * 100).toFixed(2)}%`
           : '-',
     };
-  }, [brokerDividendTotals, investedByBroker, investedLoading, effectiveFxRate]);
+  }, [brokerDividendKrwByBroker, investedByBroker, investedLoading, effectiveFxRate]);
 
   return (
     <div>
@@ -711,7 +780,7 @@ export default function Dividends() {
         {!dividendPanelsCollapsed && (
           <div style={{ display: 'flex', alignItems: 'stretch', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
             <div style={{ flex: '1 1 420px', minWidth: 0 }}>
-              <DividendsChart rows={monthlyRows} fxRate={effectiveFxRate} />
+              <DividendsChart rows={monthlyRows} fxRate={dividendFxRateFor} />
             </div>
 
             <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)' }} />

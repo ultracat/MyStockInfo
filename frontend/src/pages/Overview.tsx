@@ -59,6 +59,9 @@ export default function Overview() {
     Record<string, { month: string; closePrice: number; currency: string }[]>
   >({});
   const [loadingClosePrices, setLoadingClosePrices] = useState(false);
+  const [monthlyAvgFxRates, setMonthlyAvgFxRates] = useState<
+    Record<string, { rate: number; sampleCount: number } | null>
+  >({});
   const [year, setYear] = useState(CURRENT_YEAR);
   const [refreshing, setRefreshing] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
@@ -71,6 +74,18 @@ export default function Overview() {
   function toKrw(amount: number, currency: string | null): number | null {
     if (currency === 'USD') return effectiveFxRate ? amount * effectiveFxRate : null;
     return amount;
+  }
+
+  // 배당금은 "오늘 환율"이 아니라 그 배당금이 지급된 달("YYYY-MM")의 평균
+  // 환율로 환산한다 — 토스/수동 입력은 항상 "지금 이 순간"의 환율 하나뿐이라,
+  // 몇 달 전에 받은 배당금까지 오늘 환율로 계산하면 실제로 그때 얼마를
+  // 받았는지와 어긋난다(사용자 요청으로 추가). 그 달의 평균을 못 구했으면
+  // (한국수출입은행 미연동, 그 달 데이터를 하나도 못 찾음 등) 기존처럼
+  // effectiveFxRate로 대체한다 — 아예 안 보여주는 것보다는 근사치라도 보여주는
+  // 쪽을 택했다(보유종목/투자금처럼 "그 순간의 정확한 값"이 필수가 아니라
+  // 참고용 요약 수치라서 근사도 허용).
+  function dividendFxRateFor(month: string): number | null {
+    return monthlyAvgFxRates[month]?.rate ?? effectiveFxRate;
   }
 
   // 종목별 월별 종가 조회(loadMonthlyClosePrices)는 종목 수만큼 토스 API를
@@ -98,6 +113,24 @@ export default function Overview() {
       setMonthlyClosePrices(closePrices);
       setLoadingClosePrices(false);
     }
+  }
+
+  // 배당금 달마다 월평균 환율을 조회한다(dividendFxRateFor 참고) — 종목별
+  // 종가 조회와 같은 이유로 loadAll()을 안 막는다: 달 수만큼 한국수출입은행
+  // 영업일 조회가 필요해서(달 하나당 최대 20여 회, 백엔드가 병렬로 처리하긴
+  // 하지만) 배당 이력이 긴 계정은 여기도 지연이 생길 수 있다. 응답이 올 때까지
+  // dividendFxRateFor가 오늘/수동 환율로 대체하므로 화면은 즉시 뜬다.
+  const monthlyAvgFxRequestId = useRef(0);
+
+  async function loadMonthlyAvgFxRates(divs: DividendRecord[]) {
+    const requestId = ++monthlyAvgFxRequestId.current;
+    const months = [...new Set(divs.filter((d) => d.currency === 'USD').map((d) => d.paidDate.slice(0, 7)))];
+    if (months.length === 0) {
+      if (requestId === monthlyAvgFxRequestId.current) setMonthlyAvgFxRates({});
+      return;
+    }
+    const rates = await api.getMonthlyAvgUsdKrwRates(months).catch(() => ({}));
+    if (requestId === monthlyAvgFxRequestId.current) setMonthlyAvgFxRates(rates);
   }
 
   async function loadAll() {
@@ -191,6 +224,7 @@ export default function Overview() {
 
     const heldSymbols = new Set(flat.filter((h) => h.quantity > 0).map((h) => h.symbol));
     void loadMonthlyClosePrices(heldSymbols, allTrades);
+    void loadMonthlyAvgFxRates(divs);
   }
 
   useEffect(() => {
@@ -256,18 +290,22 @@ export default function Overview() {
   }, [dividends, year]);
 
   // ---- 3) 배당금 비중(도넛) — 선택한 연도, 종목별 ----
+  // 배당금은 toKrw(오늘/수동 환율)가 아니라 dividendFxRateFor(그 달 평균 환율,
+  // 못 구하면 toKrw와 같은 값으로 대체)로 환산한다.
   const dividendSlices = useMemo<DonutSlice[]>(() => {
     const bySymbol = new Map<string, { name: string; valueKrw: number }>();
     for (const d of dividends) {
       if (!d.paidDate.startsWith(String(year))) continue;
-      const v = toKrw(d.amount, d.currency);
+      const rate = d.currency === 'USD' ? dividendFxRateFor(d.paidDate.slice(0, 7)) : null;
+      const v = d.currency === 'USD' ? (rate ? d.amount * rate : null) : d.amount;
       if (v === null) continue;
       const existing = bySymbol.get(d.symbol) ?? { name: d.name, valueKrw: 0 };
       existing.valueKrw += v;
       bySymbol.set(d.symbol, existing);
     }
     return topNSlices(bySymbol);
-  }, [dividends, year, effectiveFxRate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividends, year, effectiveFxRate, monthlyAvgFxRates]);
 
   function topNSlices(bySymbol: Map<string, { name: string; valueKrw: number }>): DonutSlice[] {
     const entries = Array.from(bySymbol.entries())
@@ -424,12 +462,11 @@ export default function Overview() {
     [monthlyAmountRows]
   );
 
-  const totalDividendKrwThisYear = dividendMonthlyRows.reduce(
-    (sum, r) => sum + r.totalKrw + (effectiveFxRate ? r.totalUsd * effectiveFxRate : 0),
-    0
-  );
-  const hasUnconvertedUsdDividend =
-    !effectiveFxRate && dividends.some((d) => d.currency === 'USD' && d.paidDate.startsWith(String(year)));
+  const totalDividendKrwThisYear = dividendMonthlyRows.reduce((sum, r) => {
+    const rate = dividendFxRateFor(r.month);
+    return sum + r.totalKrw + (rate ? r.totalUsd * rate : 0);
+  }, 0);
+  const hasUnconvertedUsdDividend = dividendMonthlyRows.some((r) => r.totalUsd > 0 && !dividendFxRateFor(r.month));
 
   if (loading) return <p>불러오는 중...</p>;
   if (error)
@@ -515,7 +552,7 @@ export default function Overview() {
           </div>
         )}
         <div style={{ marginTop: 12 }}>
-          <DividendsChart rows={dividendMonthlyRows} fxRate={effectiveFxRate} />
+          <DividendsChart rows={dividendMonthlyRows} fxRate={dividendFxRateFor} />
         </div>
       </div>
 

@@ -42,7 +42,12 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   없어도 되고, `GET /api/accounts`가 항상 `configured: true`로 돌려준다(자격증명
   개념이 없어서 — 프론트가 바로 선택할 수 있게).
 - `credentialFields.ts` — 브로커별 자격증명 필드 명세. 설정 화면 폼이 이걸 그대로 읽어
-  렌더링하므로 필드 추가 시 프론트 수정 불필요.
+  렌더링하므로 필드 추가 시 프론트 수정 불필요. 필드마다 `secret`(password input
+  여부, 암호화 저장은 어차피 전부 됨 — 이건 순전히 UI/노출 여부용) 외에 선택적
+  `kind: 'account'`를 붙일 수 있다 — 계좌번호처럼 "비밀은 아니지만 계좌를 식별하는
+  값"이라는 표시다. `routes/settings.ts`의 `GET /settings/credential-info`가 이
+  플래그로 골라서(appKey/Client ID 같은 나머지 비밀 아닌 필드는 제외) Settings.tsx의
+  "증권사 연동 상태" 표 "계좌 정보" 컬럼에 보여준다.
 - `rateLimiter.ts` — `RateLimiter`(직렬 스케줄링 + `learnFromHeaders` 자가보정 +
   `penalizeUntil`), `withRateLimitRetry`.
 - `toss/tossClient.ts` — OAuth2 client_credentials. **금액/수량/비율 필드는 전부 문자열**

@@ -7,6 +7,11 @@ import { accountLabelKey } from '../accountLabels';
 export default function Settings() {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
   const [fieldSpecs, setFieldSpecs] = useState<Record<BrokerId, CredentialFieldSpec[]> | null>(null);
+  // KIS의 계좌번호/상품코드, KB의 계좌번호처럼 자격증명 중 비밀이 아닌(secret:
+  // false) 입력값 — "증권사 연동 상태" 표에서 "이 브로커에 어느 계좌를 등록해뒀는지"
+  // 바로 보여주기 위해 쓴다. appSecret 등 secret:true 필드는 서버가 애초에 응답에
+  // 안 담아 보낸다(routes/settings.ts의 credential-info).
+  const [credentialInfo, setCredentialInfo] = useState<Partial<Record<BrokerId, Record<string, string>>>>({});
   const [broker, setBroker] = useState<BrokerId>('toss');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [fxRate, setFxRate] = useState('');
@@ -14,10 +19,16 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
-    const [s, fx, specs] = await Promise.all([api.getCredentialStatus(), api.getFxRate(), api.getCredentialFields()]);
+    const [s, fx, specs, info] = await Promise.all([
+      api.getCredentialStatus(),
+      api.getFxRate(),
+      api.getCredentialFields(),
+      api.getCredentialInfo(),
+    ]);
     setStatus(s);
     setFxRate(fx.usdKrwRate ? String(fx.usdKrwRate) : '');
     setFieldSpecs(specs);
+    setCredentialInfo(info);
   }
 
   useEffect(() => {
@@ -243,6 +254,7 @@ export default function Settings() {
             <tr>
               <th>증권사</th>
               <th>상태</th>
+              <th>계좌 정보</th>
               <th></th>
             </tr>
           </thead>
@@ -250,6 +262,7 @@ export default function Settings() {
             {BROKER_ORDER.map((id) => {
               const isApiBroker = API_BROKER_IDS.includes(id);
               const hasCredentialFields = (fieldSpecs?.[id]?.length ?? 0) > 0;
+              const nonSecretValues = credentialInfo[id];
               return (
                 <tr key={id}>
                   <td>{BROKER_LABELS[id]}</td>
@@ -264,6 +277,14 @@ export default function Settings() {
                         )}
                       </>
                     )}
+                  </td>
+                  <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                    {nonSecretValues
+                      ? (fieldSpecs?.[id] ?? [])
+                          .filter((f) => f.kind === 'account' && nonSecretValues[f.key])
+                          .map((f) => `${f.label}: ${nonSecretValues[f.key]}`)
+                          .join(' · ')
+                      : '-'}
                   </td>
                   <td>
                     {hasCredentialFields && status?.[id] && (

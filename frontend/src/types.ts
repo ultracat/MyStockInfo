@@ -129,6 +129,9 @@ export interface CredentialFieldSpec {
   label: string;
   secret: boolean;
   placeholder?: string;
+  /** "이 필드가 계좌 정보다" 표시 — Settings.tsx의 "증권사 연동 상태" 표가
+   *  API 키 문자열까지 노출하지 않고 계좌번호류만 골라 보여주는 데 쓴다. */
+  kind?: 'account';
 }
 
 export interface TradeRecord {

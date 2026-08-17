@@ -45,6 +45,12 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   "이 브로커가 자격증명 폼이 필요한가"를 못 가려서 갈라놨다. "증권사 연동 상태" 표도
   같은 기준(`fieldSpecs`)으로 "CSV 전용" vs 상태 표시를 가르고, `API_BROKER_IDS`에
   없는데 자격증명은 있는 브로커(KB)는 상태 뒤에 "(CSV 전용 + 동기화 가능)"을 덧붙인다.
+  "계좌 정보" 컬럼은 `api.getCredentialInfo()`(`GET /settings/credential-info`)로
+  받은, 저장된 자격증명 중 `kind === 'account'`인 필드(KIS의 계좌번호/상품코드, KB의
+  계좌번호)만 보여준다 — appKey/Client ID 같은 나머지 비밀 아닌 필드는 이 표에서도
+  안 보여준다(백엔드가 애초에 응답에서 뺌, `backend/CLAUDE.md`의 `credentialFields.ts`
+  참고). 자격증명 저장/해제(`onSaveCredential`/`onClearCredential`)가 성공하면
+  `refresh()`를 다시 불러서 이 컬럼도 같이 갱신된다.
   "계좌 별칭"
   카드는 CSV 전용 브로커의 `(broker, accountId) → label` 매핑을 관리하는 **유일한
   화면**이다(Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 함 — 편집 UI를

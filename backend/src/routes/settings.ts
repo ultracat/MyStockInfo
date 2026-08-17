@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { clearCredential, hasCredential, setCredentialFields } from '../credentials';
+import { clearCredential, getCredentialFields, hasCredential, setCredentialFields } from '../credentials';
 import { getSettings, setUsdKrwRate } from '../db/settings';
 import { CREDENTIAL_FIELDS } from '../brokers/credentialFields';
 import { BROKER_IDS } from '../brokers/knownBrokers';
@@ -18,6 +18,28 @@ settingsRouter.get('/credentials', (_req, res) => {
 
 settingsRouter.get('/credential-fields', (_req, res) => {
   res.json(CREDENTIAL_FIELDS);
+});
+
+// "증권사 연동 상태" 표에 계좌번호 같은 계좌 정보를 보여주기 위한 엔드포인트 —
+// `secret: true`인 필드(appSecret 등)뿐 아니라 `kind !== 'account'`인 필드
+// (appKey, Client ID 등 — 비밀은 아니지만 계좌 정보도 아님)도 뺀다. 그래서
+// KIS의 계좌번호/상품코드, KB의 계좌번호처럼 "API 연동에 계좌 정보를 같이
+// 입력해야 하는" 브로커에서만, 그 계좌 정보만 채워지고 나머지는 빈 객체.
+settingsRouter.get('/credential-info', (_req, res) => {
+  const info: Partial<Record<BrokerId, Record<string, string>>> = {};
+  for (const broker of BROKER_IDS) {
+    if (!hasCredential(broker)) continue;
+    const spec = CREDENTIAL_FIELDS[broker].filter((f) => f.kind === 'account');
+    if (spec.length === 0) continue;
+    const stored = getCredentialFields(broker);
+    if (!stored) continue;
+    const nonSecret: Record<string, string> = {};
+    for (const f of spec) {
+      if (typeof stored[f.key] === 'string' && stored[f.key]) nonSecret[f.key] = stored[f.key];
+    }
+    if (Object.keys(nonSecret).length > 0) info[broker] = nonSecret;
+  }
+  res.json(info);
 });
 
 settingsRouter.post('/credentials/:broker', (req, res) => {

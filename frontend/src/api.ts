@@ -42,6 +42,9 @@ export const api = {
 
   getCredentialStatus: () => request<CredentialStatus>('/settings/credentials'),
   getCredentialFields: () => request<Record<BrokerId, CredentialFieldSpec[]>>('/settings/credential-fields'),
+  // "증권사 연동 상태" 표에 계좌번호 같은 비밀 아닌 입력값을 보여주기 위한 조회 —
+  // secret:true인 필드(appSecret 등)는 서버가 애초에 응답에서 뺀다.
+  getCredentialInfo: () => request<Partial<Record<BrokerId, Record<string, string>>>>('/settings/credential-info'),
   setCredential: (broker: BrokerId, fields: Record<string, string>) =>
     request<void>(`/settings/credentials/${broker}`, {
       method: 'POST',

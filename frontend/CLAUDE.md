@@ -15,11 +15,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `BACKEND_PORT`와 일치해야 한다. 에러 응답은 `{error, detail?}`을 기대.
 - `src/types.ts` — 백엔드 응답 타입 미러링(`brokers/types.ts`와 형태 유지). CSV 관련
   로컬 저장소 타입은 `StoredHolding`/`StoredTrade`.
-- `src/brokers.ts` — `BROKER_LABELS`/`BROKER_ORDER`/`API_BROKER_IDS`. 브로커 표시
-  이름/순서의 단일 소스(백엔드 `brokers/knownBrokers.ts`와 짝) — Dividends.tsx/
-  Settings.tsx/Dashboard.tsx/Trades.tsx가 전부 여기서 가져다 쓴다. `API_BROKER_IDS`
-  (토스/KIS만)에 없는 브로커는 CSV 전용(KB/삼성/미래에셋) — 실시간 조회 없이 로컬
-  저장소로만 동작한다, 아래 "CSV 전용 브로커" 참고.
+- `src/brokers.ts` — `BROKER_LABELS`/`BROKER_ORDER`/`API_BROKER_IDS`/`CSV_ONLY_BROKER_IDS`.
+  브로커 표시 이름/순서의 단일 소스(백엔드 `brokers/knownBrokers.ts`와 짝) —
+  Dividends.tsx/Settings.tsx/Dashboard.tsx/Trades.tsx가 전부 여기서 가져다 쓴다.
+  `API_BROKER_IDS`(토스/KIS만)에 없는 브로커는 CSV 전용(KB/삼성/미래에셋) — 실시간
+  조회 없이 로컬 저장소로만 동작한다, 아래 "CSV 전용 브로커" 참고. `CSV_ONLY_BROKER_IDS`는
+  `API_BROKER_IDS`의 여집합(`BROKER_ORDER.filter`) — Settings.tsx의 계좌 별칭 등록
+  대상, Trades.tsx의 매매내역 수동 입력 대상 브로커 선택지가 이걸 쓴다(각 파일에서
+  따로 필터링하지 않도록 여기 한 곳으로 뺌).
 - `src/csv.ts` — RFC4180 최소 파서/직렬화(`parseCsv`/`toCsv`/`downloadCsv`, 라이브러리
   없이 직접 구현). `downloadCsv`는 UTF-8 BOM을 붙인다(없으면 엑셀/한글 스프레드시트가
   UTF-8로 안 열림). 배당금/보유종목/매매내역 세 화면이 공용으로 쓴다.
@@ -171,7 +174,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   그대로 쓴다. CSV 전용 브로커는 연도별 라이브 조회 대신 로컬 저장소 전체를 한 번에
   받아와 `mapStoredTrade()`로 `TradeRecord` 모양(`name: null`)으로 바꾸고, 이후
   연도/월 필터링은 기존 클라이언트 로직을 그대로 재사용한다(서버가 연도 개념을 몰라도
-  됨).
+  됨). **"매매내역 추가"**(수동 입력) 폼은 `CSV_ONLY_BROKER_IDS`만 증권사 선택지로
+  준다(Dividends.tsx의 배당 기록 추가 폼과 다른 점 — 토스/KIS는 실시간 API로 실제
+  체결 내역이 write-through 동기화되므로, 그 위에 수동 입력을 섞으면 어느 쪽이 진짜
+  체결 내역인지 알 수 없어진다). 별도 백엔드 라우트를 새로 만들지 않고 기존 CSV
+  가져오기 엔드포인트(`POST /trades-store/import`)를 행 1개짜리 배열로 호출한다 —
+  `id`를 안 주면 서버가 새로 발급하므로 항상 새 매매내역으로 추가된다. 추가에 성공하면
+  지금 보고 있는 증권사가 방금 추가한 증권사와 같을 때만 계좌 목록/매매내역을 즉시
+  다시 읽어 반영한다(CSV 가져오기 성공 후 처리와 같은 패턴).
 - `src/components/TradesChart.tsx` — 월별 매수(`--series-1`)/매도(`--series-2`) 그룹형
   막대 그래프. **원화·달러를 환율로 합쳐서 하나의 막대로 그리지 않는다**(단위/스케일이
   달라서 — dataviz 스킬의 "두 측정값은 두 차트로" 원칙) — 달러 거래가 있으면 원화

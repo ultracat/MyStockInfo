@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { AccountLabel, BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
-import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
+import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
-
-const CSV_ONLY_BROKERS = BROKER_ORDER.filter((id) => !API_BROKER_IDS.includes(id));
 
 export default function Settings() {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
@@ -85,7 +83,7 @@ export default function Settings() {
   const [knownAccounts, setKnownAccounts] = useState<{ broker: BrokerId; accountId: string }[]>([]);
   const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
   const [accountsLoading, setAccountsLoading] = useState(true);
-  const [newAccountBroker, setNewAccountBroker] = useState<BrokerId>(CSV_ONLY_BROKERS[0]);
+  const [newAccountBroker, setNewAccountBroker] = useState<BrokerId>(CSV_ONLY_BROKER_IDS[0]);
   const [newAccountId, setNewAccountId] = useState('');
   const [newAccountLabel, setNewAccountLabel] = useState('');
 
@@ -95,7 +93,7 @@ export default function Settings() {
       api.listAccountLabels(),
       api.listDividends(),
       Promise.all(
-        CSV_ONLY_BROKERS.map((b) =>
+        CSV_ONLY_BROKER_IDS.map((b) =>
           Promise.all([api.listHoldingsStore({ broker: b }), api.listTradesStore({ broker: b })]).then(
             ([holdings, trades]) => ({
               broker: b,
@@ -111,7 +109,7 @@ export default function Settings() {
       for (const accountId of accountIds) known.set(accountLabelKey(b, accountId), { broker: b, accountId });
     }
     for (const d of allDividends) {
-      if (d.accountId && CSV_ONLY_BROKERS.includes(d.broker)) {
+      if (d.accountId && CSV_ONLY_BROKER_IDS.includes(d.broker)) {
         known.set(accountLabelKey(d.broker, d.accountId), { broker: d.broker, accountId: d.accountId });
       }
     }
@@ -121,7 +119,7 @@ export default function Settings() {
 
     const list = Array.from(known.values()).sort(
       (a, b) =>
-        CSV_ONLY_BROKERS.indexOf(a.broker) - CSV_ONLY_BROKERS.indexOf(b.broker) ||
+        CSV_ONLY_BROKER_IDS.indexOf(a.broker) - CSV_ONLY_BROKER_IDS.indexOf(b.broker) ||
         a.accountId.localeCompare(b.accountId)
     );
     setKnownAccounts(list);
@@ -354,7 +352,7 @@ export default function Settings() {
           <div className="form-row">
             <label>증권사</label>
             <select value={newAccountBroker} onChange={(e) => setNewAccountBroker(e.target.value as BrokerId)}>
-              {CSV_ONLY_BROKERS.map((id) => (
+              {CSV_ONLY_BROKER_IDS.map((id) => (
                 <option key={id} value={id}>
                   {BROKER_LABELS[id]}
                 </option>

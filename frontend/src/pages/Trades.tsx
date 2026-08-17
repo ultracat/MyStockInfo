@@ -5,7 +5,7 @@ import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart'
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
-import { API_BROKER_IDS } from '../brokers';
+import { API_BROKER_IDS, BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, formatAccountOption } from '../accountLabels';
 
 // CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
@@ -42,6 +42,8 @@ const TRADES_CSV_HEADER = [
   'commission',
   'tax',
 ];
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 const CURRENT_YEAR = new Date().getFullYear();
 const CURRENT_MONTH = new Date().getMonth() + 1;
@@ -92,6 +94,24 @@ export default function Trades() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+
+  // 매매내역 수동 입력 — CSV 전용 브로커(KB/삼성/미래에셋)만 대상이다. 토스/KIS는
+  // 실시간 API로 실제 체결 내역이 그대로 들어오므로(write-through 동기화), 그
+  // 위에 수동 입력을 섞으면 어느 쪽이 진짜 체결 내역인지 알 수 없어진다 —
+  // Dividends.tsx의 배당 기록 추가 폼과 달리 브로커 선택지를 CSV 전용으로 제한.
+  const [addBroker, setAddBroker] = useState<BrokerId>(CSV_ONLY_BROKER_IDS[0]);
+  const [addAccountId, setAddAccountId] = useState('');
+  const [addSymbol, setAddSymbol] = useState('');
+  const [addSide, setAddSide] = useState<'BUY' | 'SELL'>('BUY');
+  const [addQuantity, setAddQuantity] = useState('');
+  const [addPrice, setAddPrice] = useState('');
+  const [addAmount, setAddAmount] = useState('');
+  const [addCurrency, setAddCurrency] = useState('KRW');
+  const [addExecutedAt, setAddExecutedAt] = useState(today());
+  const [addCommission, setAddCommission] = useState('');
+  const [addTax, setAddTax] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addResult, setAddResult] = useState<string | null>(null);
 
   const configuredBrokers = brokers.filter((b) => b.configured);
 
@@ -330,6 +350,79 @@ export default function Trades() {
       setImportResult((e as Error).message);
     } finally {
       setImporting(false);
+    }
+  }
+
+  // CSV 가져오기와 같은 백엔드 엔드포인트(POST /trades-store/import)를 행 1개짜리
+  // 배열로 호출한다 — id를 안 주면 서버가 새로 발급하므로 항상 새 매매내역으로
+  // 추가된다(같은 엔드포인트가 CSV 여러 줄이든 수동 입력 한 줄이든 그대로 처리).
+  async function onAddTrade(e: React.FormEvent) {
+    e.preventDefault();
+    setAddError(null);
+    setAddResult(null);
+
+    const quantityNum = Number(addQuantity);
+    const priceNum = Number(addPrice);
+    const amountNum = Number(addAmount);
+    if (
+      !addAccountId.trim() ||
+      !addSymbol.trim() ||
+      !Number.isFinite(quantityNum) ||
+      quantityNum <= 0 ||
+      !Number.isFinite(priceNum) ||
+      priceNum < 0 ||
+      !Number.isFinite(amountNum) ||
+      amountNum < 0 ||
+      !addExecutedAt
+    ) {
+      setAddError('계좌, 종목코드, 수량(양수), 단가(0 이상), 체결금액(0 이상), 체결일을 입력해주세요.');
+      return;
+    }
+
+    try {
+      const accountIdTrimmed = addAccountId.trim();
+      const result = await api.importTradesStore([
+        {
+          broker: addBroker,
+          accountId: accountIdTrimmed,
+          symbol: addSymbol.trim(),
+          side: addSide,
+          quantity: quantityNum,
+          price: priceNum,
+          amount: amountNum,
+          currency: addCurrency,
+          executedAt: addExecutedAt,
+          commission: addCommission.trim() ? Number(addCommission) : null,
+          tax: addTax.trim() ? Number(addTax) : null,
+        },
+      ]);
+      if (result.failed.length > 0) {
+        setAddError(result.failed[0].error);
+        return;
+      }
+
+      setAddSymbol('');
+      setAddQuantity('');
+      setAddPrice('');
+      setAddAmount('');
+      setAddCommission('');
+      setAddTax('');
+      setAddResult('추가되었습니다.');
+
+      // 지금 보고 있는 화면이 방금 추가한 브로커와 같으면 계좌 목록/매매내역을
+      // 바로 다시 읽어서 화면 전환 없이 반영한다(CSV 가져오기와 같은 패턴).
+      if (selectedBroker === addBroker) {
+        const stored = await api.listTradesStore({ broker: addBroker });
+        const ids = Array.from(new Set(stored.map((t) => t.accountId)));
+        setAccounts(ids.map((id) => ({ id })));
+        const nextAccountId = ids.includes(accountIdTrimmed) ? accountIdTrimmed : (accountId ?? ids[0] ?? null);
+        setAccountId(nextAccountId);
+        if (nextAccountId) {
+          setTrades(stored.filter((t) => t.accountId === nextAccountId).map(mapStoredTrade));
+        }
+      }
+    } catch (e) {
+      setAddError((e as Error).message);
     }
   }
 
@@ -572,6 +665,91 @@ export default function Trades() {
           <div style={{ marginTop: 12 }}>
             <TradesChart rows={chartRows} />
           </div>
+        )}
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>매매내역 추가</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          API 연동이 없는 증권사(KB증권/삼성증권/미래에셋증권)만 직접 입력할 수 있습니다. 토스증권/
+          한국투자증권은 실시간 조회로 매매내역이 자동으로 채워집니다.
+        </p>
+        {addError && (
+          <p className="text-critical" style={{ whiteSpace: 'pre-wrap' }}>
+            {addError}
+          </p>
+        )}
+        <form onSubmit={onAddTrade}>
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+            <div className="form-row">
+              <label>증권사</label>
+              <select value={addBroker} onChange={(e) => setAddBroker(e.target.value as BrokerId)}>
+                {CSV_ONLY_BROKER_IDS.map((id) => (
+                  <option key={id} value={id}>
+                    {BROKER_LABELS[id]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-row">
+              <label>계좌</label>
+              <input
+                value={addAccountId}
+                onChange={(e) => setAddAccountId(e.target.value)}
+                placeholder="예: 123-45-678901"
+              />
+            </div>
+            <div className="form-row">
+              <label>종목코드</label>
+              <input value={addSymbol} onChange={(e) => setAddSymbol(e.target.value)} placeholder="예: 005930" />
+            </div>
+            <div className="form-row">
+              <label>구분</label>
+              <select value={addSide} onChange={(e) => setAddSide(e.target.value as 'BUY' | 'SELL')}>
+                <option value="BUY">매수</option>
+                <option value="SELL">매도</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label>수량</label>
+              <input type="number" min="0" step="any" value={addQuantity} onChange={(e) => setAddQuantity(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>단가</label>
+              <input type="number" min="0" step="any" value={addPrice} onChange={(e) => setAddPrice(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>통화</label>
+              <select value={addCurrency} onChange={(e) => setAddCurrency(e.target.value)}>
+                <option value="KRW">원화 (KRW)</option>
+                <option value="USD">달러 (USD)</option>
+              </select>
+            </div>
+            <div className="form-row">
+              <label>체결금액</label>
+              <input type="number" min="0" step="any" value={addAmount} onChange={(e) => setAddAmount(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>체결일</label>
+              <input type="date" value={addExecutedAt} onChange={(e) => setAddExecutedAt(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>수수료 (선택)</label>
+              <input type="number" min="0" step="any" value={addCommission} onChange={(e) => setAddCommission(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>세금 (선택)</label>
+              <input type="number" min="0" step="any" value={addTax} onChange={(e) => setAddTax(e.target.value)} />
+            </div>
+          </div>
+          <button type="submit" className="primary">
+            추가
+          </button>
+        </form>
+        {addResult && (
+          <p className="text-good" style={{ fontSize: 13 }}>
+            {addResult}
+          </p>
         )}
       </div>
 

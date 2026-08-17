@@ -142,12 +142,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `if (!portfolio) return null`이라 헤더의 CSV 가져오기 버튼까지 같이 사라져서
   가져오기를 할 방법이 없어졌었다 — 지금은 `portfolio`가 없어도 헤더/선택
   드롭다운은 항상 그리고, 그 아래(스탯 타일/표)만 `portfolio &&`로 조건부 렌더링한다.
-  **CSV 가져오기의 선택 컬럼 `memo`**: IRP 계좌처럼 같은 종목을 "개인납입액"/
-  "회사납입액"으로 나눠 관리하는 경우를 위한 것(backend/CLAUDE.md의 "CSV 가져오기"
-  절 참고 — 백엔드가 `(symbol, memo)`로 식별해 같은 심볼이어도 memo가 다르면 별도
-  행으로 쌓는다). `HoldingsTable.tsx`가 종목명 옆에 `· {memo}`로 표시하고, 표의
-  React `key`도 더 이상 `r.symbol` 단독이 아니라 `` `${symbol}:${memo ?? ''}:${idx}` ``
-  다 — 심볼만 쓰면 중복 심볼 행에서 key 충돌이 난다.
+  **CSV 가져오기는 덮어쓰기다**: 가져온 CSV에 등장한 (broker,accountId)마다 그 계좌의
+  기존 저장 행을 전부 지우고 CSV 내용으로 교체한다(백엔드
+  `replaceHoldingsFromImport`, backend/CLAUDE.md의 "CSV 가져오기" 절 참고) — 같은
+  CSV를 다시 가져와도 행이 계속 누적되지 않는다. **선택 컬럼 `memo`**: IRP 계좌처럼
+  같은 종목을 "개인납입액"/"회사납입액"으로 나눠 관리하는 경우를 위한 것 — 덮어쓰기
+  방식이라 CSV에 같은 심볼이 여러 번 나와도 그대로 각각 별도 행이 되고, memo는 화면
+  구분 표시 용도일 뿐 행 식별에는 안 쓰인다. `HoldingsTable.tsx`가 종목명 옆에
+  `· {memo}`로 표시하고, 표의 React `key`도 더 이상 `r.symbol` 단독이 아니라
+  `` `${symbol}:${memo ?? ''}:${idx}` ``다 — 심볼만 쓰면 중복 심볼 행에서 key 충돌이 난다.
 - `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회(두 브로커 다 개인 배당 지급
   내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
   그대로 저장(backend/CLAUDE.md 참고). `accountId`(선택, `string | null`)로 한 증권사

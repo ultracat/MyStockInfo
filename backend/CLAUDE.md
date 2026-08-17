@@ -161,8 +161,10 @@ limit 수치가 공식 문서에 없어 KIS(4tps)보다 보수적인 2tps로 시
 최신 상태가 항상 반영돼 있다. 보유종목은 `replaceSnapshot`(해당 broker+accountId의 기존
 행을 통째로 교체 — "현재 상태" 스냅샷이라 히스토리가 아님)을, 매매내역은
 `upsertTrades`(브로커 `id` 기준 upsert — 누적 히스토리라 반복 조회에도 중복 안 쌓임)를
-쓴다. CSV 가져오기(아래)는 각각 `upsertHoldings`/`upsertFromImport`로 별도 경로를 쓴다 —
-실시간 동기화(전체 교체)와 달리 사용자가 일부 종목만 넣어도 나머지가 안 사라지게.
+쓴다. CSV 가져오기(아래)는 보유종목이 `replaceHoldingsFromImport`, 매매내역이
+`upsertFromImport`로 별도 경로를 쓴다 — 보유종목은 실시간 동기화와 마찬가지로 CSV에
+등장한 (broker,accountId)를 통째로 덮어쓰고(같은 CSV를 다시 가져와도 안 쌓임), 매매내역은
+누적 히스토리라 `id` 기준 upsert로 남긴다.
 **KB증권**은 이 write-through를 화면 조회 시점이 아니라 `routes/kb.ts`의 동기화
 버튼 클릭 시점에 한다는 점만 다르고(계좌 하나짜리 API라 화면마다 자동 조회할 대상이
 불명확 — "KB증권 Open API" 절 참고), 쓰는 함수(`replaceSnapshot`/`upsertTrades`)는
@@ -203,13 +205,18 @@ symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩�
 (`normalizeSymbol`, `market === 'KR'`이고 숫자 1~6자리면 `padStart(6,'0')`) — CSV에
 "5930"처럼 앞자리 0이 빠진 채로 들어와도 이름/현재가 자동조회가 정상 동작하게.
 
-**보유종목은 선택 컬럼 `memo`로 같은 심볼의 중복 행을 구분한다** — IRP 계좌처럼 한
-계좌 안에 같은 종목을 "개인납입액"/"회사납입액"처럼 나눠서 관리하는 경우를 위한 것.
-`upsertHoldings`(`db/holdingsStore.ts`)의 upsert 식별자는 `(broker, accountId, symbol)`이
-아니라 `(broker, accountId, symbol, memo)` — memo가 다르면(또는 한쪽만 있으면) 같은
-심볼이어도 별도 행으로 쌓이고, memo까지 완전히 같은 행만 갱신 대상이 된다. 실시간
-동기화(`replaceSnapshot`)는 이 필드를 채우지 않는다(라이브 브로커 API가 이런 구분을
-안 줌) — CSV 가져오기 전용.
+**보유종목 CSV 가져오기는 "덮어쓰기"다** — `replaceHoldingsFromImport`(`db/holdingsStore.ts`)가
+이번에 가져온 CSV에 등장한 (broker,accountId) 조합마다 그 계좌의 기존 저장 행을 전부
+지우고 CSV로 받은 행으로 통째로 교체한다(실시간 동기화 `replaceSnapshot`과 같은 방식).
+같은 CSV를 여러 번 가져와도 행이 계속 누적되지 않고, CSV에서 뺀 종목은 자연히
+사라진다 — 처음엔 심볼 기준 upsert였다가, "다시 가져오면 쌓이지 말고 덮어써야 한다"는
+피드백으로 이 방식으로 바꿨다. CSV에 없는 다른 (broker,accountId)는 안 건드린다.
+
+**선택 컬럼 `memo`로 같은 심볼의 중복 행을 화면에서 구분한다** — IRP 계좌처럼 한 계좌
+안에 같은 종목을 "개인납입액"/"회사납입액"처럼 나눠서 관리하는 경우를 위한 것. 위
+덮어쓰기 방식 덕분에 memo는 더 이상 행 식별에 쓰이지 않는다 — CSV에 같은 심볼이 여러
+번 나오면(memo가 있든 없든) 그대로 각각 별도 행이 된다. 실시간 동기화(`replaceSnapshot`)는
+이 필드를 채우지 않는다(라이브 브로커 API가 이런 구분을 안 줌) — CSV 가져오기 전용.
 
 ## 배당 기록 (`src/db/dividends.ts`)
 

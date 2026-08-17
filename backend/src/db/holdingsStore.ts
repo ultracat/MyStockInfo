@@ -20,8 +20,7 @@ export interface StoredHolding {
   commission: number | null;
   tax: number | null;
   /** CSV 가져오기에서만 쓰인다(예: IRP 계좌의 "개인납입액"/"회사납입액") — 같은
-   *  심볼이 한 계좌에 여러 행으로 존재할 때 구분하는 자유 텍스트. `upsertHoldings`가
-   *  이 값까지 포함해 행을 식별하므로, memo가 다르면 같은 심볼이어도 별도 행으로 쌓인다. */
+   *  심볼이 한 계좌에 여러 행으로 존재할 때 화면에 구분해 보여주기 위한 자유 텍스트. */
   memo: string | null;
   updatedAt: string;
 }
@@ -88,49 +87,43 @@ export function replaceSnapshot(broker: BrokerId, accountId: string, positions: 
   ]);
 }
 
-/** CSV 가져오기/수동 입력용 — (심볼, memo)별 upsert. 실시간 동기화(`replaceSnapshot`)와
- *  달리 같은 (broker,accountId)의 다른 행을 지우지 않는다 — 사용자가 일부 종목만
- *  CSV로 넣는 경우(예: KB증권처럼 API 연동이 없는 브로커)가 흔해서, 전체 교체하면
- *  이미 입력해둔 다른 종목이 사라진다.
+/** CSV 가져오기 전용 — 가져온 CSV에 등장한 (broker,accountId) 조합마다, 그 계좌의
+ *  기존 저장 행을 전부 지우고 이번 CSV로 받은 행으로 통째로 교체한다(실시간
+ *  동기화 `replaceSnapshot`과 같은 "덮어쓰기" 방식 — CSV를 다시 가져오면 이전에
+ *  넣어둔 행이 계속 누적되는 게 아니라 이번 CSV 내용이 곧 그 계좌의 전체가 된다).
+ *  CSV에 등장하지 않은 다른 (broker,accountId)는 건드리지 않는다 — 계좌 하나만
+ *  다시 가져와도 다른 계좌 데이터가 사라지지 않게.
  *
- *  memo까지 식별자에 포함하는 이유: IRP 계좌처럼 같은 종목을 "개인납입액"/
- *  "회사납입액"으로 나눠 관리하는 경우, 심볼만으로 식별하면 두 번째 행이 첫 번째
- *  행을 덮어써 하나가 사라진다. memo가 다르면(또는 한쪽만 있으면) 별도 행으로 쌓고,
- *  memo까지 같은 완전한 중복 행만 갱신(upsert) 대상으로 본다. */
-export function upsertHoldings(rows: UpsertHoldingInput[]): void {
+ *  같은 심볼이 CSV에 여러 번 나와도(예: IRP 계좌의 "개인납입액"/"회사납입액") 행별로
+ *  식별해 병합하지 않고 CSV에 있는 그대로 각각 별도 행이 된다 — memo는 화면에
+ *  구분 표시하기 위한 자유 텍스트일 뿐, 더 이상 행 식별에 쓰이지 않는다. */
+export function replaceHoldingsFromImport(rows: UpsertHoldingInput[]): void {
   const now = new Date().toISOString();
-  store().update((current) => {
-    const next = [...current];
-    for (const row of rows) {
-      const memo = row.memo?.trim() || null;
-      const idx = next.findIndex(
-        (h) =>
-          h.broker === row.broker && h.accountId === row.accountId && h.symbol === row.symbol && h.memo === memo
-      );
-      const entry: StoredHolding = {
-        broker: row.broker,
-        accountId: row.accountId,
-        symbol: row.symbol,
-        name: row.name,
-        market: row.market ?? null,
-        currency: row.currency ?? null,
-        quantity: row.quantity,
-        lastPrice: row.lastPrice ?? 0,
-        averagePurchasePrice: row.averagePurchasePrice,
-        purchaseAmount: row.purchaseAmount ?? row.averagePurchasePrice * row.quantity,
-        marketValue: row.marketValue ?? 0,
-        profitLossAmount: row.profitLossAmount ?? 0,
-        profitLossRate: row.profitLossRate ?? 0,
-        commission: row.commission ?? null,
-        tax: row.tax ?? null,
-        memo,
-        updatedAt: now,
-      };
-      if (idx === -1) next.push(entry);
-      else next[idx] = entry;
-    }
-    return next;
-  });
+  const touchedAccounts = new Set(rows.map((r) => `${r.broker}:${r.accountId}`));
+  const fresh: StoredHolding[] = rows.map((row) => ({
+    broker: row.broker,
+    accountId: row.accountId,
+    symbol: row.symbol,
+    name: row.name,
+    market: row.market ?? null,
+    currency: row.currency ?? null,
+    quantity: row.quantity,
+    lastPrice: row.lastPrice ?? 0,
+    averagePurchasePrice: row.averagePurchasePrice,
+    purchaseAmount: row.purchaseAmount ?? row.averagePurchasePrice * row.quantity,
+    marketValue: row.marketValue ?? 0,
+    profitLossAmount: row.profitLossAmount ?? 0,
+    profitLossRate: row.profitLossRate ?? 0,
+    commission: row.commission ?? null,
+    tax: row.tax ?? null,
+    memo: row.memo?.trim() || null,
+    updatedAt: now,
+  }));
+
+  store().update((current) => [
+    ...current.filter((h) => !touchedAccounts.has(`${h.broker}:${h.accountId}`)),
+    ...fresh,
+  ]);
 }
 
 export function deleteHolding(broker: BrokerId, accountId: string, symbol: string): boolean {

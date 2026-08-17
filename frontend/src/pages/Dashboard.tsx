@@ -590,7 +590,12 @@ export default function Dashboard() {
           <button className="ghost" onClick={onExportCsv}>
             CSV 내보내기 (전체)
           </button>
-          <button className="ghost" onClick={onImportClick} disabled={importing}>
+          <button
+            className="ghost"
+            onClick={onImportClick}
+            disabled={importing}
+            title="CSV에 포함된 계좌(broker+accountId)의 기존 보유 종목을 전부 덮어씁니다."
+          >
             {importing ? '가져오는 중...' : 'CSV 가져오기'}
           </button>
           <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />

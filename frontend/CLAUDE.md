@@ -73,6 +73,24 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   좌우도 마찬가지로, 가장자리 막대는 가운데 정렬 툴팁이 차트의
   `overflowX:auto` 스크롤 영역 밖으로 반쯤 튀어나가 잘렸던 걸, 그 경우 막대
   안쪽 모서리에 붙여서 항상 스크롤 영역 안에 들어오게 했다.
+- `src/components/MonthlyInvestmentChart.tsx` — 총 투자금(파랑, `--series-1`)과 총
+  수입금=평가금액(주황, `--series-2`) 두 선을 겹쳐 그리는 line chart(Overview.tsx의
+  "월별 총 투자금 · 총 수입금" 카드가 씀) — 비율이 아니라 절대금액 두 계열을
+  비교하는 거라 diverging 막대가 아니라 카테고리컬 색 2개짜리 line이 맞다.
+  `Overview.tsx`의 `monthlyAmountRows`와 `MonthlyReturnChart`의 입력이 같은
+  월별 보유수량 체크포인트에서 파생되므로 그 계산은 한 번만 하고 두 컴포넌트가
+  나눠 쓴다. **투자금은 매매내역에서 재구성하지 않고 오늘 보유종목의 실제
+  매입금액을 그대로 쓴다** — 처음엔 매매내역을 시간순으로 훑으며 평균원가법으로
+  "그 달까지 누적 투자금"을 재구성했는데, 계좌마다 매매내역이 다 안 모여있을 수
+  있어(write-through 캐시 한계) 최신 달 투자금이 상단 "총 매입금액" 통계와
+  어긋날 수 있다는 문제가 있었다 — 사용자가 "매입 원가로 계산하지 말고
+  보유종목을 가지고 투자금을 계산해달라"고 명시적으로 요청해서, 지금은 오늘
+  기준 평단가(`avgCostKrwBySymbol` = 오늘 매입금액 ÷ 오늘 수량, 이미 신뢰할 수
+  있는 값)를 고정해두고 매달 보유수량(매매내역에서 재구성하는 건 이 부분뿐)에
+  곱하는 방식이다. `MonthlyReturnChart`와 툴팁 자동 뒤집힘 로직(`vAlign`/
+  `hAlign`)을 그대로 공유하되, 3줄짜리 텍스트라 위쪽 여유 판단 기준값을 조금
+  더 크게(40→60) 잡았다 — headroom 배수(1.1배)의 경계값이라 40 기준으론
+  최고점이 카드 안내 문구와 살짝 겹치는 경우가 있었음.
 - `src/accountLabels.ts` — `(broker, accountId) → label`(백엔드 `account-labels`) 조회용
   공용 유틸. `accountLabelKey(broker, accountId)`(맵 키 조합 — accountId만으로는 브로커
   간에 우연히 겹칠 수 있어서 broker도 같이 묶는다), `formatAccountOption(account, label?)`

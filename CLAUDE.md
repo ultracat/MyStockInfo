@@ -2,11 +2,16 @@
 
 여러 증권사 Open API를 연동해 보유 종목, 매입가, 손익, 비중, 배당금을 한 화면에서 보는
 Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS)**이 API로 연동되어 있고,
-**KB증권/삼성증권/미래에셋증권**은 API 연동 없이 CSV로 보유종목·매매내역을 직접
-관리한다(어댑터를 만들 계획 없음 — CSV 전용으로 확정된 결정, `backend/CLAUDE.md`의
-`knownBrokers.ts` 참고). 새 증권사를 API로 연동하려면 아래 "브로커 확장 포인트"를 따르고,
-API 연동 없이 CSV로만 지원하려면 `backend/src/brokers/knownBrokers.ts`에
-`hasApiIntegration: false`로 한 줄만 추가하면 된다.
+**삼성증권/미래에셋증권**은 API 연동 없이 CSV로 보유종목·매매내역을 직접 관리한다
+(어댑터를 만들 계획 없음 — CSV 전용으로 확정된 결정, `backend/CLAUDE.md`의
+`knownBrokers.ts` 참고). **KB증권**은 둘의 중간 형태다 — Open API를 연동했지만
+`appKey`/`appSecret`이 발급 시점에 계좌 하나에만 고정 바인딩되는 구조라(계좌 목록
+조회 API 자체가 없음) 토스/KIS처럼 여러 계좌를 실시간으로 보여줄 수 없다. 그래서
+"CSV 전용 브로커의 로컬 저장소를 실시간 API로 채우는 동기화 버튼"만 추가했다 —
+`backend/CLAUDE.md`의 "KB증권 Open API" 절 참고. 새 증권사를 API로 연동하려면 아래
+"브로커 확장 포인트"를 따르고, API 연동 없이 CSV로만 지원하려면
+`backend/src/brokers/knownBrokers.ts`에 `hasApiIntegration: false`로 한 줄만
+추가하면 된다.
 
 ## 워크스페이스 구조
 

@@ -24,9 +24,12 @@ export const CREDENTIAL_FIELDS: Record<BrokerId, CredentialFieldSpec[]> = {
     { key: 'accountNumber', label: '계좌번호 (CANO, 8자리)', secret: false, placeholder: '12345678' },
     { key: 'accountProductCode', label: '상품코드 (ACNT_PRDT_CD, 2자리)', secret: false, placeholder: '01' },
   ],
-  // KB증권/삼성증권/미래에셋증권은 API 연동이 없다(CSV로만 데이터 관리, 사용자가
+  kb: [
+    { key: 'appKey', label: 'appKey', secret: false },
+    { key: 'appSecret', label: 'appSecret', secret: true },
+  ],
+  // 삼성증권/미래에셋증권은 API 연동이 없다(CSV로만 데이터 관리, 사용자가
   // 명시적으로 요청) — 자격증명 필드가 없다.
-  kb: [],
   samsung: [],
   mirae: [],
 };

@@ -38,18 +38,31 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   Dividends.tsx가 전부 여기서 가져다 쓴다.
 - `src/pages/Settings.tsx` — 브로커별 자격증명 폼. **하드코딩이 아니라 백엔드의
   `GET /api/settings/credential-fields`를 읽어 동적 렌더링** — 새 브로커/필드는
-  백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨. "증권사 연동 상태" 표는
-  `BROKER_ORDER` 전체를 보여주되 `API_BROKER_IDS`에 없는 브로커(CSV 전용)는 "준비
-  중"이 아니라 "CSV 전용"으로 표시한다("준비 중"은 "언젠가 API 연동될 예정"이라는
-  잘못된 인상을 줌 — API 연동을 안 하기로 한 결정임을 명확히 함). "API 키 등록" 폼의
-  브로커 선택지에는 API 브로커만 넣는다(CSV 전용은 자격증명 필드가 없음). "계좌 별칭"
+  백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨. "API 키 등록" 폼의 브로커
+  선택지는 `API_BROKER_IDS`가 아니라 **자격증명 필드가 실제로 있는 브로커**
+  (`fieldSpecs[id]?.length > 0`)로 고른다 — KB증권처럼 CSV 전용이면서 자격증명은
+  받는 브로커(아래 "KB증권 실시간 동기화" 참고)가 생기면서 `API_BROKER_IDS`만으로는
+  "이 브로커가 자격증명 폼이 필요한가"를 못 가려서 갈라놨다. "증권사 연동 상태" 표도
+  같은 기준(`fieldSpecs`)으로 "CSV 전용" vs 상태 표시를 가르고, `API_BROKER_IDS`에
+  없는데 자격증명은 있는 브로커(KB)는 상태 뒤에 "(CSV 전용 + 동기화 가능)"을 덧붙인다.
+  "계좌 별칭"
   카드는 CSV 전용 브로커의 `(broker, accountId) → label` 매핑을 관리하는 **유일한
   화면**이다(Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 함 — 편집 UI를
   세 군데에 중복해서 두지 않으려는 결정). "알려진 계좌" 목록은 이미 라벨이 붙은
   accountId와 `listHoldingsStore`/`listTradesStore`/`listDividends`에 실제로 나온
   accountId 전체의 합집합이라, 데이터가 없어도 "새 계좌 등록" 폼으로 라벨만 미리
   등록해둘 수 있고(사용자가 실제로 이렇게 씀 — 계좌부터 이름 붙이고 나중에 CSV로
-  채움), 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다.
+  채움), 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다. "KB증권 실시간
+  동기화" 카드는 `status?.kb`(자격증명 저장됨)일 때만 나타난다 — KB Open API가
+  계좌 하나에만 고정 바인딩돼(backend/CLAUDE.md의 "KB증권 Open API" 참고) 여러 계좌
+  중 어디에 연결됐는지 API가 알려주지 않으므로, 그 계좌의 실제 accountId를 사용자가
+  텍스트 입력으로 직접 지정한다(위 "계좌 별칭"에 이미 등록해둔 값과 같은 문자열을
+  쓰면 라벨이 자동으로 연결됨). `api.syncKbHoldings(accountId)`/
+  `api.syncKbTrades(accountId, from, to)`(매매내역은 항상 올해 1/1~오늘로 고정,
+  기간 선택 UI 없음 — 필요해지면 나중에 추가)가 `POST /api/kb/sync-holdings`/
+  `POST /api/kb/sync-trades`를 호출해 로컬 저장소를 채우고, 그 결과(`{synced: n}`)를
+  그대로 보여준다 — 동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
+  완전히 동일하게 보인다(별도 프론트 분기 없음).
 
 ## 공용 패턴 (여러 페이지가 공유)
 

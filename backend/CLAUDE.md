@@ -25,9 +25,14 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   **in-flight promise 공유**(같은 key로 거의 동시에 온 호출은 하나만 실제 요청). React
   StrictMode의 effect 이중실행이 이 없이는 rate-limit과 무관해 보이는 에러(토스
   `account-not-found` 등)로 샐 수 있어서 생긴 장치 — 새 브로커 클라이언트도 이걸로 감싼다.
-- `registry.ts` — `getAdapter`/`listAdapters`. **KB증권/삼성증권/미래에셋증권은
-  등록 안 돼 있음**(어댑터를 만들 계획 자체가 없음 — CSV 전용, 아래 `knownBrokers.ts`
-  참고).
+- `registry.ts` — `getAdapter`/`listAdapters`. **삼성증권/미래에셋증권은 등록 안
+  돼 있음**(어댑터를 만들 계획 자체가 없음 — CSV 전용, 아래 `knownBrokers.ts` 참고).
+  **KB증권도 여기 없다** — Open API는 연동했지만(`kb/kbClient.ts`)
+  `BrokerAdapter` 인터페이스(여러 계좌를 넘겨받는 `listAccounts`/`getPortfolio(accountId)`
+  구조)에 안 맞아서(아래 "KB증권 Open API" 절 참고) `routes/kb.ts`가 `kbClient.ts`를
+  직접 가져다 쓴다 — `knownBrokers.ts`의 `hasApiIntegration`도 `false`로 유지했다
+  (이 필드는 "`registry.ts`의 전형적인 `BrokerAdapter`로 등록돼 있는가"를 뜻하는데
+  KB는 아니라서).
 - `knownBrokers.ts` — `KNOWN_BROKERS`(`{id, displayName, hasApiIntegration}[]`),
   `BROKER_IDS`. 브로커 id/표시 이름의 단일 소스 — `routes/dividends.ts`/
   `holdingsStore.ts`/`tradesStore.ts`/`settings.ts`/`accounts.ts`가 전부 여기서
@@ -62,12 +67,73 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   페이싱/재시도 예산(기본 3회, 이 TR은 5회+1/2/4/8/16초 백오프)을 쓸 수 있다.
 
 **진짜 API 연동이 필요한** 새 브로커는 어댑터+registry 등록+credentialFields(+필요하면
-전용 리미터)만 만들면 라우트/프론트는 그대로 재사용된다. **KB증권/삼성증권/
-미래에셋증권은 이 넷 다 없고, 앞으로도 안 만든다**(사용자 요청 — API 연동 없이 CSV로만
-데이터 관리) — `knownBrokers.ts`에 `hasApiIntegration: false`로 등록만 돼 있고, 로컬
-저장소/CSV import(아래)가 이 broker id를 받아들인다. 계좌 목록 개념도 라이브 API가
-아니라 로컬 저장소에 실제로 CSV로 넣어둔 `accountId`들을 모아 대신한다(프론트
-`API_BROKER_IDS.includes(broker)`로 분기, `frontend/CLAUDE.md` 참고).
+전용 리미터)만 만들면 라우트/프론트는 그대로 재사용된다. **삼성증권/미래에셋증권은
+이 넷 다 없고, 앞으로도 안 만든다**(사용자 요청 — API 연동 없이 CSV로만 데이터 관리) —
+`knownBrokers.ts`에 `hasApiIntegration: false`로 등록만 돼 있고, 로컬 저장소/CSV
+import(아래)가 이 broker id를 받아들인다. 계좌 목록 개념도 라이브 API가 아니라 로컬
+저장소에 실제로 CSV로 넣어둔 `accountId`들을 모아 대신한다(프론트
+`API_BROKER_IDS.includes(broker)`로 분기, `frontend/CLAUDE.md` 참고). **KB증권은 CSV
+전용 브로커와 같은 취급을 받으면서(로컬 저장소·계좌 여러 개·CSV import 전부 그대로)
+Open API로 그 로컬 저장소를 채우는 동기화 버튼만 추가로 있다** — 아래 "KB증권 Open
+API" 절 참고.
+
+### KB증권 Open API (`kb/kbClient.ts`, `routes/kb.ts`)
+
+kbsecurities/kb-openapi(공식 레포, `example/python/README.md`·
+`frontend/src/app/openapi-test/samples.generated.json`의 TR 스펙 93종, 2026-08-17
+실제 appKey로 호출해 인증/요청 포맷까지 확인)를 기준으로 구현했다. **다른 두 브로커와
+근본적으로 다른 제약이 있다: `appKey`/`appSecret` 자체가 발급 시점에 계좌 하나에 이미
+고정 바인딩된다** — 토스처럼 계좌 목록을 조회하는 TR도, KIS처럼 계좌번호를 매 요청에
+실어 보내는 방식도 없다(93종 TR spec 어디에도 계좌번호 입력 필드가 없음, 실측으로도
+확인 — 계좌 관련 TR을 계좌번호 없이 호출해도 정상적으로 그 연결된 계좌의 데이터가
+나온다). 그래서 사용자가 실제로 갖고 있는 KB 계좌 여러 개(종합위탁/신연금저축/IRP 등,
+`frontend/CLAUDE.md`의 계좌 별칭 참고) 중 **API로 접근 가능한 건 그 중 하나뿐**이고,
+`BrokerAdapter`의 `listAccounts()`(여러 계좌를 돌려줌)로는 이 모델을 표현할 수 없다.
+
+**설계: `BrokerAdapter`를 구현하지 않고, CSV 전용 브로커의 로컬 저장소를 채우는
+"동기화" 액션으로만 노출한다.** `knownBrokers.ts`의 `hasApiIntegration`은 `false`로
+유지(=`registry.ts`에 등록 안 함, 기존 CSV 전용 브로커 라우팅 그대로 재사용) —
+`credentialFields.ts`에만 `kb: [appKey, appSecret]`을 추가해서 Settings.tsx가 자격증명
+입력 폼을 보여주게 하고, `routes/kb.ts`의 `POST /api/kb/sync-holdings`/
+`POST /api/kb/sync-trades`가 `kbClient.ts`의 조회 함수를 호출해 그 결과를
+`holdingsStore.replaceSnapshot`/`tradesStore.upsertTrades`(Toss/KIS의 write-through와
+정확히 같은 함수)로 로컬 저장소에 써 넣는다. 어느 계좌에 연결돼 있는지 API가 알려주지
+않으므로(계좌번호를 돌려주는 필드가 없음) `accountId`는 Settings 화면에서 사용자가
+직접 입력한다 — 이미 "계좌 별칭"에 등록해둔 accountId와 같은 문자열을 쓰면 라벨이
+자동으로 연결된다. 동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
+완전히 동일하게 보인다(별도 프론트 분기 불필요).
+
+**인증**: `POST /oauth2/token`, OAuth2 client_credentials, 요청/응답 전부
+`{dataHeader:{ipAddr,macAddr}, dataBody:{...}}` 포맷으로 감싼다(공식 example
+`auth_example.py`). `access_token`은 `dataBody.access_token`. TR 호출 헤더는
+`appKey`와 `Authorization: bearer <token>`(소문자 `bearer` 고정, KIS의 `Bearer`와
+다름). **`ipAddr`/`macAddr`를 빈 문자열로 보내면 계좌 관련 TR이 거부된다**(실측,
+"입력 전문 [dataHeader.ipAddr]를 확인해 주세요") — example README는 "서버에서
+호출하면 비워도 된다"고 했지만 이건 투자정보(시세) 카테고리 얘기였고, 계좌 데이터는
+형식만 맞춘 placeholder(`127.0.0.1`/`00:00:00:00:00:00`)가 필요하다(실제 값 검증은
+안 하는 것으로 보임). `expires_in`이 응답에 명시적으로 안 잡혀서 55분을 보수적
+기본값으로 쓰고, `kis-token.json`과 같은 이유로 `kb-token.json`에 영속화한다. Rate
+limit 수치가 공식 문서에 없어 KIS(4tps)보다 보수적인 2tps로 시작(`kbLimiter`) —
+근거가 생기면 조정.
+
+**사용하는 TR**(93종 중 계좌번호 없이 호출 가능한 것으로 실측 확인된 것만):
+- `SSQM2952`(계좌자산평가, `/api/v1/ssqm2952`) — 보유종목+평가정보. `is_cd`/`is_nm`/
+  `hld_q`/`byng_amt`/`now_prc`/`byng_avr_prc`/`val_amt`/`val_pl`/`val_yld`/`crncy_cd`/
+  `mkt_clsf`를 `HoldingPosition`에 매핑(`val_yld`는 KIS의 `evlu_pfls_rt`와 같은 관례로
+  가정해 100으로 나눔). 입력은 `excg_mktpr_ccd`(거래소시세구분코드, 필수)만 필요.
+- `SWQA2301`(계좌원장 거래내역 조회, `/api/v1/swqa2301`) — 매매내역. `strt_dt`/
+  `end_dt`로 기간 조회가 되는 유일한 후보였다(같은 목적의 `SSQM2341`은 실측 결과
+  `ordr_dt`(단일 날짜) 없이는 거부돼서 기간 조회에 안 맞음). `inq_clsf5`/`inq_clsf6`을
+  `'1'`로 켜서 매수/매도만 서버 단에서 필터링하고, side는 `smry_nm`(적요명)의 "매수"/
+  "매도" 한글 텍스트로 판정한다(숫자 코드 `dl_typ_cd`의 정확한 의미를 실측으로 확인
+  못 해서 — KB가 이미 사람이 읽을 수 있는 라벨을 내려주는 쪽을 신뢰).
+
+**검증 상태(중요)**: 위 매핑은 공식 TR 스펙과 실제 appKey로의 인증/요청 포맷 검증까지는
+마쳤지만(2026-08-17), **연결된 계좌가 그 시점에 보유종목·매매내역이 전부 0건이라 0이
+아닌 실제 값으로 필드 단위 검증은 못 했다** — 특히 `is_cd`/`stnd_is_cd`(종목코드)가
+다른 브로커처럼 6자리 단축코드인지 12자리 표준(ISIN)코드인지조차 확인 불가라 변환 없이
+있는 그대로 저장한다. 실제 보유종목/거래가 동기화되면 반드시 화면에서 숫자가 맞는지
+재확인할 것.
 
 ## 라우트 (`src/routes/`)
 
@@ -78,8 +144,8 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 ## 로컬 저장소 + write-through 동기화
 
 보유종목(`src/db/holdingsStore.ts`, `holdings.json`)과 매매내역(`src/db/tradesStore.ts`,
-`trades.json`)은 KB증권/삼성증권/미래에셋증권처럼 API 연동이 없는 브로커의 데이터를
-다루기 위해 만든 로컬 저장소다 — `dividends.ts`/`JsonStore` 패턴 그대로. `routes/holdings.ts`/`routes/trades.ts`는
+`trades.json`)은 삼성증권/미래에셋증권처럼 API 연동이 없는 브로커의 데이터를 다루기
+위해 만든 로컬 저장소다 — `dividends.ts`/`JsonStore` 패턴 그대로. `routes/holdings.ts`/`routes/trades.ts`는
 실시간 조회가 성공할 때마다(브로커 무관) 이 저장소도 같이 갱신한다(write-through, 저장
 실패는 try/catch로 삼켜서 라이브 응답을 막지 않음) — 그래서 API 연동 브로커도 로컬에
 최신 상태가 항상 반영돼 있다. 보유종목은 `replaceSnapshot`(해당 broker+accountId의 기존
@@ -87,6 +153,10 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 `upsertTrades`(브로커 `id` 기준 upsert — 누적 히스토리라 반복 조회에도 중복 안 쌓임)를
 쓴다. CSV 가져오기(아래)는 각각 `upsertHoldings`/`upsertFromImport`로 별도 경로를 쓴다 —
 실시간 동기화(전체 교체)와 달리 사용자가 일부 종목만 넣어도 나머지가 안 사라지게.
+**KB증권**은 이 write-through를 화면 조회 시점이 아니라 `routes/kb.ts`의 동기화
+버튼 클릭 시점에 한다는 점만 다르고(계좌 하나짜리 API라 화면마다 자동 조회할 대상이
+불명확 — "KB증권 Open API" 절 참고), 쓰는 함수(`replaceSnapshot`/`upsertTrades`)는
+동일하다.
 
 `GET /api/holdings-store`, `GET /api/trades-store`(둘 다 `?broker=&accountId=` 필터)로
 저장된 걸 조회한다 — CSV 전체 내보내기와 CSV 전용 브로커(실시간 조회가 안 되는)의 데이터

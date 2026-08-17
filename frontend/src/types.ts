@@ -37,6 +37,9 @@ export interface HoldingPosition {
   /** CSV 가져오기에서만 채워진다(예: IRP 계좌의 "개인납입액"/"회사납입액") — 같은
    *  심볼이 한 계좌에 여러 행으로 있을 때 구분하는 자유 텍스트. */
   memo?: string | null;
+  /** Dashboard.tsx의 "전체 계좌" 모드에서만 채워진다 — 여러 계좌의 포지션을 한 화면에
+   *  합칠 때, 이 포지션이 어느 계좌 것인지 표시하기 위한 필드(서버 응답엔 없음). */
+  accountId?: string;
 }
 
 export interface PortfolioOverview {

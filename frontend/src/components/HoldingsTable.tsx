@@ -14,13 +14,18 @@ function formatRate(rate: number) {
 interface Row extends HoldingPosition {
   /** null when it can't be blended into a common-currency weight (see Dashboard). */
   weight: number | null;
+  /** Dashboard.tsx의 "전체 계좌" 모드에서만 채워진다 — 계좌 라벨(또는 계좌번호)
+   *  표시용 텍스트. 채워진 행이 하나라도 있으면 "계좌" 열을 보여준다. */
+  accountLabel?: string;
 }
 
 export default function HoldingsTable({ rows }: { rows: Row[] }) {
+  const showAccount = rows.some((r) => r.accountLabel);
   return (
     <table>
       <thead>
         <tr>
+          {showAccount && <th>계좌</th>}
           <th>종목</th>
           <th>시장</th>
           <th>수량</th>
@@ -35,7 +40,8 @@ export default function HoldingsTable({ rows }: { rows: Row[] }) {
       </thead>
       <tbody>
         {rows.map((r, idx) => (
-          <tr key={`${r.symbol}:${r.memo ?? ''}:${idx}`}>
+          <tr key={`${r.accountId ?? ''}:${r.symbol}:${r.memo ?? ''}:${idx}`}>
+            {showAccount && <td>{r.accountLabel ?? '-'}</td>}
             <td>
               {r.name} <span style={{ color: 'var(--text-muted)' }}>({r.symbol})</span>
               {r.memo && <span style={{ color: 'var(--text-muted)' }}> · {r.memo}</span>}

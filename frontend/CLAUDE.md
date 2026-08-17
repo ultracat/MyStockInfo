@@ -10,7 +10,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   않는다** — 로케일 데이터 조회가 있어 공짜가 아니라서, 행마다 새로 만들면 포지션
   30~50개짜리 렌더 한 번에 수백 번 생성된다(과거 `HoldingsTable.tsx`에서 실제 발생).
 - `src/App.tsx` — 좌측 네비 + `page` 상태(`'dashboard'|'dividends'|'trades'|'settings'`).
-  새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목 추가.
+  새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
+  **사이드바 접기**: `collapsed` 상태(로컬, 새로고침 시 초기화됨 — 영속화 안 함) +
+  `.sidebar.collapsed` CSS(너비만 200px→56px로 줄임, `transition`으로 애니메이션).
+  접힌 상태에서는 라벨(`<span>`)을 숨기고 아이콘만 남긴다(`nav-item`이 항상
+  아이콘+라벨을 같이 렌더하다가, 접혔을 때만 라벨을 조건부로 뺌) — 아이콘은 외부
+  라이브러리 없이 최소한의 인라인 SVG로 직접 그렸다(Feather 아이콘 스타일: grid/
+  percent/repeat/sliders). 접기/펼치기 토글 버튼(`ChevronIcon`)은 사이드바 상단
+  `sidebar-header`에 있고, 접힌 상태에서 `title`(hover 툴팁)로 라벨을 대신 보여준다.
 - `src/api.ts` — 백엔드 호출 레이어. `BASE_URL`이 `electron/src/main.ts`의
   `BACKEND_PORT`와 일치해야 한다. 에러 응답은 `{error, detail?}`을 기대.
 - `src/types.ts` — 백엔드 응답 타입 미러링(`brokers/types.ts`와 형태 유지). CSV 관련
@@ -151,6 +158,24 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   구분 표시 용도일 뿐 행 식별에는 안 쓰인다. `HoldingsTable.tsx`가 종목명 옆에
   `· {memo}`로 표시하고, 표의 React `key`도 더 이상 `r.symbol` 단독이 아니라
   `` `${symbol}:${memo ?? ''}:${idx}` ``다 — 심볼만 쓰면 중복 심볼 행에서 key 충돌이 난다.
+  **"전체 계좌" 모드**: 계좌 select에 개별 계좌들과 나란히 특수값 `ALL_ACCOUNTS`
+  (`'__ALL_ACCOUNTS__'`)를 추가해서, KB증권처럼 한 브로커에 계좌가 여러 개일 때
+  전부 합쳐서 한 화면에 볼 수 있게 한다 — 개별 계좌 선택 UI/동작은 그대로 두고
+  옵션만 하나 추가한 것(기본 선택은 여전히 첫 번째 개별 계좌). 데이터 소스는
+  브로커 종류에 따라 갈린다: CSV 전용 브로커는 `loadStoredPortfolioAll`이
+  `listHoldingsStore({broker})`(계좌 필터 없이 전체)를 한 번에 받아 계좌별로 묶은
+  뒤 `buildPortfolioFromStored`로 각각 만들고, API 브로커는 `loadLivePortfolioAll`이
+  계좌마다 `api.getPortfolio`를 병렬로 호출한다(계좌 수가 몇 개뿐이라 레이트리밋
+  걱정 없음). 두 경우 다 `mergePortfolios`(금액/손익을 통화별로 합산하고 포지션을
+  이어붙이며 각 포지션에 `accountId`를 남김)로 합친다. 1분 자동 새로고침/수동
+  새로고침 버튼(API 브로커)과 CSV 가져오기 후 재조회(CSV 전용 브로커) 둘 다
+  `accountId === ALL_ACCOUNTS` 분기를 타도록 갈라둬야 한다 — 하나라도 빠뜨리면
+  "전체 계좌"로 보고 있다가 갱신 시점에 조용히 첫 번째 개별 계좌로 되돌아간다.
+  `rows` useMemo가 각 포지션의 `accountId`로 `accountLabel`(`formatAccountOption`)을
+  계산해 `HoldingsTable`에 넘기고, `HoldingsTable`은 `accountLabel`이 있는 행이
+  하나라도 있으면 "계좌" 열을 보여준다(개별 계좌 모드에선 이 필드가 없어서 열 자체가
+  안 생김 — Trades.tsx의 `isAllMode` 전용 컬럼과 같은 패턴이지만 여긴 별도 상태
+  플래그 없이 데이터 유무로 판단).
 - `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회(두 브로커 다 개인 배당 지급
   내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
   그대로 저장(backend/CLAUDE.md 참고). `accountId`(선택, `string | null`)로 한 증권사

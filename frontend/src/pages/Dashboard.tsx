@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AccountLabel, BrokerAccount, BrokerId, BrokerSummary, PortfolioOverview, StoredHolding } from '../types';
+import type {
+  AccountLabel,
+  BrokerAccount,
+  BrokerId,
+  BrokerSummary,
+  HoldingPosition,
+  PortfolioOverview,
+  StoredHolding,
+} from '../types';
 import HoldingsTable from '../components/HoldingsTable';
 import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
@@ -15,6 +23,11 @@ const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-
 // 건드리지 않도록 쿨다운을 둔다.
 const AUTO_REFRESH_MS = 60_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 10_000;
+
+/** 계좌 select의 특수값 — "이 브로커의 계좌를 전부 합쳐서 한 화면에 보여준다"는
+ *  뜻이다(KB증권처럼 한 브로커에 계좌가 여러 개인 경우를 위함). 실제 accountId와
+ *  충돌하지 않도록 사람이 입력할 리 없는 문자열로 뒀다. */
+const ALL_ACCOUNTS = '__ALL_ACCOUNTS__';
 
 // CSV 전용 브로커(KB/삼성/미래에셋 — API 연동 없이 CSV로만 데이터 관리, frontend/
 // brokers.ts의 API_BROKER_IDS 참고)는 라이브 PortfolioOverview가 없다 — 로컬
@@ -70,6 +83,50 @@ function buildPortfolioFromStored(broker: BrokerId, accountId: string, rows: Sto
       tax: r.tax,
       memo: r.memo,
     })),
+  };
+}
+
+/** "전체 계좌" 모드 전용 — 계좌별로 이미 만들어진 PortfolioOverview 여러 개를 하나로
+ *  합친다. 금액/손익은 통화별로 그대로 더하고(각 overview가 이미 hasUsd 여부를 KRW/USD
+ *  로 나눠 갖고 있음), 포지션은 이어붙이되 어느 계좌에서 왔는지 `accountId`를 남겨서
+ *  HoldingsTable이 "계좌" 열로 구분해 보여줄 수 있게 한다. */
+function mergePortfolios(
+  broker: BrokerId,
+  parts: { accountId: string; overview: PortfolioOverview }[]
+): PortfolioOverview {
+  let purchaseKrw = 0;
+  let marketKrw = 0;
+  let plKrw = 0;
+  let purchaseUsd = 0;
+  let marketUsd = 0;
+  let plUsd = 0;
+  let hasUsd = false;
+  const positions: HoldingPosition[] = [];
+
+  for (const { accountId, overview } of parts) {
+    purchaseKrw += overview.totalPurchaseAmountKrw;
+    marketKrw += overview.totalMarketValueKrw;
+    plKrw += overview.totalProfitLossKrw;
+    if (overview.totalPurchaseAmountUsd !== null || overview.totalMarketValueUsd !== null) {
+      hasUsd = true;
+      purchaseUsd += overview.totalPurchaseAmountUsd ?? 0;
+      marketUsd += overview.totalMarketValueUsd ?? 0;
+      plUsd += overview.totalProfitLossUsd ?? 0;
+    }
+    for (const p of overview.positions) positions.push({ ...p, accountId });
+  }
+
+  return {
+    broker,
+    accountId: ALL_ACCOUNTS,
+    totalPurchaseAmountKrw: purchaseKrw,
+    totalPurchaseAmountUsd: hasUsd ? purchaseUsd : null,
+    totalMarketValueKrw: marketKrw,
+    totalMarketValueUsd: hasUsd ? marketUsd : null,
+    totalProfitLossKrw: plKrw,
+    totalProfitLossUsd: hasUsd ? plUsd : null,
+    profitLossRate: purchaseKrw > 0 ? plKrw / purchaseKrw : null,
+    positions,
   };
 }
 
@@ -327,6 +384,32 @@ export default function Dashboard() {
     setLastFetchedAt(Date.now());
   }
 
+  // "전체 계좌"(CSV 전용 브로커) — 로컬 저장소 전체를 한 번에 받아 계좌별로 묶은 뒤
+  // buildPortfolioFromStored로 각각 만들고 mergePortfolios로 합친다.
+  async function loadStoredPortfolioAll(broker: BrokerId) {
+    const rows = await api.listHoldingsStore({ broker });
+    const byAccount = new Map<string, StoredHolding[]>();
+    for (const r of rows) {
+      if (!byAccount.has(r.accountId)) byAccount.set(r.accountId, []);
+      byAccount.get(r.accountId)!.push(r);
+    }
+    const parts = Array.from(byAccount.entries()).map(([accId, accRows]) => ({
+      accountId: accId,
+      overview: buildPortfolioFromStored(broker, accId, accRows),
+    }));
+    setPortfolio(mergePortfolios(broker, parts));
+    setLastFetchedAt(Date.now());
+  }
+
+  // "전체 계좌"(API 브로커) — 계좌마다 실시간 조회를 병렬로 호출해 합친다. 계좌 수가
+  // 몇 개뿐이라(KB증권 기준 3개) 초당 4~5건 한도에 걸릴 걱정은 없다.
+  async function loadLivePortfolioAll(broker: BrokerId, opts?: { forceRefresh?: boolean }): Promise<PortfolioOverview> {
+    const parts = await Promise.all(
+      accounts.map(async (a) => ({ accountId: a.id, overview: await api.getPortfolio(broker, a.id, opts) }))
+    );
+    return mergePortfolios(broker, parts);
+  }
+
   useEffect(() => {
     if (!selectedBroker || !accountId) return;
     let cancelled = false;
@@ -338,7 +421,11 @@ export default function Dashboard() {
         try {
           setLoading(true);
           setError(null);
-          await loadStoredPortfolio(selectedBroker, accountId);
+          if (accountId === ALL_ACCOUNTS) {
+            await loadStoredPortfolioAll(selectedBroker);
+          } else {
+            await loadStoredPortfolio(selectedBroker, accountId);
+          }
         } catch (e) {
           if (!cancelled) setError((e as Error).message);
         } finally {
@@ -354,7 +441,10 @@ export default function Dashboard() {
       try {
         setLoading(true);
         setError(null);
-        const data = await api.getPortfolio(selectedBroker!, accountId!, opts);
+        const data =
+          accountId === ALL_ACCOUNTS
+            ? await loadLivePortfolioAll(selectedBroker!, opts)
+            : await api.getPortfolio(selectedBroker!, accountId!, opts);
         if (cancelled) return;
         setPortfolio(data);
         setLastFetchedAt(Date.now());
@@ -398,7 +488,10 @@ export default function Dashboard() {
     setRefreshing(true);
     setError(null);
     try {
-      const data = await api.getPortfolio(selectedBroker, accountId, { forceRefresh: true });
+      const data =
+        accountId === ALL_ACCOUNTS
+          ? await loadLivePortfolioAll(selectedBroker, { forceRefresh: true })
+          : await api.getPortfolio(selectedBroker, accountId, { forceRefresh: true });
       setPortfolio(data);
       setLastFetchedAt(Date.now());
     } catch (e) {
@@ -520,15 +613,21 @@ export default function Dashboard() {
       );
 
       // 지금 보고 있는 브로커가 CSV 전용이면, 브로커 재선택 없이 방금 가져온
-      // 데이터가 바로 보이도록 계좌 목록/포트폴리오를 다시 읽는다.
+      // 데이터가 바로 보이도록 계좌 목록/포트폴리오를 다시 읽는다. "전체 계좌"를
+      // 보고 있었으면 그 선택을 유지한 채로 다시 합쳐서 보여준다.
       if (selectedBroker && !API_BROKER_IDS.includes(selectedBroker)) {
         const rows = await api.listHoldingsStore({ broker: selectedBroker });
         const ids = Array.from(new Set(rows.map((r) => r.accountId)));
         setAccounts(ids.map((id) => ({ id })));
-        const nextAccountId = accountId && ids.includes(accountId) ? accountId : (ids[0] ?? null);
-        setAccountId(nextAccountId);
-        if (nextAccountId) await loadStoredPortfolio(selectedBroker, nextAccountId);
-        else setPortfolio(null);
+        if (accountId === ALL_ACCOUNTS) {
+          if (ids.length > 0) await loadStoredPortfolioAll(selectedBroker);
+          else setPortfolio(null);
+        } else {
+          const nextAccountId = accountId && ids.includes(accountId) ? accountId : (ids[0] ?? null);
+          setAccountId(nextAccountId);
+          if (nextAccountId) await loadStoredPortfolio(selectedBroker, nextAccountId);
+          else setPortfolio(null);
+        }
       }
     } catch (e) {
       setImportResult((e as Error).message);
@@ -563,8 +662,20 @@ export default function Dashboard() {
     return portfolio.positions.map((p, i) => ({
       ...p,
       weight: convertedValues[i] === null || total === 0 ? null : (convertedValues[i] as number) / total,
+      // "전체 계좌" 모드(mergePortfolios가 채운 p.accountId)에서만 값이 붙는다 —
+      // HoldingsTable이 이 필드가 하나라도 있으면 "계좌" 열을 보여준다.
+      accountLabel: p.accountId
+        ? formatAccountOption(
+            { id: p.accountId },
+            selectedBroker
+              ? accountLabels.find(
+                  (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, p.accountId!)
+                )?.label
+              : undefined
+          )
+        : undefined,
     }));
-  }, [portfolio, effectiveFxRate]);
+  }, [portfolio, effectiveFxRate, accountLabels, selectedBroker]);
 
   const hasUnconvertedUsd = portfolio?.positions.some((p) => p.currency === 'USD') && !effectiveFxRate;
 
@@ -651,6 +762,7 @@ export default function Dashboard() {
         <div className="form-row">
           <label>계좌</label>
           <select value={accountId ?? ''} onChange={(e) => setAccountId(e.target.value)}>
+            <option value={ALL_ACCOUNTS}>전체 계좌</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {formatAccountOption(

@@ -163,50 +163,64 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   단건 추가와 같은 검증) 호출 후 `refresh()`. 종목명은 자동조회를 다시 안 돌리고
   직접 입력한 값을 그대로 쓴다(추가 폼과 달리 디바운스 조회를 안 둠 — 이미 있는
   값을 고치는 상황이라 자동조회가 오히려 방해가 될 수 있어서).
-- `src/pages/Trades.tsx` — 매매내역. 연도 `<select>`(최근 5개년)로 `[YYYY-01-01,
-  YYYY-12-31]`(올해면 오늘까지) 범위를 **연 단위로 한 번만** 조회하고, "연간/월간"
-  보기 전환·월 선택은 서버를 다시 안 부르고 이미 받아온 `trades`를 `useMemo`로
-  집계/필터링한다(`visibleTrades`, `chartRows`). 상단 스탯 타일은 `effectiveFxRate`로
-  환산한 단일 숫자를 보여주지만 **그래프는 원화·달러를 합치지 않고 따로 보여준다**
-  (`TradesChart.tsx` 참고). "월별 매수/매도" 그래프 카드도 `CollapseToggle`로 접힌다.
+- `src/pages/Trades.tsx` — 매매내역. 위쪽 증권사 `<select>`는 개별 브로커 외에
+  **"전체"**(`BrokerSelection = 'ALL' | BrokerId`)도 고를 수 있다 — "전체"는 계좌
+  개념이 없다(여러 브로커/계좌를 한 화면에 합쳐서 봄, 계좌 select 자체가 숨겨짐).
+  개별 브로커를 고르면 기존과 동일하게 연도 `<select>`(최근 5개년)로
+  `[YYYY-01-01, YYYY-12-31]`(올해면 오늘까지) 범위를 **연 단위로 한 번만**
+  라이브/로컬 조회해 `trades`에 담고, "전체"를 고르면 `GET /trades-store`(필터
+  없이, 모든 브로커/계좌)로 받아온 로컬 저장소 전체(`allTrades`, 마운트 시 이미
+  받아둠)를 그대로 쓴다 — 어느 쪽이든 `periodTrades`(연도로 좁힌 것)/
+  `visibleTrades`(연간이면 `periodTrades` 그대로, 월간이면 그 달만 추가로 좁힘)로
+  정규화해 차트(`chartRows`)/스탯 타일(`totals`)/**하단 매매내역 목록** 셋 다 같은
+  데이터를 쓴다 — **목록은 더 이상 별도 증권사 필터가 없고 위쪽 select를 그대로
+  따라간다**(예전엔 Dividends.tsx의 `chartBroker`/`listBroker`처럼 목록 전용
+  필터를 독립시켰다가, 위쪽 select 하나로 차트·목록이 같이 움직이는 게 더
+  직관적이라는 피드백을 받고 되돌림). "전체" 모드는 write-through 캐시 기반이라
+  API 브로커(토스/KIS)는 실제로 한 번 라이브 조회한 적 있는 연도만 나타난다
+  ("CSV 내보내기 (전체)"가 이미 같은 전제로 동작함) — 완전성보다 "여러 증권사를
+  한 표에서 훑어보고 CSV 전용 계좌는 바로 고칠 수 있게" 하는 게 목적이라 허용
+  가능한 트레이드오프. `chartRows`가 연간 보기에서 `periodTrades`(연도로 이미
+  좁힌 것)를 쓰는 게 중요한데, CSV 전용 브로커는 계좌 전체 히스토리를 한 번에
+  받아와 `trades`가 여러 해를 걸쳐 있을 수 있어서 연도 필터 없이 월별로만
+  묶으면 서로 다른 해의 같은 달이 합산되는 버그가 있었다(전체 모드를 만들며
+  같이 고침). 상단 스탯 타일은 `effectiveFxRate`로 환산한 단일 숫자를 보여주지만
+  **그래프는 원화·달러를 합치지 않고 따로 보여준다**(`TradesChart.tsx` 참고).
+  "월별 매수/매도" 그래프 카드도 `CollapseToggle`로 접힌다.
+
+  개별 브로커 모드와 "전체" 모드는 목록 행의 모양이 다르다(개별 모드의
+  `TradeRecord`엔 broker/accountId가 없고, "전체" 모드의 `StoredTrade`엔 있음) —
+  렌더링/수정/삭제 로직을 하나로 합치려고 둘 다 `DisplayTrade`(broker/accountId/
+  id/name 포함)로 정규화한다(`displayTrades`). 개별 모드는 위쪽에서 이미 아는
+  `selectedBroker`/`accountId`를 채워 넣고, "전체" 모드는 행 자체의 값을 그대로
+  쓴다. 표의 증권사/계좌 컬럼은 `isAllMode`일 때만 보여준다(개별 모드는 이미
+  위쪽 select로 보이므로 매 행 반복이 불필요) — "종목" 컬럼은 `name`이 있으면
+  (개별 모드의 KIS 라이브 데이터, `prdt_name`) 이름+심볼을, 없으면(전체 모드는
+  `StoredTrade`에 `name` 자체가 없어 항상, 개별 모드의 토스는 원래도 null이라)
+  심볼만 보여준다.
+
   **CSV 내보내기**는 Dashboard.tsx와 같은 이유로 `GET /api/trades-store` 전체를
   대상으로 하고, **가져오기**도 대상 선택 없이 CSV 행 자체의 `broker`/`accountId`를
-  그대로 쓴다. CSV 전용 브로커는 연도별 라이브 조회 대신 로컬 저장소 전체를 한 번에
-  받아와 `mapStoredTrade()`로 `TradeRecord` 모양(`name: null`)으로 바꾸고, 이후
-  연도/월 필터링은 기존 클라이언트 로직을 그대로 재사용한다(서버가 연도 개념을 몰라도
-  됨). **"매매내역 추가"**(수동 입력) 폼은 `CSV_ONLY_BROKER_IDS`만 증권사 선택지로
-  준다(Dividends.tsx의 배당 기록 추가 폼과 다른 점 — 토스/KIS는 실시간 API로 실제
-  체결 내역이 write-through 동기화되므로, 그 위에 수동 입력을 섞으면 어느 쪽이 진짜
-  체결 내역인지 알 수 없어진다). 별도 백엔드 라우트를 새로 만들지 않고 기존 CSV
-  가져오기 엔드포인트(`POST /trades-store/import`)를 행 1개짜리 배열로 호출한다 —
-  `id`를 안 주면 서버가 새로 발급하므로 항상 새 매매내역으로 추가된다. 추가에 성공하면
-  지금 보고 있는 증권사가 방금 추가한 증권사와 같을 때만 계좌 목록/매매내역을 즉시
-  다시 읽어 반영한다(CSV 가져오기 성공 후 처리와 같은 패턴).
-
-  **"매매내역 목록"(하단 표)은 위쪽 증권사/계좌 select(차트·스탯 타일 전용)와
-  완전히 독립된 별도 데이터 소스를 쓴다** — `GET /trades-store`(필터 없이, 모든
-  브로커/계좌)로 로컬 저장소 전체를 받아와(`allTrades`) 목록 전용 증권사 필터
-  (`listBroker`, "전체" 포함)로 좁힌다. Dividends.tsx의 `chartBroker`/`listBroker`
-  분리와 같은 패턴 — 위쪽 연도/월(`year`/`viewMode`/`month`)은 차트와 이 목록
-  양쪽에 공통으로 적용되는 전역 필터로 그대로 재사용한다. 로컬 저장소는
-  write-through 캐시라 API 브로커(토스/KIS)는 실제로 한 번 라이브 조회한 적
-  있는 연도만 여기 나타난다("CSV 내보내기 (전체)"가 이미 같은 전제로 동작함) —
-  완전성보다 "여러 증권사를 한 표에서 훑어보고 CSV 전용 계좌는 바로 고칠 수
-  있게" 하는 게 목적이라 허용 가능한 트레이드오프. `StoredTrade`엔 `name`이
-  없어(백엔드가 애초에 저장 안 함) 이 목록은 항상 심볼만 보여준다 —
-  `mapStoredTrade()` 기반 위쪽 단일 브로커 표(이 목록으로 대체되기 전 예전
-  버전)와 달리 라이브 소스의 실제 종목명은 이 목록에서 못 보여준다.
+  그대로 쓴다. **"매매내역 추가"**(수동 입력) 폼은 `CSV_ONLY_BROKER_IDS`만 증권사
+  선택지로 준다(Dividends.tsx의 배당 기록 추가 폼과 다른 점 — 토스/KIS는 실시간
+  API로 실제 체결 내역이 write-through 동기화되므로, 그 위에 수동 입력을 섞으면
+  어느 쪽이 진짜 체결 내역인지 알 수 없어진다) — 별도 백엔드 라우트 없이 기존 CSV
+  가져오기 엔드포인트(`POST /trades-store/import`)를 행 1개짜리 배열로 호출한다
+  (`id`를 안 주면 서버가 새로 발급).
 
   **인라인 수정/삭제는 `CSV_ONLY_BROKER_IDS` 행에만 허용한다**(그 외 행은
   "실시간 연동" 텍스트만 표시) — 토스/KIS 행은 write-through로 실시간 조회가
   성공할 때마다 같은 `id`로 덮어써지므로, 여기서 고쳐도 다음 라이브 조회에 그대로
-  되돌아가 의미가 없다. 수정 저장은 추가와 같은 엔드포인트(`POST
-  /trades-store/import`)를 그 행의 기존 `(broker, accountId, id)`를 그대로 실어
-  재호출한다 — `upsertFromImport`가 같은 키를 찾아 덮어쓰므로(`backend/src/db/
-  tradesStore.ts`) 별도 수정 전용 라우트가 필요 없다. 삭제는 `DELETE
-  /trades-store/:broker/:accountId/:id`(`api.deleteTradeStore`). 행 식별은
-  `id` 하나만으로는 브로커 간 우연히 겹칠 수 있어 `tradeKey(t)` =
-  `broker|accountId|id` 조합을 React key와 편집 상태(`editingKey`) 양쪽에 쓴다.
+  되돌아가 의미가 없다. 수정 저장은 추가와 같은 엔드포인트를 그 행의 기존
+  `(broker, accountId, id)`를 그대로 실어 재호출한다 — `upsertFromImport`가 같은
+  키를 찾아 덮어쓰므로(`backend/src/db/tradesStore.ts`) 별도 수정 전용 라우트가
+  필요 없다. 삭제는 `DELETE /trades-store/:broker/:accountId/:id`
+  (`api.deleteTradeStore`). 행 식별은 `id` 하나만으로는 브로커 간 우연히 겹칠 수
+  있어 `tradeKey(t)` = `broker|accountId|id` 조합을 React key와 편집 상태
+  (`editingKey`) 양쪽에 쓴다. 추가/가져오기/수정/삭제 전부 성공 시 `allTrades`를
+  다시 받아온다(개별 모드로 보고 있어도 "전체"로 전환했을 때 바로 최신 데이터가
+  보이도록) — 지금 보고 있는 화면이 그 브로커/계좌와 같으면 `trades`도 같이
+  갱신한다.
 - `src/components/TradesChart.tsx` — 월별 매수(`--series-1`)/매도(`--series-2`) 그룹형
   막대 그래프. **원화·달러를 환율로 합쳐서 하나의 막대로 그리지 않는다**(단위/스케일이
   달라서 — dataviz 스킬의 "두 측정값은 두 차트로" 원칙) — 달러 거래가 있으면 원화

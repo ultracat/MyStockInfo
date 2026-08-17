@@ -5,7 +5,7 @@ import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart'
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
-import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
+import { API_BROKER_IDS, BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, formatAccountOption } from '../accountLabels';
 
 // CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
@@ -52,9 +52,31 @@ const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 type ViewMode = 'year' | 'month';
 type PageSize = 10 | 20 | 30 | 'ALL';
-type BrokerFilter = 'ALL' | BrokerId;
+/** 위쪽 증권사 select의 값 — 개별 브로커 하나 또는 "전체"(여러 브로커/계좌를
+ *  한 화면에서 합쳐서 봄, 계좌 개념 없음). */
+type BrokerSelection = 'ALL' | BrokerId;
 
-function tradeKey(t: StoredTrade): string {
+/** 매매내역 목록(하단 표) 한 행의 공용 모양 — 개별 브로커 모드(TradeRecord, 위쪽
+ *  select가 이미 broker/accountId를 알고 있음)와 전체보기 모드(StoredTrade,
+ *  행마다 broker/accountId가 다름)를 같은 렌더링/수정/삭제 로직으로 다루기 위해
+ *  둘 다 이 모양으로 정규화한다 — `displayTrades` 참고. */
+interface DisplayTrade {
+  broker: BrokerId;
+  accountId: string;
+  id: string;
+  symbol: string;
+  name: string | null;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  amount: number;
+  currency: string;
+  commission: number | null;
+  tax: number | null;
+  executedAt: string;
+}
+
+function tradeKey(t: DisplayTrade): string {
   return `${t.broker}|${t.accountId}|${t.id}`;
 }
 
@@ -69,7 +91,7 @@ function daysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
-function accumulate(row: TradeSummaryBucket, t: TradeRecord) {
+function accumulate(row: TradeSummaryBucket, t: { side: 'BUY' | 'SELL'; currency: string; amount: number }) {
   const isUsd = t.currency === 'USD';
   if (t.side === 'BUY') {
     if (isUsd) row.buyUsd += t.amount;
@@ -84,7 +106,7 @@ export default function Trades() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [brokers, setBrokers] = useState<BrokerSummary[]>([]);
-  const [selectedBroker, setSelectedBroker] = useState<BrokerId | null>(null);
+  const [selectedBroker, setSelectedBroker] = useState<BrokerSelection | null>(null);
   const [accounts, setAccounts] = useState<BrokerAccount[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
@@ -118,16 +140,15 @@ export default function Trades() {
   const [addError, setAddError] = useState<string | null>(null);
   const [addResult, setAddResult] = useState<string | null>(null);
 
-  // 매매내역 목록(하단 표)은 위쪽 증권사/계좌 select(차트·스탯 타일 전용, 실시간
-  // 조회 기준)와 완전히 독립된 별도 데이터 소스를 쓴다 — 로컬 저장소
-  // 전체(trades-store, 모든 브로커/계좌)를 받아와 목록 전용 증권사 필터
-  // (listBroker)로 좁힌다. Dividends.tsx의 chartBroker/listBroker 분리와 같은
-  // 패턴. 로컬 저장소는 write-through 캐시라 API 브로커는 실제로 한 번 라이브
-  // 조회한 적 있는 연도만 여기 나타난다(CSV 내보내기(전체)가 이미 같은 전제로
-  // 동작함) — 완전성보다 "여러 증권사를 한 표에서 훑어보고 CSV 전용 계좌는 바로
-  // 고칠 수 있게" 하는 게 목적이라 허용 가능한 트레이드오프.
+  // "전체" 모드(selectedBroker === 'ALL')의 유일한 데이터 소스 — 로컬 저장소
+  // 전체(trades-store, 모든 브로커/계좌)를 받아온다. 로컬 저장소는 write-through
+  // 캐시라 API 브로커는 실제로 한 번 라이브 조회한 적 있는 연도만 여기 나타난다
+  // (CSV 내보내기(전체)가 이미 같은 전제로 동작함) — 완전성보다 "여러 증권사를
+  // 한 표에서 훑어보고 CSV 전용 계좌는 바로 고칠 수 있게" 하는 게 목적이라
+  // 허용 가능한 트레이드오프. CSV 가져오기/수동 추가/수정/삭제가 성공할 때마다
+  // 다시 불러와 최신 상태를 유지한다(개별 브로커 모드 여부와 무관하게 항상 갱신 —
+  // 나중에 "전체"로 전환해도 바로 최신 데이터를 보게 하기 위함).
   const [allTrades, setAllTrades] = useState<StoredTrade[]>([]);
-  const [listBroker, setListBroker] = useState<BrokerFilter>('ALL');
 
   // 매매내역 목록의 인라인 수정/삭제 — CSV 전용 브로커 행에만 허용한다. 토스/KIS
   // 행은 write-through로 실시간 조회가 성공할 때마다 같은 id로 덮어써지므로,
@@ -227,6 +248,15 @@ export default function Trades() {
         // 매매내역 조회 effect가 accountId===null이라 아예 안 돌아서, 이 reset이
         // 없으면 화면에 이전 브로커의 표가 그대로 남아있게 된다.
         setTrades([]);
+
+        // "전체"는 계좌 개념이 없다(여러 브로커/계좌를 한 화면에서 합쳐서 봄) —
+        // 계좌 목록 조회 자체를 건너뛴다. 차트/목록은 allTrades(마운트 시 이미
+        // 받아온 로컬 저장소 전체)를 그대로 쓴다.
+        if (selectedBroker === 'ALL') {
+          setAccounts([]);
+          return;
+        }
+
         // CSV 전용 브로커(KB/삼성/미래에셋)는 listAccounts API가 없다 — 로컬
         // 저장소(trades-store)에 실제로 CSV로 넣어둔 accountId를 계좌 목록처럼 쓴다.
         const accs = API_BROKER_IDS.includes(selectedBroker)
@@ -249,7 +279,7 @@ export default function Trades() {
   }, [selectedBroker]);
 
   useEffect(() => {
-    if (!selectedBroker || !accountId) return;
+    if (!selectedBroker || selectedBroker === 'ALL' || !accountId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -377,7 +407,7 @@ export default function Trades() {
 
       // 지금 보고 있는 브로커가 CSV 전용이면, 브로커 재선택 없이 방금 가져온
       // 데이터가 바로 보이도록 계좌 목록/매매내역을 다시 읽는다.
-      if (selectedBroker && !API_BROKER_IDS.includes(selectedBroker)) {
+      if (selectedBroker && selectedBroker !== 'ALL' && !API_BROKER_IDS.includes(selectedBroker)) {
         const stored = await api.listTradesStore({ broker: selectedBroker });
         const ids = Array.from(new Set(stored.map((t) => t.accountId)));
         setAccounts(ids.map((id) => ({ id })));
@@ -470,7 +500,7 @@ export default function Trades() {
     }
   }
 
-  function startEditTrade(t: StoredTrade) {
+  function startEditTrade(t: DisplayTrade) {
     setEditingKey(tradeKey(t));
     setEditDraft({
       symbol: t.symbol,
@@ -494,7 +524,7 @@ export default function Trades() {
 
   // 같은 (broker, accountId, id)로 다시 import를 호출하면 upsertFromImport가
   // 기존 행을 찾아 덮어쓴다(신규 라우트 불필요 — 수동 추가와 같은 엔드포인트).
-  async function saveEditTrade(t: StoredTrade) {
+  async function saveEditTrade(t: DisplayTrade) {
     if (!editDraft) return;
     const quantityNum = Number(editDraft.quantity);
     const priceNum = Number(editDraft.price);
@@ -553,7 +583,7 @@ export default function Trades() {
     }
   }
 
-  async function onDeleteTrade(t: StoredTrade) {
+  async function onDeleteTrade(t: DisplayTrade) {
     await api.deleteTradeStore(t.broker, t.accountId, t.id);
     await refreshAllTrades();
     if (selectedBroker === t.broker && accountId === t.accountId) {
@@ -561,14 +591,26 @@ export default function Trades() {
     }
   }
 
-  // 연간 보기면 트래드 전체를 12개월 버킷으로, 월간 보기면 선택한 달의
-  // 거래만 골라 그 달의 날짜 수만큼 일별 버킷으로 나눈다 — 서버에서 다시
-  // 받아올 필요 없이 이미 받아온 그 해 전체 trades를 그대로 재사용한다.
+  const isAllMode = selectedBroker === 'ALL';
+
+  // "전체" 모드는 allTrades(로컬 저장소 전체)를, 개별 브로커 모드는 위쪽
+  // 선택으로 이미 받아온 trades를 소스로 쓴다 — 둘 다 우선 연도로 좁힌다.
+  // (개별 브로커 모드에서 API 브로커는 애초에 [from,to]가 연도 범위라 이 필터가
+  // 항상 참이라 무해하지만, CSV 전용 브로커는 계좌 전체 히스토리를 한 번에
+  // 받아오므로 이 필터가 실제로 여러 해를 걸러내는 역할을 한다 — 이전엔 연간
+  // 보기에서 연도 무관하게 다 합산되는 버그가 있었음.)
+  const periodTrades = useMemo(() => {
+    const source: (TradeRecord | StoredTrade)[] = isAllMode ? allTrades : trades;
+    return source.filter((t) => t.executedAt.startsWith(String(year)));
+  }, [isAllMode, allTrades, trades, year]);
+
+  // 연간 보기면 periodTrades를 12개월 버킷으로, 월간 보기면 선택한 달의
+  // 거래만 골라 그 달의 날짜 수만큼 일별 버킷으로 나눈다.
   const visibleTrades = useMemo(() => {
-    if (viewMode === 'year') return trades;
+    if (viewMode === 'year') return periodTrades;
     const prefix = `${year}-${String(month).padStart(2, '0')}`;
-    return trades.filter((t) => t.executedAt.startsWith(prefix));
-  }, [trades, viewMode, year, month]);
+    return periodTrades.filter((t) => t.executedAt.startsWith(prefix));
+  }, [periodTrades, viewMode, year, month]);
 
   const chartRows = useMemo<TradeSummaryBucket[]>(() => {
     if (viewMode === 'year') {
@@ -579,7 +621,7 @@ export default function Trades() {
         sellKrw: 0,
         sellUsd: 0,
       }));
-      for (const t of trades) {
+      for (const t of periodTrades) {
         const monthIdx = Number(t.executedAt.slice(5, 7)) - 1;
         if (monthIdx < 0 || monthIdx > 11) continue;
         accumulate(rows[monthIdx], t);
@@ -601,7 +643,7 @@ export default function Trades() {
       accumulate(rows[day - 1], t);
     }
     return rows;
-  }, [trades, visibleTrades, viewMode, year, month]);
+  }, [periodTrades, visibleTrades, viewMode, year, month]);
 
   const totals = useMemo(() => {
     let buyKrw = 0;
@@ -625,21 +667,37 @@ export default function Trades() {
     return { buyKrw, buyUsd, sellKrw, sellUsd, buyCount, sellCount };
   }, [visibleTrades]);
 
-  // 매매내역 목록 전용 증권사 필터 옵션 — 실제로 로컬 저장소에 있는 브로커만.
-  const listBrokerOptions = useMemo(
-    () => BROKER_ORDER.filter((id) => allTrades.some((t) => t.broker === id)),
-    [allTrades]
-  );
+  // 매매내역 목록(하단 표)은 별도 필터 없이 위쪽에서 고른 기간(연도/월)·
+  // 브로커·계좌를 그대로 따라간다("전체"면 allTrades 기반 visibleTrades를,
+  // 개별 브로커면 trades 기반 visibleTrades를 그대로) — 두 소스의 행 모양이
+  // 달라서(TradeRecord엔 broker/accountId가 없음) DisplayTrade로 정규화한다.
+  const displayTrades = useMemo<DisplayTrade[]>(() => {
+    if (isAllMode) {
+      return (visibleTrades as StoredTrade[]).map((t) => ({ ...t, name: null }));
+    }
+    if (!selectedBroker || !accountId) return [];
+    const broker = selectedBroker;
+    return (visibleTrades as TradeRecord[]).map((t) => ({
+      broker,
+      accountId,
+      id: t.id,
+      symbol: t.symbol,
+      name: t.name,
+      side: t.side,
+      quantity: t.quantity,
+      price: t.price,
+      amount: t.amount,
+      currency: t.currency,
+      commission: t.commission,
+      tax: t.tax,
+      executedAt: t.executedAt,
+    }));
+  }, [isAllMode, visibleTrades, selectedBroker, accountId]);
 
-  // 목록은 위쪽 차트와 같은 연도/월 필터를 적용하되(같은 "지금 보고 있는 기간"
-  // 개념을 공유), 증권사/계좌는 위쪽 select와 무관하게 listBroker 하나로만 좁힌다.
-  const sortedTrades = useMemo(() => {
-    let rows = allTrades;
-    if (listBroker !== 'ALL') rows = rows.filter((t) => t.broker === listBroker);
-    const prefix = viewMode === 'year' ? String(year) : `${year}-${String(month).padStart(2, '0')}`;
-    rows = rows.filter((t) => t.executedAt.startsWith(prefix));
-    return [...rows].sort((a, b) => (a.executedAt < b.executedAt ? 1 : -1));
-  }, [allTrades, listBroker, viewMode, year, month]);
+  const sortedTrades = useMemo(
+    () => [...displayTrades].sort((a, b) => (a.executedAt < b.executedAt ? 1 : -1)),
+    [displayTrades]
+  );
 
   // Dividends.tsx의 배당 기록 목록과 같은 페이지네이션 패턴 — `page`를 effect로
   // 되돌리지 않고 매 렌더마다 pageCount 안으로 clamp해서 쓴다. 페이지 번호 버튼도
@@ -690,27 +748,26 @@ export default function Trades() {
       )}
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        {configuredBrokers.length > 1 && (
-          <div className="form-row">
-            <label>증권사</label>
-            <select
-              value={selectedBroker ?? ''}
-              onChange={(e) => {
-                // Dashboard.tsx와 같은 이유로 accountId를 같은 커밋에서 동기적으로 리셋한다.
-                setSelectedBroker(e.target.value as BrokerId);
-                setAccountId(null);
-              }}
-            >
-              {configuredBrokers.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.displayName}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="form-row">
+          <label>증권사</label>
+          <select
+            value={selectedBroker ?? ''}
+            onChange={(e) => {
+              // Dashboard.tsx와 같은 이유로 accountId를 같은 커밋에서 동기적으로 리셋한다.
+              setSelectedBroker(e.target.value as BrokerSelection);
+              setAccountId(null);
+            }}
+          >
+            <option value="ALL">전체</option>
+            {configuredBrokers.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.displayName}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        {accounts.length > 1 && (
+        {!isAllMode && accounts.length > 1 && selectedBroker && (
           <div className="form-row">
             <label>계좌</label>
             <select value={accountId ?? ''} onChange={(e) => setAccountId(e.target.value)}>
@@ -718,11 +775,9 @@ export default function Trades() {
                 <option key={a.id} value={a.id}>
                   {formatAccountOption(
                     a,
-                    selectedBroker
-                      ? accountLabels.find(
-                          (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, a.id)
-                        )?.label
-                      : undefined
+                    accountLabels.find(
+                      (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, a.id)
+                    )?.label
                   )}
                 </option>
               ))}
@@ -900,23 +955,6 @@ export default function Trades() {
       </div>
 
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
-          <select
-            value={listBroker}
-            onChange={(e) => {
-              setListBroker(e.target.value as BrokerFilter);
-              setPage(1);
-            }}
-          >
-            <option value="ALL">전체</option>
-            {listBrokerOptions.map((id) => (
-              <option key={id} value={id}>
-                {BROKER_LABELS[id]}
-              </option>
-            ))}
-          </select>
-        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
           {pageCount > 1 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
@@ -965,9 +1003,9 @@ export default function Trades() {
           <thead>
             <tr>
               <th>일자</th>
-              <th>증권사</th>
-              <th>계좌</th>
-              <th>종목코드</th>
+              {isAllMode && <th>증권사</th>}
+              {isAllMode && <th>계좌</th>}
+              <th>종목</th>
               <th>구분</th>
               <th>수량</th>
               <th>단가</th>
@@ -978,9 +1016,8 @@ export default function Trades() {
           <tbody>
             {sortedTrades.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={isAllMode ? 9 : 7} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {viewMode === 'year' ? `${year}년` : `${year}년 ${month}월`} 거래 내역이 없습니다.
-                  {listBroker !== 'ALL' ? ` (${BROKER_LABELS[listBroker]} 기준)` : ''}
                 </td>
               </tr>
             ) : (
@@ -997,8 +1034,15 @@ export default function Trades() {
                           onChange={(e) => setEditDraft({ ...editDraft, executedAt: e.target.value })}
                         />
                       </td>
-                      <td>{BROKER_LABELS[t.broker]}</td>
-                      <td>{formatAccountOption({ id: t.accountId }, accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label)}</td>
+                      {isAllMode && <td>{BROKER_LABELS[t.broker]}</td>}
+                      {isAllMode && (
+                        <td>
+                          {formatAccountOption(
+                            { id: t.accountId },
+                            accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label
+                          )}
+                        </td>
+                      )}
                       <td>
                         <input
                           value={editDraft.symbol}
@@ -1076,14 +1120,16 @@ export default function Trades() {
                 return (
                   <tr key={key}>
                     <td>{t.executedAt}</td>
-                    <td>{BROKER_LABELS[t.broker]}</td>
-                    <td>
-                      {formatAccountOption(
-                        { id: t.accountId },
-                        accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label
-                      )}
-                    </td>
-                    <td>{t.symbol}</td>
+                    {isAllMode && <td>{BROKER_LABELS[t.broker]}</td>}
+                    {isAllMode && (
+                      <td>
+                        {formatAccountOption(
+                          { id: t.accountId },
+                          accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label
+                        )}
+                      </td>
+                    )}
+                    <td>{t.name ? `${t.name} (${t.symbol})` : t.symbol}</td>
                     <td>
                       <span
                         style={{

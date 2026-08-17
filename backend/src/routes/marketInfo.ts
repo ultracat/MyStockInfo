@@ -3,6 +3,7 @@ import { getAdapter } from '../brokers/registry';
 import type { BrokerId } from '../brokers/types';
 import { handleBrokerApiError } from '../brokers/errors';
 import { resolveUsdKrwRate } from '../exchangeRateResolver';
+import { fetchTossMonthlyClosePrices, type MonthlyClosePrice } from '../brokers/toss/tossClient';
 
 export const marketInfoRouter = Router();
 
@@ -17,6 +18,27 @@ marketInfoRouter.get('/exchange-rate/usd-krw', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
   const result = await resolveUsdKrwRate({ forceRefresh });
   res.json(result ?? { rate: null });
+});
+
+// 여러 종목의 월별 종가를 한 번에 조회한다(Overview.tsx의 "월별 총 투자금 ·
+// 총 수입금" 카드가 오늘 현재가 대신 그 달의 실제 종가로 평가금액을 계산하는
+// 데 쓴다) — 토스만 종목당 계좌 무관 일봉 조회를 제공해서(tossClient.ts의
+// fetchTossMonthlyClosePrices 참고) 브로커 목록이 아니라 종목 심볼 목록을
+// 받는다. 심볼마다 독립적으로 실패할 수 있어(상장폐지, 오타, 토스 미연동 등)
+// 개별 실패가 다른 심볼까지 막지 않도록 Promise.all이 아니라 항상 성공하는
+// 개별 호출(fetchTossMonthlyClosePrices 자체가 실패 시 빈 배열)을 모은다.
+marketInfoRouter.get('/monthly-close-prices', async (req, res) => {
+  const symbolsParam = typeof req.query.symbols === 'string' ? req.query.symbols : '';
+  const months = Math.max(1, Math.min(60, Number(req.query.months) || 12));
+  const symbols = [...new Set(symbolsParam.split(',').map((s) => s.trim()).filter(Boolean))];
+
+  const entries = await Promise.all(
+    symbols.map(async (symbol): Promise<[string, MonthlyClosePrice[]]> => [
+      symbol,
+      await fetchTossMonthlyClosePrices(symbol, months),
+    ])
+  );
+  res.json(Object.fromEntries(entries));
 });
 
 marketInfoRouter.get('/:broker/exchange-rate', async (req, res) => {

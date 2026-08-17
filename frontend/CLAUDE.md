@@ -90,7 +90,18 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   곱하는 방식이다. `MonthlyReturnChart`와 툴팁 자동 뒤집힘 로직(`vAlign`/
   `hAlign`)을 그대로 공유하되, 3줄짜리 텍스트라 위쪽 여유 판단 기준값을 조금
   더 크게(40→60) 잡았다 — headroom 배수(1.1배)의 경계값이라 40 기준으론
-  최고점이 카드 안내 문구와 살짝 겹치는 경우가 있었음.
+  최고점이 카드 안내 문구와 살짝 겹치는 경우가 있었음. **평가금액(총 수입금)은
+  오늘 현재가가 아니라 그 달의 실제 종가를 쓴다** — 처음엔 두 카드 다 그 달
+  보유수량에 오늘 현재가를 곱했는데(그래서 그래프가 사실상 "수량 증감만
+  반영된 오늘 가격 기준" 곡선이었다), 사용자가 "오늘 현재가 말고 해당 달의
+  금액으로 계산할 수 있냐"고 물어서 토스 일봉 API(`GET /market-info/monthly-close-prices`,
+  `backend/CLAUDE.md`의 "월별 종가 조회" 절 참고)를 새로 연동했다. `loadAll()`이
+  지금 보유 중이면서 매매내역도 있는 종목만 대상으로 이 API를 한 번 호출해
+  `monthlyClosePrices` state에 담고, `closePriceBySymbolMonth`(useMemo)가
+  `symbol → month → {closePrice, currency}` 조회용 맵으로 바꾼다.
+  `monthlyAmountRows` 계산에서 그 종목·그 달의 종가가 있으면 그걸, 없으면
+  (토스 미연동, 그 달 봉을 못 찾음 등) 오늘 현재가로 그대로 대체한다 — 이
+  fallback 덕에 토스 연동이 없어도 카드 자체는 예전처럼 계속 동작한다.
 - `src/accountLabels.ts` — `(broker, accountId) → label`(백엔드 `account-labels`) 조회용
   공용 유틸. `accountLabelKey(broker, accountId)`(맵 키 조합 — accountId만으로는 브로커
   간에 우연히 겹칠 수 있어서 broker도 같이 묶는다), `formatAccountOption(account, label?)`

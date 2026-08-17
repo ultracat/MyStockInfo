@@ -122,6 +122,25 @@ export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
   return inserted;
 }
 
+/** 이미 저장된 매매내역 중 이름이 비어 있는 행만 채운다(`routes/tradesStore.ts`의
+ *  `POST /refresh-names`) — name 필드가 생기기 전에 저장됐던 행(그래서 항상
+ *  null)이나, 그때는 API 연동이 없어서 못 채웠던 행을 위한 일괄 백필용. 이미
+ *  이름이 있는 행(CSV로 직접 입력한 이름 포함)은 덮어쓰지 않는다 — dividends의
+ *  `updateDividendNames`(오타 정리 목적으로 전부 덮어씀)와 다른 점. */
+export function updateTradeNames(namesBySymbol: Record<string, string>): number {
+  let updated = 0;
+  store().update((current) =>
+    current.map((t) => {
+      if (t.name) return t;
+      const resolved = namesBySymbol[t.symbol.toUpperCase()];
+      if (!resolved) return t;
+      updated += 1;
+      return { ...t, name: resolved };
+    })
+  );
+  return updated;
+}
+
 export function deleteTrade(broker: BrokerId, accountId: string, id: string): boolean {
   let removed = false;
   store().update((current) => {

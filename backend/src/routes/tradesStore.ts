@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { deleteTrade, listTrades, upsertFromImport, type ImportTradeInput } from '../db/tradesStore';
+import { deleteTrade, listTrades, updateTradeNames, upsertFromImport, type ImportTradeInput } from '../db/tradesStore';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
 import { resolveStockNames } from '../stockNameResolver';
@@ -12,6 +12,25 @@ tradesStoreRouter.get('/', (req, res) => {
   const broker = typeof req.query.broker === 'string' ? (req.query.broker as BrokerId) : undefined;
   const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
   res.json(listTrades({ broker, accountId }));
+});
+
+// 이미 로컬에 저장된 매매내역 중 이름이 빈 행만 골라 채운다(dividends.ts의
+// refresh-names와 같은 패턴이지만, 그쪽은 토스 전용에 전부 덮어쓰는 반면 이건
+// 토스→KIS→KB 3단계 폴백을 쓰고 이미 있는 이름은 안 건드린다 —
+// `updateTradeNames` 참고). name 필드가 생기기 전에 저장된 행(당시엔 write-through가
+// 이름을 버렸음)이나, 그때는 연동이 없어서 못 채웠던 행을 위한 일괄 백필용 —
+// 토스/KIS/KB 어느 것도 연동 안 돼 있으면(resolveStockNames가 아무것도 못 찾음)
+// 그냥 0건 갱신으로 끝난다(에러 아님).
+tradesStoreRouter.post('/refresh-names', async (_req, res) => {
+  const records = listTrades();
+  const uniqueSymbols = Array.from(new Set(records.filter((t) => !t.name).map((t) => t.symbol)));
+  if (uniqueSymbols.length === 0) {
+    return res.json({ updated: 0, resolved: 0, failed: [] });
+  }
+
+  const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
+  const updated = updateTradeNames(namesBySymbol);
+  res.json({ updated, resolved: Object.keys(namesBySymbol).length, failed: Array.from(unresolved) });
 });
 
 function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { error: string } {

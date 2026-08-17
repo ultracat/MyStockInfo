@@ -260,8 +260,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `StoredTrade`도 `HoldingPosition`의 `memo`처럼 `name` 필드를 갖고, 백엔드가
   실시간 조회/KB 동기화/CSV 가져오기 세 경로 전부에서 토스→KIS→KB 순으로 자동
   조회해 채운다(backend/CLAUDE.md의 "매매내역 종목명" 절 참고) — 프론트는 그냥
-  받은 값을 표시만 하면 된다. `mapStoredTrade`가 예전엔 `name: null`을
-  하드코딩했었는데 지금은 `t.name`을 그대로 넘긴다.
+  받은 값을 표시만 하면 된다. `mapStoredTrade`(개별 CSV 전용 브로커 모드)가
+  예전엔 `name: null`을 하드코딩했었는데 지금은 `t.name`을 그대로 넘긴다.
+  **`displayTrades`의 "전체" 모드 분기에도 똑같은 하드코딩이 하나 더 있었다** —
+  `mapStoredTrade`만 고치고 이건 놓쳤다가, "KB/KIS 매매내역에 종목명이 안 보인다"는
+  버그 리포트로 뒤늦게 발견해서 `{ ...t, name: null }`를 지우고 `StoredTrade`를
+  그대로 `DisplayTrade`로 썼다(두 타입이 필드 구성이 완전히 같아서 캐스팅만 하면
+  됨) — 같은 필드를 두 곳에서 따로 하드코딩해뒀던 게 원인이라, 비슷한 필드를 여러
+  분기에서 다루는 코드는 값이 실제로 갱신되는지 각 분기를 다 확인해야 한다는
+  교훈.
 
   **CSV 내보내기**는 Dashboard.tsx와 같은 이유로 `GET /api/trades-store` 전체를
   대상으로 하고, **가져오기**도 대상 선택 없이 CSV 행 자체의 `broker`/`accountId`를
@@ -275,6 +282,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   (`id`를 안 주면 서버가 새로 발급). 폼에도 "종목명 (선택)" 입력칸이 있고(비우면
   자동조회), 인라인 수정 행도 종목코드 입력 바로 아래에 같은 칸을 하나 더
   둔다(별도 테이블 컬럼을 안 늘리려고 한 `<td>` 안에 세로로 쌓음).
+
+  **"종목명 일괄 갱신" 버튼**(`onRefreshNames`, `POST /trades-store/refresh-names`) —
+  Dividends.tsx의 "종목명 일괄 갱신"과 같은 자리(헤더 버튼 그룹)에 있는 같은 패턴
+  버튼. `name`이 생기기 전에 저장된 행이나 그때는 API 연동이 없어서 못 채웠던
+  로컬 저장소 행을 나중에 한 번에 채워 넣는 용도(backend/CLAUDE.md의 "매매내역
+  종목명" 절 참고) — CSV 다시 가져오기나 KB 재동기화 없이도 기존 행을 고칠 수
+  있다. 성공하면 `refreshAllTrades()`로 "전체" 모드 데이터를 다시 받고, 지금 보고
+  있는 화면이 CSV 전용 브로커의 개별 계좌 모드면 그 목록도 같이 다시 읽는다(API
+  브로커 개별 모드는 다음 실시간 조회 때 이미 자동으로 채워지므로 손댈 게 없음).
 
   **수수료/세금은 표에 전용 컬럼이 있고 인라인 수정으로 고칠 수 있다** — 상태
   (`editDraft.commission`/`tax`)는 원래부터 있었는데(저장 시 그대로 넘김) 입력

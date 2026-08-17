@@ -279,6 +279,16 @@ CSV의 `name` 컬럼이 선택 컬럼이라, 값이 있으면 그대로 쓰고(o
 전혀 없고 CSV에도 이름이 없으면) `name: null`로 저장되고, 화면은 심볼로 폴백 표시한다
 (기존부터 있던 동작 — 이름이 필수는 아님).
 
+**기존에 저장된 행 백필**(`POST /api/trades-store/refresh-names`, `db/tradesStore.ts`의
+`updateTradeNames`) — `name` 필드가 생기기 전에 저장됐던 행(그땐 write-through가 이름을
+무조건 버렸음)이나, 그때는 API 연동이 없어서 못 채웠던 행을 나중에 채워 넣는 일괄
+백필용. `listTrades()`로 전체를 읽어 `name`이 빈 행의 심볼만 모아 `resolveStockNames`
+(토스→KIS→KB)로 조회하고, `updateTradeNames`가 그 결과로 **비어 있는 행만** 채운다 —
+이미 이름이 있는 행(CSV로 직접 입력한 이름 포함)은 덮어쓰지 않는다. `refresh-names`
+(`routes/dividends.ts`)와 이름은 비슷하지만 동작이 다르다: dividends 쪽은 토스 전용이고
+이미 있는 이름도 전부 덮어쓴다(오타 정리 목적), 이쪽은 다중 브로커 폴백 + 빈 행만
+채우기다. 아무 브로커도 연동 안 돼 있으면 그냥 0건 갱신으로 끝난다(에러 아님).
+
 ## 검증 방식
 
 증권사 API 관련 코드는 실제 공식 문서(토스: developers.tossinvest.com, KIS:

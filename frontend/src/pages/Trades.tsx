@@ -185,8 +185,40 @@ export default function Trades() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  const [refreshingNames, setRefreshingNames] = useState(false);
+  const [refreshNamesResult, setRefreshNamesResult] = useState<string | null>(null);
+
   async function refreshAllTrades() {
     setAllTrades(await api.listTradesStore());
+  }
+
+  // 로컬 저장소(trades-store)에 이미 쌓인 행 중 종목명이 없는 것만 채운다 —
+  // name 필드가 생기기 전에 저장됐던 행(당시엔 write-through가 이름을 버렸음)이나,
+  // 그때는 API 연동이 없어서 못 채웠던 행을 위한 일괄 백필. Dividends.tsx의
+  // "종목명 일괄 갱신"과 같은 패턴(backend/CLAUDE.md의 "매매내역 종목명" 절 참고).
+  async function onRefreshNames() {
+    setRefreshingNames(true);
+    setRefreshNamesResult(null);
+    try {
+      const result = await api.refreshTradeNames();
+      setRefreshNamesResult(
+        result.failed.length > 0
+          ? `${result.updated}건 갱신됨 (조회 실패: ${result.failed.join(', ')})`
+          : `${result.updated}건 갱신됨`
+      );
+      await refreshAllTrades();
+      // 지금 보고 있는 화면이 CSV 전용 브로커의 개별 계좌 모드면 그 목록도 바로
+      // 다시 읽는다(CSV 가져오기 성공 후와 같은 패턴) — API 브로커는 다음 실시간
+      // 조회 때 이미 자동으로 채워지므로 여기서 더 손댈 게 없다.
+      if (selectedBroker && selectedBroker !== 'ALL' && !API_BROKER_IDS.includes(selectedBroker) && accountId) {
+        const stored = await api.listTradesStore({ broker: selectedBroker, accountId });
+        setTrades(stored.map(mapStoredTrade));
+      }
+    } catch (e) {
+      setRefreshNamesResult((e as Error).message);
+    } finally {
+      setRefreshingNames(false);
+    }
   }
 
   useEffect(() => {
@@ -697,7 +729,7 @@ export default function Trades() {
   // 달라서(TradeRecord엔 broker/accountId가 없음) DisplayTrade로 정규화한다.
   const displayTrades = useMemo<DisplayTrade[]>(() => {
     if (isAllMode) {
-      return (visibleTrades as StoredTrade[]).map((t) => ({ ...t, name: null }));
+      return visibleTrades as StoredTrade[];
     }
     if (!selectedBroker || !accountId) return [];
     const broker = selectedBroker;
@@ -762,12 +794,25 @@ export default function Trades() {
             {importing ? '가져오는 중...' : 'CSV 가져오기'}
           </button>
           <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
+          <button
+            className="ghost"
+            onClick={onRefreshNames}
+            disabled={refreshingNames}
+            title="저장된 매매내역 중 종목명이 비어 있는 행만 토스→KIS→KB 순으로 조회해 채웁니다."
+          >
+            {refreshingNames ? '갱신 중...' : '종목명 일괄 갱신'}
+          </button>
         </div>
       </div>
 
       {importResult && (
         <div className="notice" style={{ fontSize: 13 }}>
           {importResult}
+        </div>
+      )}
+      {refreshNamesResult && (
+        <div className="notice" style={{ fontSize: 13 }}>
+          {refreshNamesResult}
         </div>
       )}
 

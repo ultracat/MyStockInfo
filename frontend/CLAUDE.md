@@ -55,13 +55,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   채움), 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다. "KB증권 실시간
   동기화" 카드는 `status?.kb`(자격증명 저장됨)일 때만 나타난다 — KB Open API가
   계좌 하나에만 고정 바인딩돼(backend/CLAUDE.md의 "KB증권 Open API" 참고) 여러 계좌
-  중 어디에 연결됐는지 API가 알려주지 않으므로, 그 계좌의 실제 accountId를 사용자가
-  텍스트 입력으로 직접 지정한다(위 "계좌 별칭"에 이미 등록해둔 값과 같은 문자열을
-  쓰면 라벨이 자동으로 연결됨). `api.syncKbHoldings(accountId)`/
-  `api.syncKbTrades(accountId, from, to)`(매매내역은 항상 올해 1/1~오늘로 고정,
-  기간 선택 UI 없음 — 필요해지면 나중에 추가)가 `POST /api/kb/sync-holdings`/
-  `POST /api/kb/sync-trades`를 호출해 로컬 저장소를 채우고, 그 결과(`{synced: n}`)를
-  그대로 보여준다 — 동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
+  중 어디에 연결됐는지 API가 알려주지 않으므로, 그 계좌의 실제 accountId는 "API 키
+  등록" 폼의 세 번째 필드(계좌번호)로 미리 등록해둔다(위 "계좌 별칭"에 이미
+  등록해둔 값과 같은 문자열을 쓰면 라벨이 자동으로 연결됨) — 동기화 카드 자체는
+  accountId를 다시 묻지 않고 그 값을 백엔드가 알아서 쓴다. `api.syncKbHoldings()`/
+  `api.syncKbTrades(from, to)`(매매내역은 항상 올해 1/1~오늘로 고정, 기간 선택 UI
+  없음 — 필요해지면 나중에 추가, accountId 인자는 선택적이고 보통 안 넘김)가
+  `POST /api/kb/sync-holdings`/`POST /api/kb/sync-trades`를 호출해 로컬 저장소를
+  채우고, 그 결과(`{synced: n, accountId}`)를 그대로 보여준다 — 동기화 후에는
+  보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
   완전히 동일하게 보인다(별도 프론트 분기 없음).
 
 ## 공용 패턴 (여러 페이지가 공유)

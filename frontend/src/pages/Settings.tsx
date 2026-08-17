@@ -89,10 +89,10 @@ export default function Settings() {
 
   // KB증권 Open API는 appKey/appSecret 자체가 계좌 하나에 이미 묶여 있어(계좌
   // 목록 조회 API가 없음 — backend/CLAUDE.md 참고) 다른 브로커처럼 별도 실시간
-  // 화면 경로를 두지 않고, 여기서 "지금 연결된 그 계좌"를 사용자가 지정한
-  // accountId의 로컬 저장소로 동기화하는 액션만 제공한다 — 동기화된 뒤에는
-  // 보유종목/매매내역 화면에서 다른 CSV 전용 브로커와 똑같이 보인다.
-  const [kbSyncAccountId, setKbSyncAccountId] = useState('');
+  // 화면 경로를 두지 않고, 여기서 "지금 연결된 그 계좌"를 로컬 저장소로 동기화하는
+  // 액션만 제공한다 — 어느 계좌인지는 위 "API 키 등록" 폼의 계좌번호 필드에 이미
+  // 등록해뒀으므로 여기서 따로 입력받지 않는다. 동기화된 뒤에는 보유종목/매매내역
+  // 화면에서 다른 CSV 전용 브로커와 똑같이 보인다.
   const [kbSyncing, setKbSyncing] = useState(false);
   const [kbSyncResult, setKbSyncResult] = useState<string | null>(null);
 
@@ -176,16 +176,12 @@ export default function Settings() {
   }
 
   async function onSyncKbHoldings() {
-    if (!kbSyncAccountId.trim()) {
-      setError('동기화할 계좌번호를 입력해주세요.');
-      return;
-    }
     setError(null);
     setKbSyncResult(null);
     setKbSyncing(true);
     try {
-      const result = await api.syncKbHoldings(kbSyncAccountId.trim());
-      setKbSyncResult(`보유종목 ${result.synced}건 동기화됨`);
+      const result = await api.syncKbHoldings();
+      setKbSyncResult(`${result.accountId} 계좌 — 보유종목 ${result.synced}건 동기화됨`);
       await refreshAccounts();
     } catch (e) {
       setError((e as Error).message);
@@ -195,18 +191,14 @@ export default function Settings() {
   }
 
   async function onSyncKbTrades() {
-    if (!kbSyncAccountId.trim()) {
-      setError('동기화할 계좌번호를 입력해주세요.');
-      return;
-    }
     setError(null);
     setKbSyncResult(null);
     setKbSyncing(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
       const yearStart = `${new Date().getFullYear()}-01-01`;
-      const result = await api.syncKbTrades(kbSyncAccountId.trim(), yearStart, today);
-      setKbSyncResult(`매매내역(올해) ${result.synced}건 동기화됨`);
+      const result = await api.syncKbTrades(yearStart, today);
+      setKbSyncResult(`${result.accountId} 계좌 — 매매내역(올해) ${result.synced}건 동기화됨`);
       await refreshAccounts();
     } catch (e) {
       setError((e as Error).message);
@@ -333,9 +325,11 @@ export default function Settings() {
         {broker === 'kb' && (
           <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
             KB증권 Open API 포털(developer.kbsec.com)에서 발급받은 appKey/appSecret을 입력하세요. KB Open
-            API는 앱 등록 시 계좌 하나에 이미 연결되어 있어(계좌 목록 조회 API 자체가 없음) 다른 증권사처럼
-            실시간 화면을 별도로 제공하지 않고, 아래 "KB증권 실시간 동기화"에서 그 계좌의 데이터를
-            로컬 저장소로 가져옵니다.
+            API는 앱 등록 시 계좌 하나에 이미 연결되어 있어(계좌 목록 조회 API 자체가 없음) API가 어느
+            계좌인지 알려주지 않으므로, 계좌번호는 그 연결된 계좌의 실제 번호를 직접 입력해주세요(위
+            "계좌 별칭"에 등록해둔 값과 같으면 자동으로 라벨이 연결됩니다). 다른 증권사처럼 실시간 화면을
+            별도로 제공하지 않고, 아래 "KB증권 실시간 동기화"에서 그 계좌의 데이터를 로컬 저장소로
+            가져옵니다.
           </p>
         )}
       </div>
@@ -344,20 +338,9 @@ export default function Settings() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>KB증권 실시간 동기화</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-            등록한 appKey/appSecret에 연결된 계좌 하나의 보유종목/매매내역(올해)을 가져와 로컬 저장소에
-            채워 넣습니다 — 어느 계좌에 연결되어 있는지는 API가 알려주지 않으므로, 아래에 그 계좌의 실제
-            계좌번호를 직접 입력해주세요(위 "계좌 별칭"에 등록해둔 값과 같으면 자동으로 라벨이 연결됩니다).
-            동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와 똑같이 보입니다.
+            위 "API 키 등록"에 입력해둔 계좌번호로 보유종목/매매내역(올해)을 가져와 로컬 저장소에 채워
+            넣습니다. 동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와 똑같이 보입니다.
           </p>
-          <div className="form-row">
-            <label>계좌번호</label>
-            <input
-              type="text"
-              value={kbSyncAccountId}
-              placeholder="예: 123-45-678901"
-              onChange={(e) => setKbSyncAccountId(e.target.value)}
-            />
-          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="primary" onClick={onSyncKbHoldings} disabled={kbSyncing}>
               {kbSyncing ? '동기화 중...' : '보유종목 동기화'}

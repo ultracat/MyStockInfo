@@ -93,13 +93,18 @@ kbsecurities/kb-openapi(공식 레포, `example/python/README.md`·
 **설계: `BrokerAdapter`를 구현하지 않고, CSV 전용 브로커의 로컬 저장소를 채우는
 "동기화" 액션으로만 노출한다.** `knownBrokers.ts`의 `hasApiIntegration`은 `false`로
 유지(=`registry.ts`에 등록 안 함, 기존 CSV 전용 브로커 라우팅 그대로 재사용) —
-`credentialFields.ts`에만 `kb: [appKey, appSecret]`을 추가해서 Settings.tsx가 자격증명
-입력 폼을 보여주게 하고, `routes/kb.ts`의 `POST /api/kb/sync-holdings`/
+`credentialFields.ts`에 `kb: [appKey, appSecret, accountId]`를 추가해서 Settings.tsx가
+자격증명 입력 폼을 보여주게 하고, `routes/kb.ts`의 `POST /api/kb/sync-holdings`/
 `POST /api/kb/sync-trades`가 `kbClient.ts`의 조회 함수를 호출해 그 결과를
 `holdingsStore.replaceSnapshot`/`tradesStore.upsertTrades`(Toss/KIS의 write-through와
-정확히 같은 함수)로 로컬 저장소에 써 넣는다. 어느 계좌에 연결돼 있는지 API가 알려주지
-않으므로(계좌번호를 돌려주는 필드가 없음) `accountId`는 Settings 화면에서 사용자가
-직접 입력한다 — 이미 "계좌 별칭"에 등록해둔 accountId와 같은 문자열을 쓰면 라벨이
+정확히 같은 함수)로 로컬 저장소에 써 넣는다. **세 번째 자격증명 필드 `accountId`는
+KB에 실제로 보내는 값이 아니다** — 어느 계좌에 연결돼 있는지 API가 알려주지 않으므로
+(계좌번호를 돌려주는 필드가 없음), "동기화 결과를 어느 로컬 accountId에 쓸지"를
+로컬에서만 쓰는 값이다. `kbClient.ts`의 `getKbLinkedAccountId()`가 이 값을 읽고,
+`routes/kb.ts`의 두 동기화 라우트는 요청 본문에 `accountId`가 없으면 이 값으로
+자동 폴백한다(있으면 그쪽을 우선 — 다른 계좌로 한 번만 동기화하고 싶을 때의
+탈출구) — 그래서 프론트(Settings.tsx)는 동기화 버튼을 누를 때 accountId를 다시
+안 물어봐도 된다. 이미 "계좌 별칭"에 등록해둔 accountId와 같은 문자열을 쓰면 라벨이
 자동으로 연결된다. 동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
 완전히 동일하게 보인다(별도 프론트 분기 불필요).
 

@@ -162,15 +162,17 @@ export const api = {
 
   // KB증권 Open API는 appKey/appSecret 자체가 계좌 하나에 이미 묶여 있어(계좌
   // 목록 조회 API가 없음, backend/CLAUDE.md 참고) 다른 브로커처럼 별도 실시간
-  // 조회 화면 경로가 없다 — "지금 연결된 계좌"를 사용자가 지정한 accountId의
-  // 로컬 저장소(holdings-store/trades-store)로 동기화하는 액션만 제공한다.
-  syncKbHoldings: (accountId: string) =>
-    request<{ synced: number }>('/kb/sync-holdings', {
+  // 조회 화면 경로가 없다 — "지금 연결된 계좌"를 로컬 저장소(holdings-store/
+  // trades-store)로 동기화하는 액션만 제공한다. accountId는 보통 안 넘긴다 —
+  // Settings의 KB 자격증명 세 번째 필드(계좌번호)로 미리 등록해둔 값을 백엔드가
+  // 기본으로 쓴다(routes/kb.ts). 다른 계좌로 한 번만 동기화하고 싶을 때만 넘긴다.
+  syncKbHoldings: (accountId?: string) =>
+    request<{ synced: number; accountId: string }>('/kb/sync-holdings', {
       method: 'POST',
       body: JSON.stringify({ accountId }),
     }),
-  syncKbTrades: (accountId: string, from: string, to: string) =>
-    request<{ synced: number }>('/kb/sync-trades', {
+  syncKbTrades: (from: string, to: string, accountId?: string) =>
+    request<{ synced: number; accountId: string }>('/kb/sync-trades', {
       method: 'POST',
       body: JSON.stringify({ accountId, from, to }),
     }),

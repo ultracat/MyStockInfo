@@ -37,6 +37,15 @@ export function isKbConfigured(): boolean {
   return hasCredential('kb');
 }
 
+// accountId는 KB API로 보내는 값이 아니라(KB가 계좌번호를 요청 파라미터로 안
+// 받음) routes/kb.ts가 "동기화 결과를 어느 로컬 accountId에 쓸지" 정하는 데만
+// 쓰는 로컬 설정값이다 — credentialFields.ts에 세 번째 필드로 등록해뒀다.
+export function getKbLinkedAccountId(): string | null {
+  const creds = getCredentialFields('kb');
+  const accountId = creds?.accountId?.trim();
+  return accountId ? accountId : null;
+}
+
 interface StoredKbToken {
   accessToken: string;
   expiresAt: number;

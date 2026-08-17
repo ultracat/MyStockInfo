@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { fetchKbPortfolio, fetchKbTradeHistory, isKbConfigured } from '../brokers/kb/kbClient';
+import { fetchKbPortfolio, fetchKbTradeHistory, getKbLinkedAccountId, isKbConfigured } from '../brokers/kb/kbClient';
 import { replaceSnapshot } from '../db/holdingsStore';
 import { upsertTrades } from '../db/tradesStore';
 import { handleBrokerApiError } from '../brokers/errors';
@@ -13,22 +13,33 @@ export const kbRouter = Router();
 // "지금 연결된 계좌의 최신 스냅샷을 로컬 저장소(holdings.json/trades.json)에
 // 채워 넣는" 동기화 액션으로만 노출한다 — 그 로컬 저장소 위의 화면(보유종목/
 // 매매내역)은 이미 CSV 전용 브로커를 그대로 지원하므로 추가 프론트 분기가
-// 필요 없다. accountId는 API가 알려주지 않으므로(계좌번호를 안 돌려줌)
-// 사용자가 Settings에서 직접 지정한다 — 계좌 별칭에 이미 등록해둔 실제
-// accountId를 그대로 쓰면 보유종목/매매내역/배당금 화면과 자동으로 연결된다.
+// 필요 없다. accountId는 API가 알려주지 않으므로(계좌번호를 안 돌려줌) Settings의
+// KB 자격증명 세 번째 필드(credentialFields.ts)로 미리 등록해둔 값을 기본으로
+// 쓰고, 요청 본문에 accountId가 오면 그걸 우선한다(다른 계좌로 한 번만 동기화하고
+// 싶은 경우를 위한 탈출구).
+function resolveAccountId(body: unknown): { accountId: string } | { error: string } {
+  const bodyAccountId = (body as { accountId?: unknown })?.accountId;
+  if (typeof bodyAccountId === 'string' && bodyAccountId.trim()) {
+    return { accountId: bodyAccountId.trim() };
+  }
+  const configured = getKbLinkedAccountId();
+  if (configured) return { accountId: configured };
+  return {
+    error: 'accountId가 필요합니다 — 설정 화면의 KB증권 자격증명에 계좌번호를 입력하거나 요청에 accountId를 실어 보내주세요.',
+  };
+}
+
 kbRouter.post('/sync-holdings', async (req, res) => {
   if (!isKbConfigured()) {
     return res.status(409).json({ error: 'KB증권 API 키가 설정되지 않았습니다.' });
   }
-  const { accountId } = req.body as { accountId?: unknown };
-  if (typeof accountId !== 'string' || !accountId.trim()) {
-    return res.status(400).json({ error: 'accountId가 필요합니다.' });
-  }
+  const resolved = resolveAccountId(req.body);
+  if ('error' in resolved) return res.status(400).json({ error: resolved.error });
 
   try {
     const positions = await fetchKbPortfolio();
-    replaceSnapshot('kb', accountId.trim(), positions);
-    res.json({ synced: positions.length });
+    replaceSnapshot('kb', resolved.accountId, positions);
+    res.json({ synced: positions.length, accountId: resolved.accountId });
   } catch (err) {
     handleBrokerApiError(err, res);
   }
@@ -38,10 +49,10 @@ kbRouter.post('/sync-trades', async (req, res) => {
   if (!isKbConfigured()) {
     return res.status(409).json({ error: 'KB증권 API 키가 설정되지 않았습니다.' });
   }
-  const { accountId, from, to } = req.body as { accountId?: unknown; from?: unknown; to?: unknown };
-  if (typeof accountId !== 'string' || !accountId.trim()) {
-    return res.status(400).json({ error: 'accountId가 필요합니다.' });
-  }
+  const resolved = resolveAccountId(req.body);
+  if ('error' in resolved) return res.status(400).json({ error: resolved.error });
+
+  const { from, to } = req.body as { from?: unknown; to?: unknown };
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   if (typeof from !== 'string' || !DATE_RE.test(from) || typeof to !== 'string' || !DATE_RE.test(to)) {
     return res.status(400).json({ error: 'from/to(YYYY-MM-DD)가 필요합니다.' });
@@ -49,8 +60,8 @@ kbRouter.post('/sync-trades', async (req, res) => {
 
   try {
     const trades = await fetchKbTradeHistory(from, to);
-    upsertTrades('kb', accountId.trim(), trades);
-    res.json({ synced: trades.length });
+    upsertTrades('kb', resolved.accountId, trades);
+    res.json({ synced: trades.length, accountId: resolved.accountId });
   } catch (err) {
     handleBrokerApiError(err, res);
   }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu } from 'electron';
+import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
 import path from 'node:path';
 import { startServer } from '@mystock/backend';
 
@@ -47,6 +47,15 @@ function createWindow() {
     mainWindow.loadURL(FRONTEND_DEV_URL);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+
+  // 렌더러가 target="_blank"로 여는 링크(연결된 Google 스프레드시트 바로가기 등)를
+  // 앱 안 새 창이 아니라 시스템 브라우저로 연다.
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 }
 
 app.whenReady().then(() => {

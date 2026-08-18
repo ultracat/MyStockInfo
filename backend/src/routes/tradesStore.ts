@@ -1,5 +1,12 @@
 import { Router } from 'express';
-import { deleteTrade, listTrades, updateTradeNames, upsertFromImport, type ImportTradeInput } from '../db/tradesStore';
+import {
+  deleteTrade,
+  listTrades,
+  replaceAllTrades,
+  updateTradeNames,
+  upsertFromImport,
+  type ImportTradeInput,
+} from '../db/tradesStore';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
 import { resolveStockNames } from '../stockNameResolver';
@@ -94,17 +101,22 @@ function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { err
 // 쓴다(override, 연동이 전혀 없는 경우의 유일한 채움 경로). 보유종목/배당금 CSV와
 // 달리 이름 조회 실패를 행 실패로 처리하지 않는다 — 매매내역은 화면이 이미
 // 심볼로 폴백 표시하므로, 이름을 못 채워도 가져오기 자체를 막을 이유가 없다.
-tradesStoreRouter.post('/import', async (req, res) => {
-  const records = (req.body as { records?: unknown })?.records;
-  if (!Array.isArray(records) || records.length === 0) {
-    return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
-  }
-
+//
+// google/sheetsSync.ts도 Sheets에서 읽은 행을 이 함수에 그대로 넘겨 재사용한다
+// (검증/자동조회 로직을 두 곳에 중복시키지 않기 위해 라우트 핸들러에서 분리) —
+// options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 매매내역까지
+// 포함해 저장소 전체를 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
+// 동작인 id 기준 upsert/누적 — false).
+export async function importTradesRecords(
+  records: unknown[],
+  options?: { fullReplace?: boolean }
+): Promise<{ added: number; failed: { row: number; error: string }[] }> {
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
   const validRows = shapeResults.filter((r): r is { row: number; input: ImportTradeInput } => 'input' in r);
   const failed: Array<{ row: number; error: string }> = shapeResults
     .filter((r): r is { row: number; error: string } => 'error' in r)
     .map(({ row, error }) => ({ row, error }));
+  failed.sort((a, b) => a.row - b.row);
 
   const needsResolve = Array.from(new Set(validRows.filter((r) => !r.input.name).map((r) => r.input.symbol)));
   const namesBySymbol: Record<string, string> =
@@ -114,9 +126,27 @@ tradesStoreRouter.post('/import', async (req, res) => {
     name: r.input.name ?? namesBySymbol[r.input.symbol.toUpperCase()] ?? null,
   }));
 
+  if (options?.fullReplace) {
+    // 시트에 행이 있었는데 형태 검증에서 전부 실패했으면(예: 헤더가 깨짐) 기존
+    // 데이터를 지우지 않는다 — 시트가 진짜로 비어 있으면 records.length가 0이라
+    // 이 조건에 안 걸린다.
+    if (toInsert.length === 0 && records.length > 0) {
+      return { added: 0, failed };
+    }
+    const replaced = replaceAllTrades(toInsert);
+    return { added: replaced.length, failed };
+  }
+
   const inserted = upsertFromImport(toInsert);
-  failed.sort((a, b) => a.row - b.row);
-  res.json({ added: inserted.length, failed });
+  return { added: inserted.length, failed };
+}
+
+tradesStoreRouter.post('/import', async (req, res) => {
+  const records = (req.body as { records?: unknown })?.records;
+  if (!Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
+  }
+  res.json(await importTradesRecords(records));
 });
 
 tradesStoreRouter.delete('/:broker/:accountId/:id', (req, res) => {

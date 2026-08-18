@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { clearCredential, getCredentialFields, hasCredential, setCredentialFields } from '../credentials';
-import { getSettings, setEximbankAuthKey, setUsdKrwRate } from '../db/settings';
+import { getSettings, setUsdKrwRate } from '../db/settings';
 import { CREDENTIAL_FIELDS } from '../brokers/credentialFields';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
@@ -75,10 +75,6 @@ settingsRouter.delete('/credentials/:broker', (req, res) => {
   res.status(204).end();
 });
 
-// eximbankAuthKey도 여기 같이 담겨 나온다(getSettings()가 AppSettings 전체를
-// 돌려줌) — 별도 GET 라우트를 안 만들고 이 응답 하나로 환율 설정 카드 전체를
-// 채운다. 계좌 접근 권한이 없는 공개 환율 조회 전용 키라 KIS appKey 같은
-// non-secret 필드와 같은 수준으로 그냥 보여준다(값을 가리지 않음).
 settingsRouter.get('/fx-rate', (_req, res) => {
   res.json(getSettings());
 });
@@ -89,15 +85,4 @@ settingsRouter.post('/fx-rate', (req, res) => {
     return res.status(400).json({ error: 'usdKrwRate는 양수 또는 null이어야 합니다.' });
   }
   res.json(setUsdKrwRate(usdKrwRate));
-});
-
-// 한국수출입은행 환율 API 인증키 — 토스 환율 조회가 실패했을 때의 대체 소스
-// (exchangeRateResolver.ts). 무료 발급, 계좌/거래 권한 없는 공개 데이터 조회
-// 전용 키라 브로커 자격증명과 달리 암호화 저장 안 함(db/settings.ts 주석 참고).
-settingsRouter.post('/eximbank-key', (req, res) => {
-  const { authKey } = req.body ?? {};
-  if (authKey !== null && (typeof authKey !== 'string' || !authKey.trim())) {
-    return res.status(400).json({ error: 'authKey는 문자열 또는 null이어야 합니다.' });
-  }
-  res.json(setEximbankAuthKey(authKey === null ? null : authKey.trim()));
 });

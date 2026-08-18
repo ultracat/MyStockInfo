@@ -127,12 +127,23 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   로컬 저장소 계좌는 `accountType`이 없어서, 예전엔 여기서 무조건 괄호를 붙이다가
   "123-45-678901 (undefined)"가 그대로 찍히는 버그가 있었다). Dashboard.tsx/Trades.tsx/
   Dividends.tsx가 전부 여기서 가져다 쓴다.
+- `src/kbSync.ts` — `getKbLinkStatus()`: `api.getCredentialStatus()`(KB 자격증명
+  저장 여부) + `api.getCredentialInfo()`(KB `accountId` 필드, `kind:'account'`로
+  이미 노출됨)를 합쳐 `{configured, linkedAccountId}`를 돌려준다. KB Open API는
+  appKey/appSecret이 계좌 하나에 고정 바인딩돼(backend/CLAUDE.md의 "KB증권 Open
+  API" 참고) `BrokerAdapter`로 등록할 수 없으므로, Dashboard.tsx/Trades.tsx가 각자
+  마운트 시 이걸 불러 "KB가 API로 연동돼 있는지, 어느 계좌인지"를 알아내고, 그
+  계좌가 화면에 보일 때 `api.syncKbHoldings`/`syncKbTrades`를 백그라운드로 호출해
+  로컬 저장소를 최신화한다(**Settings.tsx엔 더 이상 수동 동기화 버튼이 없다** —
+  아래 "CSV 전용 브로커 분기" 절 참고). Toss/KIS처럼 60초 폴링은 하지 않는다(KB
+  rate limit이 공식 문서에 없어 보수적으로 잡아둔 상태라, 화면 진입 시 한 번 +
+  수동 새로고침 버튼으로 충분하다고 판단).
 - `src/pages/Settings.tsx` — 브로커별 자격증명 폼. **하드코딩이 아니라 백엔드의
   `GET /api/settings/credential-fields`를 읽어 동적 렌더링** — 새 브로커/필드는
   백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨. "API 키 등록" 폼의 브로커
   선택지는 `API_BROKER_IDS`가 아니라 **자격증명 필드가 실제로 있는 브로커**
   (`fieldSpecs[id]?.length > 0`)로 고른다 — KB증권처럼 CSV 전용이면서 자격증명은
-  받는 브로커(아래 "KB증권 실시간 동기화" 참고)가 생기면서 `API_BROKER_IDS`만으로는
+  받는 브로커(아래 `kbSync.ts` 절 참고)가 생기면서 `API_BROKER_IDS`만으로는
   "이 브로커가 자격증명 폼이 필요한가"를 못 가려서 갈라놨다. "증권사 연동 상태" 표도
   같은 기준(`fieldSpecs`)으로 "CSV 전용" vs 상태 표시를 가르고, `API_BROKER_IDS`에
   없는데 자격증명은 있는 브로커(KB)는 상태 뒤에 "(CSV 전용 + 동기화 가능)"을 덧붙인다.
@@ -149,24 +160,23 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   accountId와 `listHoldingsStore`/`listTradesStore`/`listDividends`에 실제로 나온
   accountId 전체의 합집합이라, 데이터가 없어도 "새 계좌 등록" 폼으로 라벨만 미리
   등록해둘 수 있고(사용자가 실제로 이렇게 씀 — 계좌부터 이름 붙이고 나중에 CSV로
-  채움), 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다. "KB증권 실시간
-  동기화" 카드는 `status?.kb`(자격증명 저장됨)일 때만 나타난다 — KB Open API가
-  계좌 하나에만 고정 바인딩돼(backend/CLAUDE.md의 "KB증권 Open API" 참고) 여러 계좌
-  중 어디에 연결됐는지 API가 알려주지 않으므로, 그 계좌의 실제 accountId는 "API 키
-  등록" 폼의 세 번째 필드(계좌번호)로 미리 등록해둔다(위 "계좌 별칭"에 이미
-  등록해둔 값과 같은 문자열을 쓰면 라벨이 자동으로 연결됨) — 동기화 카드 자체는
-  accountId를 다시 묻지 않고 그 값을 백엔드가 알아서 쓴다. `api.syncKbHoldings()`/
-  `api.syncKbTrades(from, to)`(매매내역은 항상 올해 1/1~오늘로 고정, 기간 선택 UI
-  없음 — 필요해지면 나중에 추가, accountId 인자는 선택적이고 보통 안 넘김)가
-  `POST /api/kb/sync-holdings`/`POST /api/kb/sync-trades`를 호출해 로컬 저장소를
-  채우고, 그 결과(`{synced: n, accountId}`)를 그대로 보여준다 — 동기화 후에는
-  보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
-  완전히 동일하게 보인다(별도 프론트 분기 없음).
-  "USD/KRW 환율" 카드에 한국수출입은행 Open API 인증키 입력칸이 있다
-  (`eximbankKey` 상태, `api.setEximbankKey`/`POST /settings/eximbank-key`) — 토스
-  환율 조회가 실패했을 때의 대체 소스(backend/CLAUDE.md의 "환율 조회" 절 참고).
-  이 값도 `api.getFxRate()`가 `usdKrwRate`와 함께 평문으로 돌려준다(브로커
-  자격증명처럼 암호화 안 함 — 계좌 접근 권한 없는 공개 데이터 조회 키라서).
+  채움), 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다. **KB증권 실시간
+  동기화는 이 화면에 없다** — "API 키 등록" 폼에서 appKey/appSecret/계좌번호를
+  저장하기만 하면, 실제 동기화는 Dashboard.tsx/Trades.tsx에서 그 계좌를 선택할 때
+  자동으로 일어난다(아래 `kbSync.ts` 절 참고, 예전엔 여기 별도 카드에 수동
+  버튼이 있었지만 "화면 들어가면 알아서 최신화"가 더 낫다는 피드백으로 없앴다).
+  "USD/KRW 환율" 카드는 이제 수동 환율(`1 USD = ? KRW`) 입력만 있다 — 한국수출입은행
+  Open API 인증키는 더 이상 여기서 입력받지 않는다(Google Client ID/Secret과 같은
+  이유로 앱 빌드에 미리 박아 넣는 방식으로 바뀜, `backend/CLAUDE.md`의 "환율 조회"
+  절 참고).
+  "Google Sheets 연동" 카드는 Client ID/Secret 입력칸이 없다(백엔드
+  `google/clientConfig.ts`에 미리 박혀 있음, `backend/CLAUDE.md`의 "Google Sheets
+  연동" 절 참고) — `api.getGoogleStatus()`로 연결 상태(`connectStatus`: `idle`/
+  `waiting`/`connected`/`error`)를 1.5초 간격 재귀 `setTimeout`으로 폴링하다가
+  `waiting`이 아니게 되면 멈춘다. "Google 계정 연결" 클릭 시 `api.connectGoogle()`이
+  시스템 브라우저를 열게 만들고(백엔드가 즉시 응답, 실제 로그인은 그 브라우저에서),
+  연결되면 이메일과 스프레드시트 링크(`target="_blank"`, electron/CLAUDE.md의
+  `setWindowOpenHandler`로 시스템 브라우저로 열림)를 보여준다.
 
 ## 공용 패턴 (여러 페이지가 공유)
 
@@ -215,6 +225,28 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   Trades.tsx에서 한 번 발생해서 고침 — Dashboard.tsx는 원래도 이 reset이 있어서
   안 겪었음). CSV 가져오기가 성공하면 지금 보고 있는 브로커가 CSV 전용일 때 계좌
   목록/데이터를 재조회해서 브로커 재선택 없이 바로 반영한다.
+- **KB증권 백그라운드 동기화**(Dashboard.tsx/Trades.tsx, `kbSync.ts` 참고): KB는
+  CSV 전용 분기를 그대로 타면서(로컬 저장소를 즉시 렌더) 그 위에 한 겹 더 얹는다 —
+  로컬 계좌 목록에 `kbLink.linkedAccountId`가 없으면 합쳐 넣는 별도 effect(이미
+  선택된 accountId는 안 건드림, "최초 상태라 로컬에 아무 것도 없어서 그 계좌를
+  선택할 방법이 없는" 문제를 막기 위함), 그 계좌가 화면에 보이면(개별 KB 계좌
+  모드, 또는 "전체 계좌"/Trades.tsx의 "전체" 모드) `void triggerKbSync()`를 부르는
+  독립 effect(`monthlyCloseRequestId`와 같은 useRef 요청 카운터로 stale 응답 무시).
+  `triggerKbSync`는 `api.syncKbHoldings`/`syncKbTrades` 성공 시 로컬 저장소를 다시
+  읽어 화면을 조용히 갱신하고, 실패해도 이미 떠 있는 로컬 데이터는 그대로 두고
+  알림만 띄운다(전체 화면 로딩 스피너와 분리된 `kbSyncing`/`kbSyncNotice` state).
+  `isKbSyncable`이면 수동 "새로고침" 버튼도 같이 뜬다(Toss/KIS의 자동 60초 폴링은
+  KB엔 없음 — kbSync.ts 절 참고).
+- **Google Sheets 내보내기/가져오기**(Dashboard.tsx/Trades.tsx/Dividends.tsx, 각 화면
+  헤더의 CSV 버튼 옆): `api.exportToGoogleSheet(dataType)`/`importFromGoogleSheet(dataType)`
+  (`dataType`: `'holdings'|'trades'|'dividends'`)를 그대로 부르기만 하면 되고,
+  대상 선택 UI가 없다 — CSV와 같은 범위(전체 브로커/계좌)를 그대로 시트 탭
+  하나에 매핑한다. **CSV 가져오기와 의미가 다르다** — CSV는 부분 병합/업서트/
+  추가(페이지별로 다름, 위 참고)지만 Google Sheets 가져오기는 로컬 저장소 전체를
+  시트 내용으로 **완전 교체**한다(`backend/CLAUDE.md`의 "Google Sheets 연동" 절
+  참고, 사용자가 명시적으로 요청한 동작). 연결 안 돼 있으면(`api.getGoogleStatus()`의
+  `connected`가 `false`) 버튼이 비활성화되고 "설정에서 Google 계정을 먼저
+  연결해주세요" 툴팁을 보여준다 — 각 페이지가 마운트 시 한 번 상태를 읽어둔다.
 
 ## 페이지
 
@@ -334,10 +366,9 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   브로커(`API_BROKER_IDS`)는 `listAccounts`→`getPortfolio`로, **CSV 전용 브로커는
   라이브 API가 없어 그 대신 `api.listHoldingsStore({broker})`로 로컬 저장소(CSV로
   가져온 실제 보유종목)를 읽어 `purchaseAmount`를 통화별로 합산한다**(Dashboard.tsx의
-  `buildPortfolioFromStored`와 같은 집계 방식) — 한 번은 이 분기를 통째로 빼먹고 CSV
-  전용 브로커를 조회 자체에서 걸러버려서 투자금이 항상 "-"로만 뜨는 버그가 있었다
-  (라이브 API 소스가 없다는 것과 "그래서 투자금을 아예 안 보여준다"는 건 다른
-  얘기 — 로컬에 진짜 데이터가 있으면 그걸 보여줘야 함). 연도 필터(`year`)는 서버에
+  `buildPortfolioFromStored`와 같은 집계 방식 — "라이브 API가 없다"와 "그래서 투자금을
+  안 보여줘도 된다"는 다른 얘기이므로, 이 분기를 빼먹으면 CSV 전용 브로커의 투자금이
+  로컬에 진짜 데이터가 있어도 항상 "-"로 뜬다). 연도 필터(`year`)는 서버에
   다시 안 묻고 클라이언트에서 걸러 월별/증권사별 집계·목록까지 전부 다시 계산한다.
   그래프 전용 증권사 필터
   (`chartBroker`)와 목록 전용 필터(`listBroker`)는 완전히 독립된 state — 후자가
@@ -395,15 +426,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `StoredTrade`도 `HoldingPosition`의 `memo`처럼 `name` 필드를 갖고, 백엔드가
   실시간 조회/KB 동기화/CSV 가져오기 세 경로 전부에서 토스→KIS→KB 순으로 자동
   조회해 채운다(backend/CLAUDE.md의 "매매내역 종목명" 절 참고) — 프론트는 그냥
-  받은 값을 표시만 하면 된다. `mapStoredTrade`(개별 CSV 전용 브로커 모드)가
-  예전엔 `name: null`을 하드코딩했었는데 지금은 `t.name`을 그대로 넘긴다.
-  **`displayTrades`의 "전체" 모드 분기에도 똑같은 하드코딩이 하나 더 있었다** —
-  `mapStoredTrade`만 고치고 이건 놓쳤다가, "KB/KIS 매매내역에 종목명이 안 보인다"는
-  버그 리포트로 뒤늦게 발견해서 `{ ...t, name: null }`를 지우고 `StoredTrade`를
-  그대로 `DisplayTrade`로 썼다(두 타입이 필드 구성이 완전히 같아서 캐스팅만 하면
-  됨) — 같은 필드를 두 곳에서 따로 하드코딩해뒀던 게 원인이라, 비슷한 필드를 여러
-  분기에서 다루는 코드는 값이 실제로 갱신되는지 각 분기를 다 확인해야 한다는
-  교훈.
+  받은 값을 표시만 하면 된다. 개별 모드(`mapStoredTrade`)와 "전체" 모드
+  (`displayTrades`) 둘 다 `t.name`을 그대로 넘겨야 한다 — 한쪽만 고치고 다른
+  쪽을 놓치면 그쪽 화면에서만 이름이 안 보이는 식으로 조용히 어긋나기 쉬우니,
+  이 필드를 만질 땐 두 분기 다 확인할 것.
 
   **CSV 내보내기**는 Dashboard.tsx와 같은 이유로 `GET /api/trades-store` 전체를
   대상으로 하고, **가져오기**도 대상 선택 없이 CSV 행 자체의 `broker`/`accountId`를
@@ -418,32 +444,25 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   자동조회), 인라인 수정 행도 종목코드 입력 바로 아래에 같은 칸을 하나 더
   둔다(별도 테이블 컬럼을 안 늘리려고 한 `<td>` 안에 세로로 쌓음).
 
-  **"종목명 일괄 갱신" 버튼**(`onRefreshNames`, `POST /trades-store/refresh-names`) —
-  Dividends.tsx의 "종목명 일괄 갱신"과 같은 자리(헤더 버튼 그룹)에 있는 같은 패턴
-  버튼. `name`이 생기기 전에 저장된 행이나 그때는 API 연동이 없어서 못 채웠던
-  로컬 저장소 행을 나중에 한 번에 채워 넣는 용도(backend/CLAUDE.md의 "매매내역
-  종목명" 절 참고) — CSV 다시 가져오기나 KB 재동기화 없이도 기존 행을 고칠 수
-  있다. 성공하면 `refreshAllTrades()`로 "전체" 모드 데이터를 다시 받고, 지금 보고
-  있는 화면이 CSV 전용 브로커의 개별 계좌 모드면 그 목록도 같이 다시 읽는다(API
-  브로커 개별 모드는 다음 실시간 조회 때 이미 자동으로 채워지므로 손댈 게 없음).
+  **"종목명 일괄 갱신" 버튼**(`onRefreshNames`) — `POST /trades-store/refresh-names`
+  호출(backend/CLAUDE.md의 "매매내역 종목명" 절 참고), Dividends.tsx와 같은 자리·같은
+  패턴. 성공하면 `refreshAllTrades()`로 "전체" 모드를 갱신하고, 지금 보고 있는
+  화면이 CSV 전용 브로커의 개별 계좌 모드면 그 목록도 같이 다시 읽는다.
 
-  **수수료/세금은 표에 전용 컬럼이 있고 인라인 수정으로 고칠 수 있다** — 상태
-  (`editDraft.commission`/`tax`)는 원래부터 있었는데(저장 시 그대로 넘김) 입력
-  UI가 없어서 사실상 못 고쳤던 걸, 단가 컬럼 뒤에 "수수료"/"세금" `<input>` 두 칸을
-  새로 추가해 실제로 편집 가능하게 했다. **표시되는 "체결금액"은 항상 저장된
-  `amount`(수량*단가) + `commission` + `tax`**(`netTradeAmount(amount, commission,
-  tax)`, 매수/매도 구분 없이 항상 더함 — 처음엔 매수는 더하고 매도는 뺐었는데
-  "더해서 표시" 피드백을 받고 단순 합산으로 바꿨다)다. 저장된 `amount` 자체는
-  건드리지 않고 화면에 보여줄 때만 더한다 — 그래서 표의 "체결금액" 열, 매매내역
-  추가 폼의 "체결금액 (자동계산)" 미리보기, 인라인 수정 행의 계산값 셋 다 같은
-  `netTradeAmount` 함수를 재사용해서 항상 같은 공식을 쓴다. 표 셀엔 `title`
-  툴팁으로 원본 체결금액 + 수수료 + 세금 내역을 풀어서 보여준다. **KIS는
-  `commission`/`tax`를 항상 `null`로 내려줘서**(`kisAdapter.ts`의 `mapTrade`,
-  backend가 이 TR에서 해당 필드를 아직 안 채움) 표시 금액이 사실상 원본과 같다 —
-  실제 차이는 토스/KB증권/CSV·수동 입력 행에서만 보인다. **차트(`chartRows`)와
-  상단 스탯 타일(`totals`)은 여전히 원본 `amount` 합계를 쓴다** — 이 요청은
-  "표에 보이는 체결금액"만 지정했고, 집계 숫자까지 바꾸면 기존에 보던 총
-  매수/매도금액 숫자가 달라지는 더 큰 범위의 변경이 돼서 범위를 좁혔다.
+  **수수료/세금은 표에 전용 컬럼이 있고 인라인 수정으로 고칠 수 있다**
+  (`editDraft.commission`/`tax`, 단가 컬럼 뒤 `<input>` 두 칸). **표시되는
+  "체결금액"은 항상 저장된 `amount`(수량*단가) + `commission` + `tax`**
+  (`netTradeAmount(amount, commission, tax)`, 매수/매도 구분 없이 항상 더함)다.
+  저장된 `amount` 자체는 건드리지 않고 화면에 보여줄 때만 더한다 — 표의
+  "체결금액" 열, 매매내역 추가 폼의 "체결금액 (자동계산)" 미리보기, 인라인 수정
+  행의 계산값 셋 다 같은 `netTradeAmount` 함수를 재사용해서 항상 같은 공식을
+  쓴다. 표 셀엔 `title` 툴팁으로 원본 체결금액 + 수수료 + 세금 내역을 풀어서
+  보여준다. **KIS는 `commission`/`tax`를 항상 `null`로 내려줘서**(`kisAdapter.ts`의
+  `mapTrade`, backend가 이 TR에서 해당 필드를 아직 안 채움) 표시 금액이 사실상
+  원본과 같다 — 실제 차이는 토스/KB증권/CSV·수동 입력 행에서만 보인다.
+  **차트(`chartRows`)와 상단 스탯 타일(`totals`)은 여전히 원본 `amount` 합계를
+  쓴다** — 표시용 체결금액과 집계용 금액을 일부러 다르게 둔 것이므로 통일하려고
+  건드리지 말 것.
 
   **"매매내역 추가"/인라인 수정 둘 다 체결금액을 직접 입력받지 않는다** —
   `computeAmount(quantity, price)`(수량*단가, 숫자가 아니면 0)로 원본 금액을 계산하고,

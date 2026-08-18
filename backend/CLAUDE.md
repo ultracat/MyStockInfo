@@ -79,7 +79,7 @@ import(아래)가 이 broker id를 받아들인다. 계좌 목록 개념도 라�
 저장소에 실제로 CSV로 넣어둔 `accountId`들을 모아 대신한다(프론트
 `API_BROKER_IDS.includes(broker)`로 분기, `frontend/CLAUDE.md` 참고). **KB증권은 CSV
 전용 브로커와 같은 취급을 받으면서(로컬 저장소·계좌 여러 개·CSV import 전부 그대로)
-Open API로 그 로컬 저장소를 채우는 동기화 버튼만 추가로 있다** — 아래 "KB증권 Open
+Open API로 그 로컬 저장소를 채우는 자동 동기화가 추가로 있다** — 아래 "KB증권 Open
 API" 절 참고.
 
 ### KB증권 Open API (`kb/kbClient.ts`, `routes/kb.ts`)
@@ -108,10 +108,14 @@ KB에 실제로 보내는 값이 아니다** — 어느 계좌에 연결돼 있�
 로컬에서만 쓰는 값이다. `kbClient.ts`의 `getKbLinkedAccountId()`가 이 값을 읽고,
 `routes/kb.ts`의 두 동기화 라우트는 요청 본문에 `accountId`가 없으면 이 값으로
 자동 폴백한다(있으면 그쪽을 우선 — 다른 계좌로 한 번만 동기화하고 싶을 때의
-탈출구) — 그래서 프론트(Settings.tsx)는 동기화 버튼을 누를 때 accountId를 다시
-안 물어봐도 된다. 이미 "계좌 별칭"에 등록해둔 accountId와 같은 문자열을 쓰면 라벨이
-자동으로 연결된다. 동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와
-완전히 동일하게 보인다(별도 프론트 분기 불필요).
+탈출구) — 그래서 프론트가 동기화를 호출할 때 accountId를 다시 안 물어봐도 된다.
+이미 "계좌 별칭"에 등록해둔 accountId와 같은 문자열을 쓰면 라벨이 자동으로
+연결된다. **이 두 라우트는 Settings.tsx가 아니라 Dashboard.tsx/Trades.tsx가
+호출한다** — 그 계좌가 화면에 보이는 시점에 자동으로(+수동 새로고침 버튼) 백그라운드
+동기화가 일어나는 방식으로 바뀌었다(`frontend/CLAUDE.md`의 `kbSync.ts` 절 참고,
+예전엔 Settings.tsx에 "KB증권 실시간 동기화" 카드가 따로 있었지만 없앴다). 동기화
+후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와 완전히 동일하게 보인다
+(별도 프론트 분기 불필요).
 
 **인증**: `POST /oauth2/token`, OAuth2 client_credentials, 요청/응답 전부
 `{dataHeader:{ipAddr,macAddr}, dataBody:{...}}` 포맷으로 감싼다(공식 example
@@ -165,10 +169,9 @@ limit 수치가 공식 문서에 없어 KIS(4tps)보다 보수적인 2tps로 시
 `upsertFromImport`로 별도 경로를 쓴다 — 보유종목은 실시간 동기화와 마찬가지로 CSV에
 등장한 (broker,accountId)를 통째로 덮어쓰고(같은 CSV를 다시 가져와도 안 쌓임), 매매내역은
 누적 히스토리라 `id` 기준 upsert로 남긴다.
-**KB증권**은 이 write-through를 화면 조회 시점이 아니라 `routes/kb.ts`의 동기화
-버튼 클릭 시점에 한다는 점만 다르고(계좌 하나짜리 API라 화면마다 자동 조회할 대상이
-불명확 — "KB증권 Open API" 절 참고), 쓰는 함수(`replaceSnapshot`/`upsertTrades`)는
-동일하다.
+**KB증권**은 이 write-through를 `routes/kb.ts`의 동기화 라우트가 호출될 때 한다는
+점만 다르고(프론트가 보유종목/매매내역 화면 진입 시 자동으로 이 라우트를 호출한다
+— "KB증권 Open API" 절 참고), 쓰는 함수(`replaceSnapshot`/`upsertTrades`)는 동일하다.
 
 `GET /api/holdings-store`, `GET /api/trades-store`(둘 다 `?broker=&accountId=` 필터)로
 저장된 걸 조회한다 — CSV 전체 내보내기와 CSV 전용 브로커(실시간 조회가 안 되는)의 데이터
@@ -323,13 +326,27 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
 없으면 "토스 실패 시 몇 초 안에 대체"라는 이 기능의 목적 자체가 무한 대기로
 무너질 수 있다(최악의 경우도 총 대기 30초 안쪽으로 묶임).
 
-**인증키 저장**(`db/settings.ts`의 `eximbankAuthKey`, `POST /api/settings/eximbank-key`)은
-브로커 자격증명(`credentials.ts`)의 `safeStorage` 암호화 경로를 안 쓰고 기존
-`usdKrwRate`와 같은 평문 `settings.json`에 둔다 — 계좌 접근·거래 권한이 전혀 없는
-공개 일별 환율 조회 전용 키라 유출돼도 실질적 피해가 없는 수준이라고 판단했고,
-`credentials.ts`는 `BrokerId`로 타입이 고정돼 있어 브로커가 아닌 이 키를 넣으려면
-그 파일의 타입을 넓혀야 해서(다른 브로커 자격증명 코드 경로에 영향 줄 위험) 굳이
-그러지 않았다.
+**인증키는 사용자 입력이 아니라 앱 빌드에 미리 박아 넣는다**(`fx/eximbankConfig.ts`,
+`EXIMBANK_AUTH_KEY` 상수) — Google Client ID/Secret과 같은 이유·같은 패턴이다
+(`google/clientConfig.ts` 절 참고). `.gitignore`에 등록돼 커밋되지 않고,
+`eximbankConfig.example.ts`가 템플릿이다. 예전엔 Settings 화면에서 사용자가 직접
+입력해 평문 `settings.json`에 저장했지만(`db/settings.ts`의 `eximbankAuthKey`,
+`POST /api/settings/eximbank-key` — 둘 다 이제 없음), 일반 사용자가 이 키의 존재
+자체를 몰라도 되게 바꿨다.
+
+**응답을 날짜별로 영구 캐시한다**(`fx/eximbankCache.ts`, `eximbank-cache.json`) —
+이 인증키가 앱에 공유로 박힌 개인 발급 키라, 테스트 배포 후 여러 사용자가 반복
+조회하면 요청량이 예상보다 커질 수 있어서 만들었다. `fetchEximbankRateForDate`가
+실제 네트워크 호출 경계에서 캐시를 확인/기록한다 — **지난 날짜**는 환율이든
+"그날 데이터 없음"(주말/공휴일)이든 한 번 확인하면 영구 캐시(디스크, 앱 재시작
+후에도 유지)하고 다시는 API를 안 부른다. **오늘 날짜**는 값이 아직 없으면(매매기준율
+고시 전, 보통 11시 이전) 캐시하지 않고 다음 호출 때 다시 확인하며, 값이 생기면
+그때부터 캐시한다. 네트워크/타임아웃/응답 형식 오류는 일시적 문제일 수 있어 아예
+캐시하지 않는다(다음 호출에 재시도) — 이 구분이 없으면 일시적 네트워크 오류를
+"그날 데이터 없음"으로 영구 캐시해버려 실제로 있는 데이터를 계속 숨기게 된다.
+이 캐시 하나로 "오늘 환율" 조회(`fetchEximbankUsdKrwRate`, 예전엔 캐시가 전혀
+없어서 호출마다 최대 6번 API를 쳤음)와 "월평균 환율" 조회(아래, 기존 메모리
+캐시는 앱 재시작하면 초기화됐음) 둘 다 자동으로 혜택을 받는다.
 
 ## 월별 종가 조회 (`brokers/toss/tossClient.ts`의 `fetchTossMonthlyClosePrices`)
 
@@ -405,6 +422,84 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
   명확한 날짜가 있지만, 매입원가는 매수 시점이 여러 번일 수 있고 지금 이
   순간의 스냅샷이 의미 있는 값이다). `Dividends.tsx`의 "투자금"/`총 매입금액`
   계열은 그대로 `effectiveFxRate`를 쓴다.
+
+## Google Sheets 연동 (`src/google/`, `src/routes/google.ts`)
+
+CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트에 "MyStock"
+스프레드시트를 하나 두고, Holdings/Trades/Dividends 세 탭에 보유종목/매매내역/
+배당금을 내보내거나 가져온다. googleapis 같은 SDK 없이 순수 `fetch`로 REST를
+직접 호출한다(Toss/KIS 클라이언트와 같은 이 프로젝트 관례).
+
+- **`clientConfig.ts`**(gitignored, `.example.ts`가 템플릿) — `GOOGLE_CLIENT_ID`/
+  `GOOGLE_CLIENT_SECRET`을 앱 빌드에 미리 박아 넣는다. **일반 사용자는 이 값을
+  입력하는 UI가 아예 없다** — Settings.tsx엔 "Google 계정 연결" 버튼만 있다
+  (`frontend/CLAUDE.md` 참고). Google이 "데스크톱 앱" 유형 OAuth 클라이언트를
+  애초에 "완전한 기밀은 아님, PKCE로 실제 보안을 건다"는 전제로 설계해서(그래서
+  이 유형은 secret이 코드에 노출돼도 공식적으로 허용됨) 가능한 방식 — 나중에
+  자체 서버에서 로그인시키는 방식으로 바꿀 계획이 있어 그 전까지의 과도기 설계다.
+- **`oauth.ts`** — 루프백 리디렉션 + PKCE(`crypto`로 code_verifier/code_challenge
+  생성, SDK 불필요). `startConnectFlow()`가 임시 로컬 서버를 임의 포트(`listen(0)`)에
+  띄우고 `shell.openExternal`로 시스템 브라우저를 연다(Electron 밖 dev 실행이면
+  콘솔에 URL만 출력). 진행 상태(`idle`/`waiting`/`connected`/`error`)는 모듈
+  전역 변수로 관리 — 프론트가 `GET /status`를 폴링해서 확인한다(별도 push
+  메커니즘 불필요, 이 앱 전체가 폴링 기반). `getValidAccessToken()`이 만료
+  임박이면 refresh_token으로 자동 갱신 — Sheets API 호출 전에 항상 이걸 거친다.
+  **범위는 `spreadsheets` + `drive.readonly` + `userinfo.email` 세 개다** —
+  `drive.readonly`는 오직 `sheetsApi.findSpreadsheetByName()`(아래)에서 이름으로
+  기존 "MyStock" 파일을 찾는 용도로만 쓴다, 업로드/삭제/공유 등 그 외 Drive
+  조작은 안 함(Google이 "restricted"로 분류하는 `drive`/`drive.file`보다 검증
+  부담이 가벼운 "sensitive" 등급 유지). **이 범위는 중간에 추가돼서 그 전에 이미
+  연결한 사용자의 refresh_token엔 없다** — "연결 해제" 후 재연결(재동의)해야
+  Drive 검색이 실제로 동작한다, 안 그러면 `findSpreadsheetByName`이 403을 조용히
+  삼키고 `null`을 반환해 기존 동작(새 파일 생성)으로 자연스럽게 넘어간다.
+- **`sheetsApi.ts`** — `createSpreadsheet`/`spreadsheetExists`/`ensureTab`/
+  `writeValues`/`readValues`/`findSpreadsheetByName`. 스프레드시트 생성·읽기·쓰기는
+  전부 Sheets API만으로 되고(`spreadsheets.create`가 파일을 Drive 루트에 직접
+  만들어줌), **`findSpreadsheetByName`만 예외적으로 Drive API v3
+  (`files.list`, `name = '...' and mimeType = '...spreadsheet' and trashed = false`)를
+  직접 호출한다** — Sheets API엔 "이름으로 검색" 기능이 없어서 불가피함, 조회
+  전용이라 `drive.readonly` 범위로 충분하다. `writeValues`는 범위를 탭 이름만으로
+  줘서(Sheets API가 이걸 "그 탭 전체"로 해석) 쓰기 전에 항상 전체를 지운다(clear)
+  — 이전 내보내기보다 행이 줄었을 때 마지막 행들이 stale하게 안 남게.
+- **`sheetsSync.ts`** — `ensureSpreadsheet()`가 먼저 로컬에 캐시해둔
+  `spreadsheetId`를 재사용하고(`spreadsheetExists()`로 확인), 없거나 404면
+  `sheetsApi.findSpreadsheetByName('MyStock')`으로 Drive에서 같은 이름의 기존
+  파일을 찾아 재사용을 시도한 뒤, 그마저 없으면(진짜 최초 연결, 또는
+  `drive.readonly` 동의가 없는 옛 토큰) 새로 만든다. 이 순서(캐시 → 이름 검색 →
+  생성)를 둔 이유는 **`store.ts`의 `clearAccount()`(연결 해제 버튼)가 옛날엔
+  `spreadsheetId`/`spreadsheetUrl`까지 지워서** 재연결할 때마다 "MyStock" 파일이
+  중복 생성된 실제 사례가 있었기 때문 — 지금은 `clearAccount()`가 그 두 필드를
+  보존해 1차로 캐시 재사용이 되지만, 캐시가 어떤 이유로든 유실되는 경우(수동으로
+  데이터 폴더를 지웠다거나)에도 이름 검색이 2차 안전망으로 중복 생성을 막는다.
+  여러 개 찾으면 가장 최근에 수정된 파일을 쓴다(사용자가 최근 편집 중이던 파일일
+  가능성이 가장 높음). 다른 계정으로 연결하면 그 계정엔 저장된 spreadsheetId
+  접근 권한이 없어 `spreadsheetExists()`가 자연히 404를 반환하고, 그 계정
+  소유의 "MyStock" 파일이 따로 있다면 이름 검색으로 찾아 재사용하며 없으면 그
+  계정용으로 새로 만든다. `exportDataType`은 로컬 저장소 전체를 헤더+행으로
+  바꿔 그 탭에 덮어쓴다(`HOLDINGS_SHEET_HEADER` 등 `sheetSchemas.ts` — 프론트
+  `HOLDINGS_CSV_HEADER`와 컬럼 이름/순서를 동일하게 맞춰야 한다, 워크스페이스가
+  갈려 있어 상수 공유는 못 함). **`importDataType`은 CSV 가져오기와 다르게
+  "전체 교체"다** — 시트에서 읽은 데이터로 로컬 저장소 전체를 대체하고, 시트에
+  없는 기존 로컬 데이터(다른 계좌/기록 포함)는 지운다. `routes/holdingsStore.ts`/
+  `tradesStore.ts`/`dividends.ts`의 `importXxxRecords(records, {fullReplace})`가
+  이 옵션을 받아 `db/*.ts`의 `replaceAllHoldings`/`replaceAllTrades`/
+  `replaceAllDividends`(전체 교체, CSV의 부분 병합/업서트/추가와는 다른 함수)로
+  분기한다 — CSV 가져오기 쪽(`fullReplace` 생략, 기본 `false`)은 기존 동작 그대로다.
+  **안전장치**: 시트에 행이 있었는데 검증에서 전부 실패했으면(예: 이름 조회 전부
+  실패) 기존 로컬 데이터를 지우지 않는다(`toUpsert.length===0 && records.length>0`
+  가드) — 일시적 조회 실패를 "전부 지워라"로 오인하면 안 되므로. 시트가 완전히
+  비어 있으면(`records.length===0`, 아직 한 번도 내보낸 적 없는 새 스프레드시트 등)
+  아예 가져오기 자체를 건너뛴다. **토스 accountId 표시 변환**: 토스만
+  내부 accountId가 Toss Open API가 요구하는 `accountSeq`(예: `"1"`)라 사람이
+  못 알아본다(KIS/KB/삼성은 accountId 자체가 이미 실제 계좌번호). Local DB는
+  건드리지 않고(바꾸면 다음 라이브 동기화가 깨짐 — `accountSeq`가 Toss API
+  호출에 그대로 필요), 시트로 내보낼 때만 `buildTossAccountNumberMap()`으로
+  `accountNo`(실제 계좌번호)로 바꿔 보여주고, 가져올 때 역맵으로 다시
+  `accountSeq`로 되돌린다.
+- **`routes/google.ts`** — `GET /status`, `POST /connect`, `POST /disconnect`,
+  `POST /sync/:dataType/export`, `POST /sync/:dataType/import`
+  (`dataType`은 `holdings`|`trades`|`dividends`). Client ID/Secret을 받는
+  라우트는 없다(위 `clientConfig.ts` 참고).
 
 ## 검증 방식
 

@@ -1,5 +1,6 @@
-import { getSettings } from '../db/settings';
 import { withCache } from '../brokers/responseCache';
+import { EXIMBANK_AUTH_KEY } from './eximbankConfig';
+import { getCachedRate, setCachedRate } from './eximbankCache';
 
 // 한국수출입은행 Open API(환율, data=AP01). 공공데이터포털 공지("도메인이
 // 2025-06-25에 www.koreaexim.go.kr로 이전, 구 도메인은 2026-04-30 폐쇄 예정")를
@@ -15,7 +16,7 @@ import { withCache } from '../brokers/responseCache';
 const BASE_URL = 'https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON';
 
 export function isEximbankConfigured(): boolean {
-  return !!getSettings().eximbankAuthKey;
+  return !!EXIMBANK_AUTH_KEY;
 }
 
 interface EximbankRateItem {
@@ -56,11 +57,30 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
+function isPastDate(searchdate: string): boolean {
+  return searchdate < yyyymmdd(new Date());
+}
+
 // 인증키가 없으면 즉시 null(예외 아님 — 미연동은 정상 상태). 그 외 실패
 // 사유(주말/공휴일이라 그날 데이터가 없음, 타임아웃, 응답 형식 이상 등)는
 // 세분화하지 않고 전부 null로 뭉뚱그린다 — 호출부(아래 두 함수) 각자가
 // "그 날짜는 없다"는 사실만 알면 되고, 왜 없는지는 알 필요가 없어서다.
+//
+// **디스크 캐시(eximbankCache.ts)를 이 경계에서 확인/기록한다** — 이 인증키가
+// 앱 빌드에 미리 박힌 개인 발급 키라(eximbankConfig.ts), 테스트 배포 후 여러
+// 사용자가 같은 키로 반복 조회하면 요청량이 예상보다 커질 수 있어서, 한 번
+// 확인한 날짜는 다시 API를 안 부르게 한다. 지나간 날짜의 결과(환율이든 "그날
+// 데이터 없음"이든)는 캐시하지만, **오늘 날짜는 "데이터 없음"을 캐시하지
+// 않는다** — 매매기준율이 보통 11시경에야 고시되므로, 그 전에 조회하면 아직
+// null이 정상이고 그날 나중에 다시 물으면 값이 생겨야 한다(반면 한 번 값이
+// 생기면 그 값은 그날 다시 안 바뀌므로 정상 캐시). 네트워크/타임아웃/응답
+// 형식 오류는 일시적 문제일 수 있어 아예 캐시하지 않는다(다음 호출에 재시도).
 async function fetchEximbankRateForDate(authKey: string, searchdate: string): Promise<number | null> {
+  const cached = getCachedRate(searchdate);
+  if (cached.hit && (cached.rate !== null || isPastDate(searchdate))) {
+    return cached.rate;
+  }
+
   let items: unknown;
   try {
     const res = await fetchWithTimeout(
@@ -74,10 +94,15 @@ async function fetchEximbankRateForDate(authKey: string, searchdate: string): Pr
   if (!Array.isArray(items)) return null;
 
   const usd = (items as EximbankRateItem[]).find((i) => i.cur_unit === 'USD');
-  if (!usd || usd.result !== 1) return null;
+  if (!usd || usd.result !== 1) {
+    if (isPastDate(searchdate)) setCachedRate(searchdate, null);
+    return null;
+  }
 
   const rate = parseKoreanNumber(usd.deal_bas_r);
-  return Number.isFinite(rate) && rate > 0 ? rate : null;
+  const result = Number.isFinite(rate) && rate > 0 ? rate : null;
+  if (result !== null) setCachedRate(searchdate, result);
+  return result;
 }
 
 /**
@@ -88,15 +113,14 @@ async function fetchEximbankRateForDate(authKey: string, searchdate: string): Pr
  * 최악의 경우 총 대기가 30초 안쪽이다). 인증키가 설정 안 돼 있으면 즉시 null.
  */
 export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: string } | null> {
-  const authKey = getSettings().eximbankAuthKey;
-  if (!authKey) return null;
+  if (!EXIMBANK_AUTH_KEY) return null;
 
   for (let daysAgo = 0; daysAgo <= 5; daysAgo++) {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
     const searchdate = yyyymmdd(date);
 
-    const rate = await fetchEximbankRateForDate(authKey, searchdate);
+    const rate = await fetchEximbankRateForDate(EXIMBANK_AUTH_KEY, searchdate);
     if (rate === null) continue;
 
     return { rate, asOf: `${searchdate.slice(0, 4)}-${searchdate.slice(4, 6)}-${searchdate.slice(6, 8)}` };
@@ -108,8 +132,7 @@ export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: s
 async function computeEximbankMonthlyAvgUsdKrwRate(
   month: string
 ): Promise<{ rate: number; sampleCount: number } | null> {
-  const authKey = getSettings().eximbankAuthKey;
-  if (!authKey) return null;
+  if (!EXIMBANK_AUTH_KEY) return null;
 
   const [yearStr, monthStr] = month.split('-');
   const year = Number(yearStr);
@@ -130,7 +153,7 @@ async function computeEximbankMonthlyAvgUsdKrwRate(
   }
   if (weekdaySearchdates.length === 0) return null;
 
-  const rates = await Promise.all(weekdaySearchdates.map((d) => fetchEximbankRateForDate(authKey, d)));
+  const rates = await Promise.all(weekdaySearchdates.map((d) => fetchEximbankRateForDate(EXIMBANK_AUTH_KEY, d)));
   const valid = rates.filter((r): r is number => r !== null);
   if (valid.length === 0) return null;
 

@@ -11,5 +11,14 @@ electron/userData/
 *.env
 .env.*
 
+# 앱 배포용 Google OAuth Client ID/Secret — 빌드에 컴파일해 넣는 값이라 커밋하지
+# 않는다(clientConfig.example.ts가 템플릿). backend/CLAUDE.md의 "Google Sheets
+# 연동" 절 참고.
+backend/src/google/clientConfig.ts
+
+# 앱 배포용 한국수출입은행 Open API 인증키 — 위와 같은 이유로 빌드에 컴파일해
+# 넣는다(eximbankConfig.example.ts가 템플릿).
+backend/src/fx/eximbankConfig.ts
+
 # Per-machine Claude Code settings (not shared across machines)
 .claude/settings.local.json

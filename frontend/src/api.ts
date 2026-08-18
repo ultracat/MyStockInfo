@@ -53,17 +53,11 @@ export const api = {
   clearCredential: (broker: BrokerId) =>
     request<void>(`/settings/credentials/${broker}`, { method: 'DELETE' }),
 
-  getFxRate: () =>
-    request<{ usdKrwRate: number | null; eximbankAuthKey: string | null }>('/settings/fx-rate'),
+  getFxRate: () => request<{ usdKrwRate: number | null }>('/settings/fx-rate'),
   setFxRate: (usdKrwRate: number | null) =>
     request<{ usdKrwRate: number | null }>('/settings/fx-rate', {
       method: 'POST',
       body: JSON.stringify({ usdKrwRate }),
-    }),
-  setEximbankKey: (authKey: string | null) =>
-    request<{ eximbankAuthKey: string | null }>('/settings/eximbank-key', {
-      method: 'POST',
-      body: JSON.stringify({ authKey }),
     }),
   getExchangeRate: (broker: BrokerId, base: string, quote: string, opts?: { forceRefresh?: boolean }) =>
     request<ExchangeRate>(
@@ -214,5 +208,30 @@ export const api = {
     request<{ synced: number; accountId: string }>('/kb/sync-trades', {
       method: 'POST',
       body: JSON.stringify({ accountId, from, to }),
+    }),
+
+  // Google Sheets 연동 — Client ID/Secret은 앱 빌드에 미리 박혀 있어(백엔드
+  // google/clientConfig.ts, 일반 사용자는 입력 UI 자체가 없음) Settings.tsx는
+  // 계정 연결/해제 상태만 관리하고, Dashboard.tsx/Trades.tsx/Dividends.tsx가
+  // 각자의 데이터 종류로 export/import 버튼을 낸다. `connect()`는 시스템
+  // 브라우저에서 로그인 플로우를 시작만 시키고 즉시 응답하므로, 완료 여부는
+  // `getGoogleStatus()`를 폴링해서 확인한다(connectStatus:
+  // 'idle'|'waiting'|'connected'|'error').
+  getGoogleStatus: () =>
+    request<{
+      hasClientCredentials: boolean;
+      connected: boolean;
+      email: string | null;
+      spreadsheetUrl: string | null;
+      connectStatus: 'idle' | 'waiting' | 'connected' | 'error';
+      connectError: string | null;
+    }>('/google/status'),
+  connectGoogle: () => request<{ started: boolean }>('/google/connect', { method: 'POST' }),
+  disconnectGoogle: () => request<void>('/google/disconnect', { method: 'POST' }),
+  exportToGoogleSheet: (dataType: 'holdings' | 'trades' | 'dividends') =>
+    request<{ spreadsheetUrl: string; rowCount: number }>(`/google/sync/${dataType}/export`, { method: 'POST' }),
+  importFromGoogleSheet: (dataType: 'holdings' | 'trades' | 'dividends') =>
+    request<{ added: number; failed: { row: number; error: string }[] }>(`/google/sync/${dataType}/import`, {
+      method: 'POST',
     }),
 };

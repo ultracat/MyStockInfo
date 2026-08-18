@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import {
   addDividend,
+  addDividends,
   deleteDividend,
   listDividends,
+  replaceAllDividends,
   updateDividend,
   updateDividendNames,
   type NewDividendInput,
@@ -167,12 +169,16 @@ dividendsRouter.put('/:id', (req, res) => {
 // name은 CSV에 없다(종목명은 자동조회 대상이라 사용자가 직접 입력할 필요가
 // 없음) — 형태 검증을 통과한 행들의 고유 심볼을 모아 한 번에 자동조회하고,
 // 조회 실패한 심볼의 행만 failed로 보고한다.
-dividendsRouter.post('/import', async (req, res) => {
-  const records = (req.body as { records?: unknown })?.records;
-  if (!Array.isArray(records) || records.length === 0) {
-    return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
-  }
-
+//
+// google/sheetsSync.ts도 Sheets에서 읽은 행을 이 함수에 그대로 넘겨 재사용한다
+// (검증/자동조회 로직을 두 곳에 중복시키지 않기 위해 라우트 핸들러에서 분리) —
+// options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 배당 기록까지
+// 포함해 저장소 전체를 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
+// 동작인 순수 추가 — false).
+export async function importDividendsRecords(
+  records: unknown[],
+  options?: { fullReplace?: boolean }
+): Promise<{ added: number; failed: { row: number; error: string }[] }> {
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
   const validRows = shapeResults.filter(
     (r): r is { row: number; input: ImportRowShape } => 'input' in r
@@ -184,7 +190,7 @@ dividendsRouter.post('/import', async (req, res) => {
   const uniqueSymbols = Array.from(new Set(validRows.map((r) => r.input.symbol)));
   const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
 
-  let added = 0;
+  const resolved: NewDividendInput[] = [];
   for (const { row, input } of validRows) {
     const key = input.symbol.toUpperCase();
     const name = namesBySymbol[key];
@@ -197,12 +203,32 @@ dividendsRouter.post('/import', async (req, res) => {
       });
       continue;
     }
-    addDividend({ ...input, name });
-    added += 1;
+    resolved.push({ ...input, name });
   }
 
   failed.sort((a, b) => a.row - b.row);
-  res.json({ added, failed });
+
+  if (options?.fullReplace) {
+    // 시트에 행이 있었는데 전부 실패했으면(예: 종목명 조회 전부 실패) 기존
+    // 데이터를 지우지 않는다 — 시트가 진짜로 비어 있으면 records.length가 0이라
+    // 이 조건에 안 걸린다.
+    if (resolved.length === 0 && records.length > 0) {
+      return { added: 0, failed };
+    }
+    const replaced = replaceAllDividends(resolved);
+    return { added: replaced.length, failed };
+  }
+
+  addDividends(resolved);
+  return { added: resolved.length, failed };
+}
+
+dividendsRouter.post('/import', async (req, res) => {
+  const records = (req.body as { records?: unknown })?.records;
+  if (!Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
+  }
+  res.json(await importDividendsRecords(records));
 });
 
 dividendsRouter.delete('/:id', (req, res) => {

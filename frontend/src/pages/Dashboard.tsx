@@ -14,6 +14,7 @@ import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS } from '../brokers';
 import { accountLabelKey, formatAccountOption } from '../accountLabels';
+import { getKbLinkStatus, type KbLinkStatus } from '../kbSync';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
 
@@ -280,6 +281,21 @@ export default function Dashboard() {
     api.listAccountLabels().then(setAccountLabels).catch(() => {});
   }, []);
 
+  // KB증권 Open API 연동 상태 — appKey/appSecret이 계좌 하나에 고정 바인딩돼
+  // 있어(kbSync.ts 참고) "연동 여부"와 "그 계좌가 로컬 accountId로 뭔지"만
+  // 마운트 시 한 번 불러둔다. 아래에서 그 계좌가 화면에 보일 때 백그라운드
+  // 동기화를 트리거하는 데 쓴다.
+  const [kbLink, setKbLink] = useState<KbLinkStatus>({ configured: false, linkedAccountId: null });
+  const [kbSyncing, setKbSyncing] = useState(false);
+  const [kbSyncNotice, setKbSyncNotice] = useState<string | null>(null);
+  const kbSyncRequestId = useRef(0);
+
+  useEffect(() => {
+    getKbLinkStatus()
+      .then(setKbLink)
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     // React StrictMode double-invokes effects in dev — this only suppresses
     // the discarded run's setState calls, it does NOT stop its request from
@@ -367,6 +383,24 @@ export default function Dashboard() {
     };
   }, [selectedBroker]);
 
+  // KB증권의 API 연동 계좌를 계좌 목록에 합쳐 넣는다 — 위 effect는 로컬
+  // 저장소에 이미 있는 accountId만 모으므로, 아직 한 번도 동기화/CSV 가져오기를
+  // 안 한 최초 상태에서는 그 계좌 자체를 선택할 방법이 없다(아래 백그라운드
+  // 동기화 트리거도 못 돔). accountId는 사용자가 이미 뭔가 선택해뒀으면 안
+  // 건드리고(null일 때만 채움), 위 effect와 독립된 effect라 selectedBroker가
+  // 바뀔 때의 accountId 리셋 타이밍에 영향을 안 준다. `accounts`도 deps에 넣어야
+  // 한다 — 위 effect가 비동기(로컬 저장소 조회)라 이 effect가 먼저 실행되고 난
+  // 뒤에 `setAccounts(accs)`로 통째로 덮어써버리면 방금 추가한 연동 계좌가
+  // 사라지는데, `accounts`가 바뀔 때마다 다시 실행되게 해두면 그 시점에 다시
+  // 채워 넣어 자연스럽게 수렴한다(이미 들어있으면 그대로 반환해 무한 루프 없음).
+  useEffect(() => {
+    if (selectedBroker !== 'kb' || !kbLink.linkedAccountId) return;
+    const linkedId = kbLink.linkedAccountId;
+    setAccounts((prev) => (prev.some((a) => a.id === linkedId) ? prev : [...prev, { id: linkedId }]));
+    setAccountId((prev) => prev ?? linkedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBroker, kbLink.linkedAccountId, accounts]);
+
   // 초기 조회 + 1분마다 자동 새로고침을 한 effect에서 같이 관리한다 — 둘 다 같은
   // "이 브로커/계좌의 최신 스냅샷을 받아온다"는 동작이라 별도 effect로 나누면
   // fetchPortfolio 로직이 중복된다. lastFetchedAt은 실제로 라이브 호출이 성공한
@@ -407,6 +441,39 @@ export default function Dashboard() {
     );
     return mergePortfolios(broker, parts);
   }
+
+  // KB증권 API 연동 계좌를 백그라운드에서 동기화한다 — 화면은 이미 로컬
+  // 저장소로 즉시 그려져 있으므로(위 CSV 전용 브로커 분기), 이건 그 위에
+  // "최신 데이터가 도착하면 조용히 갱신"만 얹는다(로딩 스피너로 막지 않음).
+  // Toss/KIS처럼 60초 폴링은 안 한다 — KB rate limit이 공식 문서에 없어
+  // 보수적으로 잡아둔 상태라(backend/CLAUDE.md), 그 계좌가 화면에 보일 때
+  // 한 번만 부르고 나머지는 수동 새로고침 버튼에 맡긴다.
+  async function triggerKbSync() {
+    if (!kbLink.linkedAccountId) return;
+    const linkedId = kbLink.linkedAccountId;
+    const myRequestId = ++kbSyncRequestId.current;
+    setKbSyncing(true);
+    setKbSyncNotice(null);
+    try {
+      await api.syncKbHoldings(linkedId);
+      if (kbSyncRequestId.current !== myRequestId) return; // 그 사이 다른 브로커/계좌로 이동함
+      if (accountId === ALL_ACCOUNTS) await loadStoredPortfolioAll('kb');
+      else if (accountId === linkedId) await loadStoredPortfolio('kb', linkedId);
+    } catch (e) {
+      if (kbSyncRequestId.current === myRequestId) {
+        setKbSyncNotice(`KB증권 최신 데이터를 가져오지 못했습니다: ${(e as Error).message}`);
+      }
+    } finally {
+      if (kbSyncRequestId.current === myRequestId) setKbSyncing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (selectedBroker !== 'kb' || !kbLink.configured || !kbLink.linkedAccountId) return;
+    if (accountId !== kbLink.linkedAccountId && accountId !== ALL_ACCOUNTS) return;
+    void triggerKbSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBroker, accountId, kbLink.configured, kbLink.linkedAccountId]);
 
   useEffect(() => {
     if (!selectedBroker || !accountId) return;
@@ -609,28 +676,88 @@ export default function Dashboard() {
               .join('; ')})`
           : `${result.added}건 추가됨`
       );
-
-      // 지금 보고 있는 브로커가 CSV 전용이면, 브로커 재선택 없이 방금 가져온
-      // 데이터가 바로 보이도록 계좌 목록/포트폴리오를 다시 읽는다. "전체 계좌"를
-      // 보고 있었으면 그 선택을 유지한 채로 다시 합쳐서 보여준다.
-      if (selectedBroker && !API_BROKER_IDS.includes(selectedBroker)) {
-        const rows = await api.listHoldingsStore({ broker: selectedBroker });
-        const ids = Array.from(new Set(rows.map((r) => r.accountId)));
-        setAccounts(ids.map((id) => ({ id })));
-        if (accountId === ALL_ACCOUNTS) {
-          if (ids.length > 0) await loadStoredPortfolioAll(selectedBroker);
-          else setPortfolio(null);
-        } else {
-          const nextAccountId = accountId && ids.includes(accountId) ? accountId : (ids[0] ?? null);
-          setAccountId(nextAccountId);
-          if (nextAccountId) await loadStoredPortfolio(selectedBroker, nextAccountId);
-          else setPortfolio(null);
-        }
-      }
+      await refreshAfterStoreImport();
     } catch (e) {
       setImportResult((e as Error).message);
     } finally {
       setImporting(false);
+    }
+  }
+
+  // CSV 가져오기/Google Sheets 가져오기 공통 — 지금 보고 있는 브로커가 CSV
+  // 전용이면, 브로커 재선택 없이 방금 가져온 데이터가 바로 보이도록 계좌 목록/
+  // 포트폴리오를 다시 읽는다. "전체 계좌"를 보고 있었으면 그 선택을 유지한 채로
+  // 다시 합쳐서 보여준다.
+  async function refreshAfterStoreImport() {
+    if (selectedBroker && !API_BROKER_IDS.includes(selectedBroker)) {
+      const rows = await api.listHoldingsStore({ broker: selectedBroker });
+      const ids = Array.from(new Set(rows.map((r) => r.accountId)));
+      setAccounts(ids.map((id) => ({ id })));
+      if (accountId === ALL_ACCOUNTS) {
+        if (ids.length > 0) await loadStoredPortfolioAll(selectedBroker);
+        else setPortfolio(null);
+      } else {
+        const nextAccountId = accountId && ids.includes(accountId) ? accountId : (ids[0] ?? null);
+        setAccountId(nextAccountId);
+        if (nextAccountId) await loadStoredPortfolio(selectedBroker, nextAccountId);
+        else setPortfolio(null);
+      }
+    }
+  }
+
+  // Google Sheets 연동 — Settings.tsx에서 연결 여부만 확인하고, 실제 내보내기/
+  // 가져오기는 여기서 실행한다(CSV 내보내기/가져오기와 같은 대상: holdings-store
+  // 전체, 브로커/계좌 필터 없음).
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleSyncing, setGoogleSyncing] = useState(false);
+  const [googleSyncResult, setGoogleSyncResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getGoogleStatus()
+      .then((s) => setGoogleConnected(s.connected))
+      .catch(() => setGoogleConnected(false));
+  }, []);
+
+  async function onExportToGoogleSheet() {
+    // 내보내기/가져오기 둘 다 전체 교체다(Dividends.tsx와 같은 이유) — 어느
+    // 한쪽에만 있는 최신 내용이 반대쪽으로 덮어써지며 사라질 수 있어 확인창을
+    // 넣는다(실제로 시트에 직접 입력한 내용이 내보내기로 유실된 사례 있음).
+    if (!window.confirm('Google Sheets의 Holdings 탭 전체를 로컬 데이터로 덮어씁니다. 시트에 직접 입력했지만 아직 "가져오기"로 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
+      return;
+    }
+    setGoogleSyncing(true);
+    setGoogleSyncResult(null);
+    try {
+      const result = await api.exportToGoogleSheet('holdings');
+      setGoogleSyncResult(`Google Sheets로 ${result.rowCount}건 내보냈습니다.`);
+    } catch (e) {
+      setGoogleSyncResult((e as Error).message);
+    } finally {
+      setGoogleSyncing(false);
+    }
+  }
+
+  async function onImportFromGoogleSheet() {
+    if (!window.confirm('Google Sheets의 Holdings 탭 내용으로 로컬 데이터 전체를 교체합니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
+      return;
+    }
+    setGoogleSyncing(true);
+    setGoogleSyncResult(null);
+    try {
+      const result = await api.importFromGoogleSheet('holdings');
+      setGoogleSyncResult(
+        result.failed.length > 0
+          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
+              .map((f) => `${f.row}행 - ${f.error}`)
+              .join('; ')})`
+          : `${result.added}건 추가됨`
+      );
+      await refreshAfterStoreImport();
+    } catch (e) {
+      setGoogleSyncResult((e as Error).message);
+    } finally {
+      setGoogleSyncing(false);
     }
   }
 
@@ -690,6 +817,11 @@ export default function Dashboard() {
     );
 
   const isCurrentBrokerApi = !!selectedBroker && API_BROKER_IDS.includes(selectedBroker);
+  const isKbSyncable =
+    selectedBroker === 'kb' &&
+    kbLink.configured &&
+    !!kbLink.linkedAccountId &&
+    (accountId === kbLink.linkedAccountId || accountId === ALL_ACCOUNTS);
 
   return (
     <div>
@@ -708,9 +840,30 @@ export default function Dashboard() {
             {importing ? '가져오는 중...' : 'CSV 가져오기'}
           </button>
           <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
+          <button
+            className="ghost"
+            onClick={onExportToGoogleSheet}
+            disabled={!googleConnected || googleSyncing}
+            title={googleConnected ? undefined : '설정에서 Google 계정을 먼저 연결해주세요.'}
+          >
+            {googleSyncing ? '처리 중...' : 'Google Sheets로 내보내기'}
+          </button>
+          <button
+            className="ghost"
+            onClick={onImportFromGoogleSheet}
+            disabled={!googleConnected || googleSyncing}
+            title={googleConnected ? undefined : '설정에서 Google 계정을 먼저 연결해주세요.'}
+          >
+            {googleSyncing ? '처리 중...' : 'Google Sheets에서 가져오기'}
+          </button>
           {isCurrentBrokerApi && (
             <button className="ghost" onClick={handleRefresh} disabled={refreshing}>
               {refreshing ? '새로고침 중...' : '새로고침'}
+            </button>
+          )}
+          {isKbSyncable && (
+            <button className="ghost" onClick={triggerKbSync} disabled={kbSyncing}>
+              {kbSyncing ? '동기화 중...' : '새로고침'}
             </button>
           )}
         </div>
@@ -724,6 +877,21 @@ export default function Dashboard() {
       {importResult && (
         <div className="notice" style={{ fontSize: 13 }}>
           {importResult}
+        </div>
+      )}
+      {googleSyncResult && (
+        <div className="notice" style={{ fontSize: 13 }}>
+          {googleSyncResult}
+        </div>
+      )}
+      {kbSyncing && (
+        <div className="notice" style={{ fontSize: 13 }}>
+          KB증권 최신 데이터를 백그라운드에서 가져오는 중...
+        </div>
+      )}
+      {kbSyncNotice && (
+        <div className="notice text-critical" style={{ fontSize: 13 }}>
+          {kbSyncNotice}
         </div>
       )}
 

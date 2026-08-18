@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { deleteHolding, listHoldings, replaceHoldingsFromImport, type UpsertHoldingInput } from '../db/holdingsStore';
+import {
+  deleteHolding,
+  listHoldings,
+  replaceAllHoldings,
+  replaceHoldingsFromImport,
+  type UpsertHoldingInput,
+} from '../db/holdingsStore';
 import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
 import { isTossConfigured } from '../brokers/toss/tossClient';
 import { BROKER_IDS } from '../brokers/knownBrokers';
@@ -119,12 +125,16 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
 // 이유가 없다. 가져오기는 "덮어쓰기"다 — replaceHoldingsFromImport 참고: CSV에
 // 등장한 (broker,accountId)마다 기존 저장 행을 전부 지우고 이번 CSV로 교체한다.
 // 같은 CSV를 여러 번 가져와도 계속 누적되지 않는다.
-holdingsStoreRouter.post('/import', async (req, res) => {
-  const records = (req.body as { records?: unknown })?.records;
-  if (!Array.isArray(records) || records.length === 0) {
-    return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
-  }
-
+//
+// google/sheetsSync.ts도 Sheets에서 읽은 행을 이 함수에 그대로 넘겨 재사용한다
+// (검증/자동조회 로직을 두 곳에 중복시키지 않기 위해 라우트 핸들러에서 분리) —
+// options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 계좌까지
+// 포함해 저장소 전체를 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
+// 동작인 부분 병합 — false).
+export async function importHoldingsRecords(
+  records: unknown[],
+  options?: { fullReplace?: boolean }
+): Promise<{ added: number; failed: { row: number; error: string }[] }> {
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
   const validRows = shapeResults.filter((r): r is { row: number; input: ImportRowShape } => 'input' in r);
   const failed: Array<{ row: number; error: string }> = shapeResults
@@ -163,9 +173,29 @@ holdingsStoreRouter.post('/import', async (req, res) => {
     toUpsert.push({ ...input, name, purchaseAmount, lastPrice, marketValue, profitLossAmount, profitLossRate });
   }
 
-  replaceHoldingsFromImport(toUpsert);
   failed.sort((a, b) => a.row - b.row);
-  res.json({ added: toUpsert.length, failed });
+
+  if (options?.fullReplace) {
+    // 시트에 행이 있었는데 전부 실패해서 하나도 못 옮겼으면, "사용자가 의도적으로
+    // 비웠다"가 아니라 조회 실패 같은 문제일 가능성이 커서 기존 데이터를 지우지
+    // 않는다(시트가 진짜로 비어 있으면 records.length가 0이라 이 조건에 안 걸림).
+    if (toUpsert.length === 0 && records.length > 0) {
+      return { added: 0, failed };
+    }
+    replaceAllHoldings(toUpsert);
+    return { added: toUpsert.length, failed };
+  }
+
+  replaceHoldingsFromImport(toUpsert);
+  return { added: toUpsert.length, failed };
+}
+
+holdingsStoreRouter.post('/import', async (req, res) => {
+  const records = (req.body as { records?: unknown })?.records;
+  if (!Array.isArray(records) || records.length === 0) {
+    return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
+  }
+  res.json(await importHoldingsRecords(records));
 });
 
 holdingsStoreRouter.delete('/:broker/:accountId/:symbol', (req, res) => {

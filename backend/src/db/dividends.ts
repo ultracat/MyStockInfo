@@ -55,8 +55,8 @@ export function listDividends(): DividendRecord[] {
     .sort((a, b) => (a.paidDate < b.paidDate ? 1 : -1));
 }
 
-export function addDividend(input: NewDividendInput): DividendRecord {
-  const record: DividendRecord = {
+function toRecord(input: NewDividendInput): DividendRecord {
+  return {
     id: randomUUID(),
     broker: input.broker,
     accountId: input.accountId ?? null,
@@ -67,8 +67,22 @@ export function addDividend(input: NewDividendInput): DividendRecord {
     paidDate: input.paidDate,
     memo: input.memo ?? null,
   };
+}
+
+export function addDividend(input: NewDividendInput): DividendRecord {
+  const record = toRecord(input);
   store().update((current) => [...current, record]);
   return record;
+}
+
+/** CSV 가져오기(부분 추가, `replaceAllDividends`와 달리 기존 기록을 안 지움)용
+ *  배치 추가 — `addDividend`를 행마다 반복 호출하면 그때마다 전체 JSON 파일을
+ *  다시 읽고 써서, 몇백 건짜리 CSV를 가져올 때 파일이 커질수록 매 행이 점점
+ *  느려진다(O(n²)). 한 번의 read-modify-write로 끝낸다. */
+export function addDividends(inputs: NewDividendInput[]): DividendRecord[] {
+  const records = inputs.map(toRecord);
+  store().update((current) => [...current, ...records]);
+  return records;
 }
 
 /** 배당 기록 화면의 인라인 수정용 — id를 뺀 모든 필드를 통째로 교체한다(부분
@@ -93,6 +107,27 @@ export function updateDividend(id: string, input: NewDividendInput): DividendRec
     })
   );
   return updated;
+}
+
+/** Google Sheets 가져오기 전용 — 기존 배당 기록을 전부 지우고 rows로 다시
+ *  채운다(addDividend를 행마다 반복 호출하는 CSV 가져오기는 항상 추가만 되는
+ *  반면, 이건 시트에 없는 기존 기록까지 지운다). Sheets 내보내기가 매번 로컬
+ *  전체를 시트에 덮어쓰는 것과 대칭을 이루도록, 가져오기도 시트 내용을 로컬의
+ *  유일한 진실로 취급한다(부분 병합이 아님) — 사용자가 명시적으로 요청한 동작. */
+export function replaceAllDividends(rows: NewDividendInput[]): DividendRecord[] {
+  const fresh: DividendRecord[] = rows.map((input) => ({
+    id: randomUUID(),
+    broker: input.broker,
+    accountId: input.accountId ?? null,
+    symbol: input.symbol,
+    name: input.name,
+    currency: input.currency,
+    amount: input.amount,
+    paidDate: input.paidDate,
+    memo: input.memo ?? null,
+  }));
+  store().write(fresh);
+  return fresh;
 }
 
 export function deleteDividend(id: string): boolean {

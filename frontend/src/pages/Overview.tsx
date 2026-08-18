@@ -148,7 +148,7 @@ export default function Overview() {
     // 기다린 다음에야 getUsdKrwRate를 불렀는데, 서로 독립적이라 직렬화할
     // 이유가 없었다).
     const [fx, brokers, live] = await Promise.all([
-      api.getFxRate().catch(() => ({ usdKrwRate: null, eximbankAuthKey: null })),
+      api.getFxRate().catch(() => ({ usdKrwRate: null })),
       api.listBrokers(),
       // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
       // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다.

@@ -33,6 +33,12 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
     오픈, 패키징된 빌드는 `frontend/dist/index.html`을 파일로 로드.
   - `webPreferences`: `contextIsolation: true`, `nodeIntegration: false`,
     `sandbox: true` — 렌더러 보안 기본값 유지. 완화하지 않는다.
+  - `mainWindow.webContents.setWindowOpenHandler(...)` — 렌더러가 `target="_blank"`로
+    여는 링크(Settings.tsx의 Google Sheets 연동 스프레드시트 바로가기 등)를 앱 안
+    새 창이 아니라 `shell.openExternal`로 시스템 브라우저에서 연다(`{action: 'deny'}`로
+    앱 내부 새 창 자체는 항상 막음). `backend/src/google/oauth.ts`가 OAuth 로그인
+    페이지를 여는 것과 같은 `shell` — 그쪽은 백엔드 코드에서 직접 `require('electron')`로
+    가져온다(safeStorage와 같은 lazy-require 패턴).
   - `process.platform !== 'darwin'`일 때만 `Menu.setApplicationMenu(null)`로 기본
     메뉴(File/Edit/View/Window)를 없앤다. Mac은 이 메뉴가 창 밖 OS 전역 메뉴바로
     가서 원래도 창 안엔 안 보이고 Cmd+Q 같은 표준 단축키도 거기 얹혀 있어 그대로

@@ -122,6 +122,32 @@ export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
   return inserted;
 }
 
+/** Google Sheets 가져오기 전용 — 브로커/계좌 구분 없이 저장소 전체를 통째로
+ *  교체한다(위 upsertFromImport는 id 기준으로 병합/누적하지만, 이건 시트에 없는
+ *  기존 매매내역까지 전부 지운다). Sheets 내보내기가 매번 로컬 전체를 시트에
+ *  덮어쓰는 것과 대칭을 이루도록, 가져오기도 시트 내용을 로컬의 유일한 진실로
+ *  취급한다(부분 병합이 아님) — 사용자가 명시적으로 요청한 동작. 시트엔 id
+ *  컬럼이 없어(TRADES_SHEET_HEADER 참고) 매번 새 id를 발급한다. */
+export function replaceAllTrades(rows: ImportTradeInput[]): StoredTrade[] {
+  const fresh: StoredTrade[] = rows.map((row) => ({
+    broker: row.broker,
+    accountId: row.accountId,
+    id: row.id || randomUUID(),
+    symbol: row.symbol,
+    name: row.name ?? null,
+    side: row.side,
+    quantity: row.quantity,
+    price: row.price,
+    amount: row.amount,
+    currency: row.currency,
+    commission: row.commission ?? null,
+    tax: row.tax ?? null,
+    executedAt: row.executedAt,
+  }));
+  store().write(fresh);
+  return fresh;
+}
+
 /** 이미 저장된 매매내역 중 이름이 비어 있는 행만 채운다(`routes/tradesStore.ts`의
  *  `POST /refresh-names`) — name 필드가 생기기 전에 저장됐던 행(그래서 항상
  *  null)이나, 그때는 API 연동이 없어서 못 채웠던 행을 위한 일괄 백필용. 이미

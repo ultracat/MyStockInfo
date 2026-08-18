@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow } from '../types';
+import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
 import DividendsChart from '../components/DividendsChart';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
@@ -28,6 +28,13 @@ const PAGE_GROUP_SIZE = 10;
 interface BrokerInvested {
   krw: number;
   usd: number;
+}
+
+/** 종목 하나의 오늘 기준 평단가(브로커 안의 여러 계좌에 같은 심볼이 있으면
+ *  가중평균) — "연도별 투자금 재구성"이 재구성한 수량에 곱하는 값. */
+interface BrokerSymbolCost {
+  avgCost: number;
+  currency: string;
 }
 
 interface BrokerLine {
@@ -79,6 +86,11 @@ export default function Dividends() {
   const [investedByBroker, setInvestedByBroker] = useState<Partial<Record<BrokerId, BrokerInvested>>>({});
   const [investedErrors, setInvestedErrors] = useState<Partial<Record<BrokerId, string>>>({});
   const [investedLoading, setInvestedLoading] = useState(true);
+  // 아래 investedByBroker 조회 effect가 같이 받아둔다 — 연도를 바꿀 때마다
+  // 서버를 다시 안 묻고 클라이언트에서 즉시 "그 연도 기준 투자금"을 재계산하기
+  // 위한 재료(investedByBrokerForYear 참고).
+  const [avgCostByBroker, setAvgCostByBroker] = useState<Partial<Record<BrokerId, Map<string, BrokerSymbolCost>>>>({});
+  const [tradesByBroker, setTradesByBroker] = useState<Partial<Record<BrokerId, StoredTrade[]>>>({});
 
   // 배당금 화면 전용 환율: 달러 배당/투자금을 원화로 환산해 보여주기 위함.
   // Dashboard.tsx의 비중 계산과 같은 우선순위(설정에서 직접 입력한 값 >
@@ -184,7 +196,7 @@ export default function Dividends() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null, eximbankAuthKey: null }));
+      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null }));
       if (cancelled) return;
       setManualFxRate(fx.usdKrwRate);
       // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
@@ -198,11 +210,35 @@ export default function Dividends() {
     };
   }, []);
 
+  // 종목별 오늘 기준 평단가 — 브로커 안에 계좌가 여러 개면 같은 심볼을 가중평균
+  // 한다(investedByBroker가 계좌 경계를 무시하고 브로커 단위로 합산하는 것과
+  // 같은 원칙). "연도별 투자금 재구성"(investedByBrokerForYear)이 재구성한
+  // 수량에 이 평단가를 곱한다.
+  function buildAvgCostMap(
+    rows: { symbol: string; currency: string | null; quantity: number; purchaseAmount: number }[]
+  ): Map<string, BrokerSymbolCost> {
+    const bySymbol = new Map<string, { amount: number; qty: number; currency: string }>();
+    for (const r of rows) {
+      if (r.quantity <= 0 || !r.currency) continue;
+      const existing = bySymbol.get(r.symbol) ?? { amount: 0, qty: 0, currency: r.currency };
+      existing.amount += r.purchaseAmount;
+      existing.qty += r.quantity;
+      bySymbol.set(r.symbol, existing);
+    }
+    const result = new Map<string, BrokerSymbolCost>();
+    for (const [symbol, v] of bySymbol) {
+      if (v.qty > 0) result.set(symbol, { avgCost: v.amount / v.qty, currency: v.currency });
+    }
+    return result;
+  }
+
   useEffect(() => {
     // 투자금(총 매입금액)은 배당 DB에는 없어 증권사 API에서 직접 계좌별로
     // 조회해 합산한다. 브로커 하나가 실패해도(미연동/레이트리밋 등) 나머지는
     // 계속 보여야 하므로 개별 try/catch로 감싼다 — backend/CLAUDE.md의 목록형
-    // 엔드포인트 방침과 동일한 이유.
+    // 엔드포인트 방침과 동일한 이유. 같은 조회에서 종목별 평단가와 매매내역도
+    // 같이 받아둔다(avgCostByBroker/tradesByBroker) — "연도별 투자금 재구성"이
+    // 연도를 바꿀 때마다 서버를 다시 안 묻고 클라이언트에서 즉시 계산하기 위함.
     let cancelled = false;
 
     (async () => {
@@ -214,12 +250,22 @@ export default function Dividends() {
       const results = await Promise.all(
         configured.map(async (b) => {
           try {
+            const tradesPromise = api.listTradesStore({ broker: b.id });
+
             if (API_BROKER_IDS.includes(b.id)) {
               const accounts = await api.listAccounts(b.id);
               const portfolios = await Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id)));
               const totalKrw = portfolios.reduce((sum, p) => sum + p.totalPurchaseAmountKrw, 0);
               const totalUsd = portfolios.reduce((sum, p) => sum + (p.totalPurchaseAmountUsd ?? 0), 0);
-              return { id: b.id, invested: { krw: totalKrw, usd: totalUsd } as BrokerInvested | null, error: null as string | null };
+              const avgCosts = buildAvgCostMap(portfolios.flatMap((p) => p.positions));
+              const trades = await tradesPromise;
+              return {
+                id: b.id,
+                invested: { krw: totalKrw, usd: totalUsd } as BrokerInvested | null,
+                avgCosts,
+                trades,
+                error: null as string | null,
+              };
             }
 
             // CSV 전용 브로커(KB/삼성/미래에셋)는 라이브 API가 없다 — 유일한
@@ -229,9 +275,17 @@ export default function Dividends() {
             const holdings = await api.listHoldingsStore({ broker: b.id });
             const totalKrw = holdings.filter((h) => h.currency !== 'USD').reduce((sum, h) => sum + h.purchaseAmount, 0);
             const totalUsd = holdings.filter((h) => h.currency === 'USD').reduce((sum, h) => sum + h.purchaseAmount, 0);
-            return { id: b.id, invested: { krw: totalKrw, usd: totalUsd } as BrokerInvested | null, error: null as string | null };
+            const avgCosts = buildAvgCostMap(holdings);
+            const trades = await tradesPromise;
+            return {
+              id: b.id,
+              invested: { krw: totalKrw, usd: totalUsd } as BrokerInvested | null,
+              avgCosts,
+              trades,
+              error: null as string | null,
+            };
           } catch (e) {
-            return { id: b.id, invested: null, error: (e as Error).message };
+            return { id: b.id, invested: null, avgCosts: null, trades: [] as StoredTrade[], error: (e as Error).message };
           }
         })
       );
@@ -239,12 +293,18 @@ export default function Dividends() {
 
       const invested: Partial<Record<BrokerId, BrokerInvested>> = {};
       const errors: Partial<Record<BrokerId, string>> = {};
+      const avgCosts: Partial<Record<BrokerId, Map<string, BrokerSymbolCost>>> = {};
+      const trades: Partial<Record<BrokerId, StoredTrade[]>> = {};
       for (const r of results) {
         if (r.invested !== null) invested[r.id] = r.invested;
         if (r.error) errors[r.id] = r.error;
+        if (r.avgCosts) avgCosts[r.id] = r.avgCosts;
+        trades[r.id] = r.trades;
       }
       setInvestedByBroker(invested);
       setInvestedErrors(errors);
+      setAvgCostByBroker(avgCosts);
+      setTradesByBroker(trades);
       setInvestedLoading(false);
     })();
 
@@ -252,6 +312,53 @@ export default function Dividends() {
       cancelled = true;
     };
   }, []);
+
+  // 특정 연도를 고르면 배당수익률의 분모(투자금)도 그 연도 기준으로 바꾼다 —
+  // "전체"는 지금처럼 오늘 투자금을 그대로 쓴다. 그 해 12/31까지의 매매내역만으로
+  // 종목별 누적 보유수량을 재구성하고(Overview.tsx의 monthlyAmountRows와 같은
+  // 알고리즘 — BUY는 더하고 SELL은 그만큼 빼되 0 밑으로 안 내려가게 clamp), 그
+  // 수량에 매매내역에서 재구성한 과거 원가가 아니라 오늘 기준 평단가
+  // (avgCostByBroker, 이미 신뢰할 수 있는 값)를 곱한다 — 이 프로젝트가 매매내역으로
+  // 원가 자체를 재구성했다가 계좌마다 매매내역이 다 안 모여있어 상단 통계와
+  // 어긋난 전례가 있어(Overview.tsx 주석 참고) 같은 이유로 원가는 항상 오늘 값을
+  // 쓴다. **한계**: 지금 보유 중인 종목만 대상이라(avgCostByBroker에 있는 심볼만),
+  // 전량 매도한 종목은 그 해에 배당을 줬어도 그 해 투자금엔 안 잡힌다. 매매내역이
+  // 로컬 저장소 기준이라, 한 번도 조회/동기화/CSV로 안 채운 계좌의 과거 매수도
+  // 반영이 안 될 수 있다.
+  const investedByBrokerForYear = useMemo(() => {
+    if (year === 'ALL') return investedByBroker;
+    const cutoff = `${year}-12-31`;
+
+    const result: Partial<Record<BrokerId, BrokerInvested>> = {};
+    for (const brokerId of Object.keys(avgCostByBroker) as BrokerId[]) {
+      const costs = avgCostByBroker[brokerId];
+      if (!costs) continue;
+      const brokerTrades = tradesByBroker[brokerId] ?? [];
+
+      const tradesBySymbol = new Map<string, StoredTrade[]>();
+      for (const t of brokerTrades) {
+        if (!costs.has(t.symbol)) continue; // 지금 안 갖고 있는 종목은 대상 아님
+        if (!tradesBySymbol.has(t.symbol)) tradesBySymbol.set(t.symbol, []);
+        tradesBySymbol.get(t.symbol)!.push(t);
+      }
+
+      let krw = 0;
+      let usd = 0;
+      for (const [symbol, cost] of costs) {
+        const symTrades = (tradesBySymbol.get(symbol) ?? [])
+          .filter((t) => t.executedAt <= cutoff)
+          .sort((a, b) => (a.executedAt < b.executedAt ? -1 : 1));
+        let qty = 0;
+        for (const t of symTrades) qty += t.side === 'BUY' ? t.quantity : -Math.min(t.quantity, qty);
+        if (qty <= 0) continue;
+        const amount = qty * cost.avgCost;
+        if (cost.currency === 'USD') usd += amount;
+        else krw += amount;
+      }
+      result[brokerId] = { krw, usd };
+    }
+    return result;
+  }, [year, investedByBroker, avgCostByBroker, tradesByBroker]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -472,6 +579,65 @@ export default function Dividends() {
     }
   }
 
+  // Google Sheets 연동 — Settings.tsx에서 연결 여부만 확인하고, 실제 내보내기/
+  // 가져오기는 여기서 실행한다(CSV 내보내기/가져오기와 같은 대상: 전체 배당
+  // 기록, 브로커/계좌 필터 없음 — importBroker 필터는 CSV 전용).
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleSyncing, setGoogleSyncing] = useState(false);
+  const [googleSyncResult, setGoogleSyncResult] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getGoogleStatus()
+      .then((s) => setGoogleConnected(s.connected))
+      .catch(() => setGoogleConnected(false));
+  }, []);
+
+  async function onExportToGoogleSheet() {
+    // 내보내기는 시트의 해당 탭 전체를 지우고 로컬 내용으로 다시 쓴다(전체
+    // 교체) — 시트에 직접 입력했지만 아직 "가져오기"로 로컬에 반영 안 한 내용이
+    // 있으면 그대로 지워진다. 그렇게 사라진 실제 사례가 있어(토스 배당 기록을
+    // 시트에 직접 입력했다가 내보내기를 먼저 눌러 유실) 확인창을 넣는다.
+    if (!window.confirm('Google Sheets의 Dividends 탭 전체를 로컬 데이터로 덮어씁니다. 시트에 직접 입력했지만 아직 "가져오기"로 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
+      return;
+    }
+    setGoogleSyncing(true);
+    setGoogleSyncResult(null);
+    try {
+      const result = await api.exportToGoogleSheet('dividends');
+      setGoogleSyncResult(`Google Sheets로 ${result.rowCount}건 내보냈습니다.`);
+    } catch (e) {
+      setGoogleSyncResult((e as Error).message);
+    } finally {
+      setGoogleSyncing(false);
+    }
+  }
+
+  async function onImportFromGoogleSheet() {
+    // 가져오기도 전체 교체다 — 로컬에서 직접 추가/수정했지만 아직 시트로
+    // "내보내기"를 안 한 내용이 있으면 시트 내용으로 덮어써지며 사라진다.
+    if (!window.confirm('Google Sheets의 Dividends 탭 내용으로 로컬 데이터 전체를 교체합니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
+      return;
+    }
+    setGoogleSyncing(true);
+    setGoogleSyncResult(null);
+    try {
+      const result = await api.importFromGoogleSheet('dividends');
+      setGoogleSyncResult(
+        result.failed.length > 0
+          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
+              .map((f) => `${f.row}행 - ${f.error}`)
+              .join('; ')})`
+          : `${result.added}건 추가됨`
+      );
+      await refresh();
+    } catch (e) {
+      setGoogleSyncResult((e as Error).message);
+    } finally {
+      setGoogleSyncing(false);
+    }
+  }
+
   const yearOptions = useMemo(() => {
     const years = new Set<number>([CURRENT_YEAR]);
     for (const r of records) years.add(Number(r.paidDate.slice(0, 4)));
@@ -595,7 +761,7 @@ export default function Dividends() {
     // 나오면 안 되니, 실제로 뭔가 있는 브로커만 걸러서 넣는다.
     const ids = new Set<BrokerId>([
       ...brokerDividendTotals.keys(),
-      ...(Object.entries(investedByBroker) as [BrokerId, BrokerInvested][])
+      ...(Object.entries(investedByBrokerForYear) as [BrokerId, BrokerInvested][])
         .filter(([, inv]) => inv.krw > 0 || inv.usd > 0)
         .map(([id]) => id),
     ]);
@@ -603,7 +769,7 @@ export default function Dividends() {
 
     for (const brokerId of BROKER_ORDER.filter((id) => ids.has(id))) {
       const dividend = brokerDividendTotals.get(brokerId) ?? { krw: 0, usd: 0 };
-      const invested = investedByBroker[brokerId] ?? null;
+      const invested = investedByBrokerForYear[brokerId] ?? null;
       const investedKrw = invested?.krw ?? null;
       const investedUsd = invested?.usd ?? null;
       const placeholder = investedPlaceholder(investedErrors[brokerId]);
@@ -661,7 +827,7 @@ export default function Dividends() {
     }
 
     return lines;
-  }, [brokerDividendTotals, brokerDividendKrwByBroker, investedByBroker, investedErrors, investedLoading, effectiveFxRate]);
+  }, [brokerDividendTotals, brokerDividendKrwByBroker, investedByBrokerForYear, investedErrors, investedLoading, effectiveFxRate]);
 
   // "총합계" 스탯 타일 — 증권사별 표는 이미 통화별 상세를 보여주므로, 여기서는
   // 환산된 단일 숫자만 보여준다(중복 표시 방지). 브로커 하나라도 투자금 조회가
@@ -669,7 +835,7 @@ export default function Dividends() {
   const grandTotal = useMemo(() => {
     const ids = new Set<BrokerId>([
       ...brokerDividendKrwByBroker.keys(),
-      ...(Object.keys(investedByBroker) as BrokerId[]),
+      ...(Object.keys(investedByBrokerForYear) as BrokerId[]),
     ]);
     let dividendKrwTotal = 0;
     let dividendUnconvertedUsd = 0;
@@ -683,7 +849,7 @@ export default function Dividends() {
         dividendKrwTotal += div.krwTotal;
         dividendUnconvertedUsd += div.unconvertedUsd;
       }
-      const inv = investedByBroker[id];
+      const inv = investedByBrokerForYear[id];
       if (inv) {
         investedKrw += inv.krw;
         investedUsd += inv.usd;
@@ -716,7 +882,7 @@ export default function Dividends() {
           ? `${((dividendKrwTotal / investedTotal) * 100).toFixed(2)}%`
           : '-',
     };
-  }, [brokerDividendKrwByBroker, investedByBroker, investedLoading, effectiveFxRate]);
+  }, [brokerDividendKrwByBroker, investedByBrokerForYear, investedLoading, effectiveFxRate]);
 
   return (
     <div>
@@ -787,6 +953,13 @@ export default function Dividends() {
 
             <div style={{ flex: '1 1 420px', minWidth: 0 }}>
               <h3 style={{ marginTop: 0 }}>증권사별 배당금 총계</h3>
+              {year !== 'ALL' && (
+                <p style={{ marginTop: -8, marginBottom: 12, fontSize: 13, color: 'var(--text-muted)' }}>
+                  선택한 연도의 투자금은 매매내역을 재구성해 그 해 말 기준으로 계산합니다(현재 보유 중인
+                  종목만 대상 — 전량 매도한 종목, 매매내역이 없는 계좌의 과거 매수는 반영되지 않을 수
+                  있습니다).
+                </p>
+              )}
               {brokerLines.length === 0 ? (
                 <p style={{ color: 'var(--text-muted)' }}>
                   {investedLoading ? '불러오는 중...' : '배당 기록이 없습니다.'}
@@ -954,8 +1127,27 @@ export default function Dividends() {
             </button>
             <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
           </div>
+          <button
+            className="ghost"
+            onClick={onExportToGoogleSheet}
+            disabled={!googleConnected || googleSyncing}
+            title={googleConnected ? undefined : '설정에서 Google 계정을 먼저 연결해주세요.'}
+          >
+            {googleSyncing ? '처리 중...' : 'Google Sheets로 내보내기'}
+          </button>
+          <button
+            className="ghost"
+            onClick={onImportFromGoogleSheet}
+            disabled={!googleConnected || googleSyncing}
+            title={googleConnected ? undefined : '설정에서 Google 계정을 먼저 연결해주세요.'}
+          >
+            {googleSyncing ? '처리 중...' : 'Google Sheets에서 가져오기'}
+          </button>
           {importResult && (
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{importResult}</span>
+          )}
+          {googleSyncResult && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{googleSyncResult}</span>
           )}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>

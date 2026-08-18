@@ -97,10 +97,8 @@ export function replaceSnapshot(broker: BrokerId, accountId: string, positions: 
  *  같은 심볼이 CSV에 여러 번 나와도(예: IRP 계좌의 "개인납입액"/"회사납입액") 행별로
  *  식별해 병합하지 않고 CSV에 있는 그대로 각각 별도 행이 된다 — memo는 화면에
  *  구분 표시하기 위한 자유 텍스트일 뿐, 더 이상 행 식별에 쓰이지 않는다. */
-export function replaceHoldingsFromImport(rows: UpsertHoldingInput[]): void {
-  const now = new Date().toISOString();
-  const touchedAccounts = new Set(rows.map((r) => `${r.broker}:${r.accountId}`));
-  const fresh: StoredHolding[] = rows.map((row) => ({
+function toStoredHolding(row: UpsertHoldingInput, now: string): StoredHolding {
+  return {
     broker: row.broker,
     accountId: row.accountId,
     symbol: row.symbol,
@@ -118,12 +116,29 @@ export function replaceHoldingsFromImport(rows: UpsertHoldingInput[]): void {
     tax: row.tax ?? null,
     memo: row.memo?.trim() || null,
     updatedAt: now,
-  }));
+  };
+}
+
+export function replaceHoldingsFromImport(rows: UpsertHoldingInput[]): void {
+  const now = new Date().toISOString();
+  const touchedAccounts = new Set(rows.map((r) => `${r.broker}:${r.accountId}`));
+  const fresh: StoredHolding[] = rows.map((row) => toStoredHolding(row, now));
 
   store().update((current) => [
     ...current.filter((h) => !touchedAccounts.has(`${h.broker}:${h.accountId}`)),
     ...fresh,
   ]);
+}
+
+/** Google Sheets 가져오기 전용 — 브로커/계좌 구분 없이 저장소 전체를 통째로
+ *  교체한다(위 replaceHoldingsFromImport는 CSV에 등장한 (broker,accountId)만
+ *  덮어쓰지만, 이건 그 밖의 계좌까지 포함해 전부 지우고 rows로 다시 채운다).
+ *  Sheets 내보내기가 매번 로컬 전체를 시트에 덮어쓰는 것과 대칭을 이루도록,
+ *  가져오기도 시트 내용을 로컬의 유일한 진실로 취급한다(부분 병합이 아님) —
+ *  사용자가 명시적으로 요청한 동작. */
+export function replaceAllHoldings(rows: UpsertHoldingInput[]): void {
+  const now = new Date().toISOString();
+  store().write(rows.map((row) => toStoredHolding(row, now)));
 }
 
 export function deleteHolding(broker: BrokerId, accountId: string, symbol: string): boolean {

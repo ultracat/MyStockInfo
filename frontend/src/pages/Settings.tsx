@@ -15,7 +15,6 @@ export default function Settings() {
   const [broker, setBroker] = useState<BrokerId>('toss');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [fxRate, setFxRate] = useState('');
-  const [eximbankKey, setEximbankKey] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +27,6 @@ export default function Settings() {
     ]);
     setStatus(s);
     setFxRate(fx.usdKrwRate ? String(fx.usdKrwRate) : '');
-    setEximbankKey(fx.eximbankAuthKey ?? '');
     setFieldSpecs(specs);
     setCredentialInfo(info);
   }
@@ -86,17 +84,6 @@ export default function Settings() {
     }
   }
 
-  async function onSaveEximbankKey() {
-    setError(null);
-    setMessage(null);
-    try {
-      await api.setEximbankKey(eximbankKey.trim() ? eximbankKey.trim() : null);
-      setMessage('저장되었습니다.');
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
-
   const activeFields = fieldSpecs?.[broker] ?? [];
 
   // CSV 전용 브로커의 (broker, accountId) → 별칭. 관리는 여기서만 하고
@@ -110,15 +97,6 @@ export default function Settings() {
   const [newAccountBroker, setNewAccountBroker] = useState<BrokerId>(CSV_ONLY_BROKER_IDS[0]);
   const [newAccountId, setNewAccountId] = useState('');
   const [newAccountLabel, setNewAccountLabel] = useState('');
-
-  // KB증권 Open API는 appKey/appSecret 자체가 계좌 하나에 이미 묶여 있어(계좌
-  // 목록 조회 API가 없음 — backend/CLAUDE.md 참고) 다른 브로커처럼 별도 실시간
-  // 화면 경로를 두지 않고, 여기서 "지금 연결된 그 계좌"를 로컬 저장소로 동기화하는
-  // 액션만 제공한다 — 어느 계좌인지는 위 "API 키 등록" 폼의 계좌번호 필드에 이미
-  // 등록해뒀으므로 여기서 따로 입력받지 않는다. 동기화된 뒤에는 보유종목/매매내역
-  // 화면에서 다른 CSV 전용 브로커와 똑같이 보인다.
-  const [kbSyncing, setKbSyncing] = useState(false);
-  const [kbSyncResult, setKbSyncResult] = useState<string | null>(null);
 
   async function refreshAccounts() {
     setAccountsLoading(true);
@@ -199,35 +177,56 @@ export default function Settings() {
     }
   }
 
-  async function onSyncKbHoldings() {
-    setError(null);
-    setKbSyncResult(null);
-    setKbSyncing(true);
-    try {
-      const result = await api.syncKbHoldings();
-      setKbSyncResult(`${result.accountId} 계좌 — 보유종목 ${result.synced}건 동기화됨`);
-      await refreshAccounts();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setKbSyncing(false);
-    }
+  // Google Sheets 연동 — Client ID/Secret은 앱 빌드에 미리 박혀 있어(백엔드
+  // google/clientConfig.ts) 일반 사용자는 입력할 필요도, 알 필요도 없다 — 여기서는
+  // 계정 연결/해제만 관리한다(보유종목/매매내역/배당금 화면은 이미 연결된
+  // 상태를 전제로 내보내기/가져오기 버튼만 낸다). connectGoogle()은 시스템
+  // 브라우저에서 로그인 플로우를 시작만 시키고 즉시 응답하므로, 완료 여부는
+  // 재귀 setTimeout으로 status를 폴링해 확인한다.
+  const [googleStatus, setGoogleStatus] = useState<Awaited<ReturnType<typeof api.getGoogleStatus>> | null>(null);
+  const [googleConnecting, setGoogleConnecting] = useState(false);
+
+  async function refreshGoogleStatus() {
+    const s = await api.getGoogleStatus();
+    setGoogleStatus(s);
+    return s;
   }
 
-  async function onSyncKbTrades() {
+  useEffect(() => {
+    refreshGoogleStatus().catch((e) => setError((e as Error).message));
+  }, []);
+
+  async function onConnectGoogle() {
     setError(null);
-    setKbSyncResult(null);
-    setKbSyncing(true);
+    setMessage(null);
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const yearStart = `${new Date().getFullYear()}-01-01`;
-      const result = await api.syncKbTrades(yearStart, today);
-      setKbSyncResult(`${result.accountId} 계좌 — 매매내역(올해) ${result.synced}건 동기화됨`);
-      await refreshAccounts();
+      await api.connectGoogle();
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setKbSyncing(false);
+      return;
+    }
+    setGoogleConnecting(true);
+    const poll = async () => {
+      const s = await refreshGoogleStatus();
+      if (s.connectStatus === 'waiting') {
+        setTimeout(poll, 1500);
+        return;
+      }
+      setGoogleConnecting(false);
+      if (s.connectStatus === 'connected') setMessage('Google 계정이 연결되었습니다.');
+      else if (s.connectStatus === 'error' && s.connectError) setError(s.connectError);
+    };
+    setTimeout(poll, 1500);
+  }
+
+  async function onDisconnectGoogle() {
+    setError(null);
+    setMessage(null);
+    try {
+      await api.disconnectGoogle();
+      await refreshGoogleStatus();
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
 
@@ -361,57 +360,21 @@ export default function Settings() {
             KB증권 Open API 포털(developer.kbsec.com)에서 발급받은 appKey/appSecret을 입력하세요. KB Open
             API는 앱 등록 시 계좌 하나에 이미 연결되어 있어(계좌 목록 조회 API 자체가 없음) API가 어느
             계좌인지 알려주지 않으므로, 계좌번호는 그 연결된 계좌의 실제 번호를 직접 입력해주세요(위
-            "계좌 별칭"에 등록해둔 값과 같으면 자동으로 라벨이 연결됩니다). 다른 증권사처럼 실시간 화면을
-            별도로 제공하지 않고, 아래 "KB증권 실시간 동기화"에서 그 계좌의 데이터를 로컬 저장소로
-            가져옵니다.
+            "계좌 별칭"에 등록해둔 값과 같으면 자동으로 라벨이 연결됩니다). 저장 후 보유 종목/매매내역
+            화면에서 그 계좌를 선택하면 최신 데이터를 자동으로 가져옵니다.
           </p>
         )}
       </div>
-
-      {status?.kb && (
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>KB증권 실시간 동기화</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-            위 "API 키 등록"에 입력해둔 계좌번호로 보유종목/매매내역(올해)을 가져와 로컬 저장소에 채워
-            넣습니다. 동기화 후에는 보유종목/매매내역 화면에서 다른 CSV 전용 계좌와 똑같이 보입니다.
-          </p>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="primary" onClick={onSyncKbHoldings} disabled={kbSyncing}>
-              {kbSyncing ? '동기화 중...' : '보유종목 동기화'}
-            </button>
-            <button className="ghost" onClick={onSyncKbTrades} disabled={kbSyncing}>
-              {kbSyncing ? '동기화 중...' : '매매내역 동기화 (올해)'}
-            </button>
-          </div>
-          {kbSyncResult && (
-            <p className="text-good" style={{ fontSize: 13 }}>
-              {kbSyncResult}
-            </p>
-          )}
-        </div>
-      )}
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>USD/KRW 환율</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           해외 종목 비중(%) 계산에 사용됩니다. 기본적으로 토스증권 Open API(GET /api/v1/exchange-rate)에서
-          실시간으로 조회하고, 실패하면(가끔씩 일시 오류가 날 수 있음) 아래 한국수출입은행 환율 API로
-          자동 대체됩니다. 그 아래에 값을 입력하면 실시간 조회 대신 이 값을 우선 사용합니다 — 특정
+          실시간으로 조회하고, 실패하면(가끔씩 일시 오류가 날 수 있음) 한국수출입은행 환율 API로
+          자동 대체됩니다. 아래에 값을 입력하면 실시간 조회 대신 이 값을 우선 사용합니다 — 특정
           환율로 고정하고 싶을 때만 입력하고, 평소엔 비워두세요. (한국투자증권 국내주식 잔고는 전부
           원화라 이 설정이 필요 없습니다.)
         </p>
-        <div className="form-row">
-          <label>한국수출입은행 Open API 인증키 (선택 — 토스 실패 시 대체 조회용)</label>
-          <input
-            type="text"
-            value={eximbankKey}
-            onChange={(e) => setEximbankKey(e.target.value)}
-            placeholder="한국수출입은행 홈페이지에서 무료로 발급받은 인증키"
-          />
-        </div>
-        <button className="ghost" onClick={onSaveEximbankKey} style={{ marginBottom: 16 }}>
-          인증키 저장
-        </button>
         <div className="form-row">
           <label>1 USD = ? KRW (선택 — 비워두면 실시간 조회)</label>
           <input type="number" min="0" step="0.01" value={fxRate} onChange={(e) => setFxRate(e.target.value)} />
@@ -419,6 +382,52 @@ export default function Settings() {
         <button className="primary" onClick={onSaveFxRate}>
           저장
         </button>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>Google Sheets 연동</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          Google 계정을 연결하면 Drive 루트에 "MyStock" 스프레드시트를 만들고(이미 있으면 그대로
+          사용) Holdings/Trades/Dividends 세 탭에 보유종목/매매내역/배당금을 내보내거나
+          가져올 수 있습니다 — 각 화면(보유 종목/매매내역/배당 기록)의 "Google Sheets" 버튼으로
+          실행합니다.
+        </p>
+
+        {googleStatus && !googleStatus.hasClientCredentials && (
+          <p className="text-critical" style={{ fontSize: 13 }}>
+            지금은 Google Sheets 연동을 사용할 수 없습니다.
+          </p>
+        )}
+
+        {googleStatus?.hasClientCredentials &&
+          (googleStatus.connected ? (
+            <div>
+              <p className="text-good" style={{ fontSize: 13 }}>
+                연결됨{googleStatus.email ? ` — ${googleStatus.email}` : ''}
+              </p>
+              {googleStatus.spreadsheetUrl && (
+                <p style={{ fontSize: 13 }}>
+                  <a href={googleStatus.spreadsheetUrl} target="_blank" rel="noreferrer">
+                    MyStock 스프레드시트 열기
+                  </a>
+                </p>
+              )}
+              <button className="ghost" onClick={onDisconnectGoogle}>
+                연결 해제
+              </button>
+            </div>
+          ) : (
+            <div>
+              <button className="primary" onClick={onConnectGoogle} disabled={googleConnecting}>
+                {googleConnecting ? '브라우저에서 로그인을 완료해주세요...' : 'Google 계정 연결'}
+              </button>
+              {!googleConnecting && googleStatus.connectStatus === 'error' && googleStatus.connectError && (
+                <p className="text-critical" style={{ fontSize: 13 }}>
+                  {googleStatus.connectError}
+                </p>
+              )}
+            </div>
+          ))}
       </div>
 
       <div className="card">

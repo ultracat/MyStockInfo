@@ -166,3 +166,19 @@ export interface StockInfo {
   market: string | null;
   currency: string | null;
 }
+
+export interface OssPackageInfo {
+  name: string;
+  version: string;
+  license: string;
+  homepage: string | null;
+}
+
+export interface AppInfo {
+  name: string;
+  version: string;
+  nodeVersion: string;
+  electronVersion: string | null;
+  chromeVersion: string | null;
+  packages: OssPackageInfo[];
+}

@@ -12,6 +12,7 @@ import { stockInfoRouter } from './routes/stockInfo';
 import { accountLabelsRouter } from './routes/accountLabels';
 import { kbRouter } from './routes/kb';
 import { googleRouter } from './routes/google';
+import { aboutRouter } from './routes/about';
 
 export function createApp() {
   const app = express();
@@ -34,6 +35,7 @@ export function createApp() {
   app.use('/api/account-labels', accountLabelsRouter);
   app.use('/api/kb', kbRouter);
   app.use('/api/google', googleRouter);
+  app.use('/api/about', aboutRouter);
 
   // Last-resort safety net: any route that throws without its own
   // try/catch would otherwise fall through to Express's default HTML error

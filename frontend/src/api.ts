@@ -1,5 +1,6 @@
 import type {
   AccountLabel,
+  AppInfo,
   BrokerAccount,
   BrokerId,
   BrokerSummary,
@@ -234,4 +235,6 @@ export const api = {
     request<{ added: number; failed: { row: number; error: string }[] }>(`/google/sync/${dataType}/import`, {
       method: 'POST',
     }),
+
+  getAppInfo: () => request<AppInfo>('/about'),
 };

@@ -4,8 +4,9 @@ import Dashboard from './pages/Dashboard';
 import Dividends from './pages/Dividends';
 import Trades from './pages/Trades';
 import Settings from './pages/Settings';
+import About from './pages/About';
 
-type Page = 'overview' | 'dashboard' | 'dividends' | 'trades' | 'settings';
+type Page = 'overview' | 'dashboard' | 'dividends' | 'trades' | 'settings' | 'about';
 
 // 사이드바가 접혔을 때 라벨 대신 보여줄 아이콘 — 외부 아이콘 라이브러리를 새로
 // 추가하지 않으려고 최소한의 인라인 SVG로 직접 그린다(Feather 아이콘 스타일).
@@ -77,6 +78,16 @@ function SlidersIcon() {
   );
 }
 
+function InfoIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16" />
+      <line x1="12" y1="7.5" x2="12" y2="7.51" />
+    </svg>
+  );
+}
+
 function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
   return (
     <svg {...ICON_PROPS} width={16} height={16}>
@@ -91,6 +102,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] =
   { id: 'dividends', label: '배당금', icon: PercentIcon },
   { id: 'trades', label: '매매내역', icon: RepeatIcon },
   { id: 'settings', label: '설정', icon: SlidersIcon },
+  { id: 'about', label: '정보', icon: InfoIcon },
 ];
 
 export default function App() {
@@ -131,6 +143,7 @@ export default function App() {
         {page === 'dividends' && <Dividends />}
         {page === 'trades' && <Trades />}
         {page === 'settings' && <Settings />}
+        {page === 'about' && <About />}
       </main>
     </div>
   );

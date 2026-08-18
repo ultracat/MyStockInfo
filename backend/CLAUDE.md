@@ -501,6 +501,32 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   (`dataType`은 `holdings`|`trades`|`dividends`). Client ID/Secret을 받는
   라우트는 없다(위 `clientConfig.ts` 참고).
 
+## 앱 정보(About) 화면 (`src/routes/about.ts`, `src/generated/appInfo.ts`, `scripts/generate-app-info.cjs`)
+
+프론트 "정보" 페이지(`frontend/src/pages/About.tsx`, 사이드바에서 "설정" 바로
+아래)가 `GET /api/about`로 SW 이름/버전과 사용 중인 오픈소스 패키지 목록(이름/
+버전/라이선스)을 받아 보여준다.
+
+- **버전의 단일 소스는 루트 `version.json`**(`{"version": "0.1.0"}`)이다 —
+  앱 버전을 올릴 땐 이 파일 하나만 고치면 된다. `npm run build`/`npm run dev`가
+  둘 다 `backend` 빌드 전에 `scripts/generate-app-info.cjs`를 먼저 돌리는데
+  (루트 `package.json`의 `build:backend`), 이 스크립트가 (1) `version.json`을
+  읽어 루트 `package.json`의 `"version"` 필드에 동기화하고(값이 이미 같으면
+  다시 안 씀 — 불필요한 git diff 방지) (2) 각 워크스페이스 `package.json`의
+  `dependencies`(devDependencies 제외 — 빌드 도구는 최종 앱에 안 들어감)를
+  모아 `node_modules`에 실제 설치된 버전/라이선스를 읽어 `backend/src/generated/
+  appInfo.ts`(gitignored, 매 빌드마다 새로 생성)로 굽는다. **`package:mac`/
+  `package:linux`/`package:win` 전부 `npm run build`를 먼저 거치므로**, 세
+  플랫폼 산출물이 전부 `version.json` 값 하나로 자동 일치한다 — electron-builder
+  자체는 `version.json`을 모르고 항상 루트 `package.json`의 `version`만 읽지만,
+  그 필드가 이 스크립트로 이미 동기화돼 있다.
+- `electron`은 devDependencies에 있지만 패키징된 앱의 실제 런타임이라 스크립트가
+  별도로 목록에 끼워 넣는다. `@mystock/*`(워크스페이스 내부 참조)는 제외한다.
+- **Electron/Chromium/Node 버전은 빌드 시점이 아니라 요청 시점에 `process.versions`
+  에서 읽는다**(`about.ts`) — "이 실행 환경이 실제로 어떤 런타임인지"는 빌드
+  시점 값이 아니라 지금 실행 중인 값이 맞기 때문. Electron 메인 프로세스 밖
+  (standalone 백엔드 dev 실행)이면 `electron`/`chrome`이 없어 `null`로 내려간다.
+
 ## 검증 방식
 
 증권사 API 관련 코드는 실제 공식 문서(토스: developers.tossinvest.com, KIS:

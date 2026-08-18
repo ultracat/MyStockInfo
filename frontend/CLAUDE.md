@@ -10,7 +10,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   않는다** — 로케일 데이터 조회가 있어 공짜가 아니라서, 행마다 새로 만들면 포지션
   30~50개짜리 렌더 한 번에 수백 번 생성된다(과거 `HoldingsTable.tsx`에서 실제 발생).
 - `src/App.tsx` — 좌측 네비 + `page` 상태
-  (`'overview'|'dashboard'|'dividends'|'trades'|'settings'`, 기본값 `'overview'`).
+  (`'overview'|'dashboard'|'dividends'|'trades'|'settings'|'about'`, 기본값 `'overview'`).
   새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
   **`'overview'`(대시보드, `pages/Overview.tsx`)와 `'dashboard'`(보유 종목,
   `pages/Dashboard.tsx`) 이름이 헷갈리기 쉽다** — `Dashboard.tsx`는 이 세션
@@ -510,6 +510,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   좌우로 튀어나감)까지는 못 막아서, `MonthlyReturnChart.tsx`처럼 값 자체가
   길어질 수 있는 차트는 컴포넌트 쪽에서 좌/우/상/하 정렬을 직접 뒤집는 로직이
   따로 필요했다(위 참고).
+- `src/pages/About.tsx` — 사이드바 "설정" 바로 아래 "정보" 화면. `GET /api/about`
+  (`api.getAppInfo()`) 하나만 마운트 시 호출해 SW 이름/버전 + Electron/Chromium/
+  Node 런타임 버전 + 사용 중인 오픈소스 패키지(이름/버전/라이선스) 표를 보여준다.
+  **표시되는 값은 하드코딩이 아니라 빌드 시점에 생성된
+  `backend/src/generated/appInfo.ts`를 그대로 내려받은 것**이다 — 버전을 올리려면
+  루트 `version.json` 하나만 고치면 되고(`backend/CLAUDE.md`의 "앱 정보(About)
+  화면" 절 참고), 이 페이지 자체는 고칠 게 없다.
 
 ## 개발
 

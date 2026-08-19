@@ -68,6 +68,10 @@ function buildPortfolioFromStored(broker: BrokerId, accountId: string, rows: Sto
     totalProfitLossKrw: plKrw,
     totalProfitLossUsd: hasUsd ? plUsd : null,
     profitLossRate: purchaseKrw > 0 ? plKrw / purchaseKrw : null,
+    // CSV/Sheets 전용 브로커는 예수금을 알 방법이 없다 — 항상 null(화면에
+    // "미지원"으로 고정 표시, AmountTile 대신 렌더링 분기 참고).
+    cashBalanceKrw: null,
+    cashBalanceUsd: null,
     positions: rows.map((r) => ({
       symbol: r.symbol,
       name: r.name,
@@ -102,6 +106,11 @@ function mergePortfolios(
   let marketUsd = 0;
   let plUsd = 0;
   let hasUsd = false;
+  // 예수금은 계좌마다 있을 수도 없을 수도 있다(CSV 전용 계좌 중 아직 수동
+  // 입력을 안 한 경우) — 하나라도 값이 있으면 나머지는 0으로 취급해 더하고,
+  // 전부 없으면(null) "정보 없음"으로 남겨 사용자가 값이 아예 없다는 걸 알게 한다.
+  let cashKrw: number | null = null;
+  let cashUsd: number | null = null;
   const positions: HoldingPosition[] = [];
 
   for (const { accountId, overview } of parts) {
@@ -114,6 +123,8 @@ function mergePortfolios(
       marketUsd += overview.totalMarketValueUsd ?? 0;
       plUsd += overview.totalProfitLossUsd ?? 0;
     }
+    if (overview.cashBalanceKrw !== null) cashKrw = (cashKrw ?? 0) + overview.cashBalanceKrw;
+    if (overview.cashBalanceUsd !== null) cashUsd = (cashUsd ?? 0) + overview.cashBalanceUsd;
     for (const p of overview.positions) positions.push({ ...p, accountId });
   }
 
@@ -127,6 +138,8 @@ function mergePortfolios(
     totalProfitLossKrw: plKrw,
     totalProfitLossUsd: hasUsd ? plUsd : null,
     profitLossRate: purchaseKrw > 0 ? plKrw / purchaseKrw : null,
+    cashBalanceKrw: cashKrw,
+    cashBalanceUsd: cashUsd,
     positions,
   };
 }
@@ -167,7 +180,9 @@ function AmountTile({
   signed = false,
 }: {
   label: string;
-  krwAmount: number;
+  /** null이면 "아직 데이터가 없다"는 뜻(예: 예수금을 한 번도 입력/조회 못한
+   *  CSV 전용 계좌) — 0원과 구분해 "정보 없음"으로 보여준다. */
+  krwAmount: number | null;
   usdAmount: number | null;
   hasUsd: boolean;
   fxRate: number | null;
@@ -181,17 +196,23 @@ function AmountTile({
     return (
       <div className="stat-tile">
         <div className="label">{label}</div>
-        <div className={`value ${tone(krwAmount)}`}>{fmt(krwAmount)}</div>
+        {krwAmount === null ? (
+          <div className="value" style={{ color: 'var(--text-muted)' }}>
+            정보 없음
+          </div>
+        ) : (
+          <div className={`value ${tone(krwAmount)}`}>{fmt(krwAmount)}</div>
+        )}
       </div>
     );
   }
 
   const usd = usdAmount ?? 0;
-  const totalKrw = krwAmount + (fxRate ? usd * fxRate : 0);
+  const totalKrw = (krwAmount ?? 0) + (fxRate ? usd * fxRate : 0);
   return (
     <div className="stat-tile">
       <div className="label">{label}</div>
-      <div style={SMALL_LINE}>{fmt(krwAmount)}</div>
+      <div style={SMALL_LINE}>{fmt(krwAmount ?? 0)}</div>
       <div style={SMALL_LINE}>
         {sign(usd)}
         {usdFmt.format(usd)}
@@ -769,6 +790,9 @@ export default function Dashboard() {
   // 개별 타일의 금액(예: 손익금액이 우연히 0)이 아니라 포트폴리오가 실제로 달러
   // 투자금을 갖고 있는지로 판단 — AmountTile/RateTile 문서 주석 참고.
   const hasUsdHoldings = !!portfolio?.totalPurchaseAmountUsd;
+  // 예수금은 보유종목과 통화 보유 여부가 다를 수 있어(예: 원화만 보유 중인데
+  // 예수금엔 소액 달러가 남아있는 경우) 별도로 판단한다.
+  const hasUsdCash = !!portfolio?.cashBalanceUsd;
 
   const rows = useMemo(() => {
     if (!portfolio) return [];
@@ -969,7 +993,34 @@ export default function Dashboard() {
             </div>
           )}
 
+          {isCurrentBrokerApi && selectedBroker === 'toss' && portfolio.cashBalanceKrw !== null && (
+            <div className="notice" style={{ fontSize: 13 }}>
+              토스증권 예수금은 "매수 가능 금액"(미수 미발생 기준) API로 조회한 값이라, 매도 후 정산 전인
+              금액이 있으면 실제 예수금과 약간 다를 수 있습니다.
+            </div>
+          )}
+
           <div className="summary-row">
+            {isCurrentBrokerApi ? (
+              <AmountTile
+                label="예수금"
+                krwAmount={portfolio.cashBalanceKrw}
+                usdAmount={portfolio.cashBalanceUsd}
+                hasUsd={hasUsdCash}
+                fxRate={effectiveFxRate}
+              />
+            ) : (
+              // KB/삼성/미래에셋(CSV·Google Sheets로 관리하는 브로커)은 예수금을 알
+              // 방법이 없다(KB는 SWQM2302 TR 권한 미부여, 삼성/미래에셋은 API 자체가
+              // 없음, backend/CLAUDE.md의 "계좌별 예수금" 절 참고) — 값을 추정하거나
+              // 수동 입력을 받는 대신 "미지원"으로 고정 표시한다.
+              <div className="stat-tile">
+                <div className="label">예수금</div>
+                <div className="value" style={{ color: 'var(--text-muted)' }}>
+                  미지원
+                </div>
+              </div>
+            )}
             <AmountTile
               label="총 매입금액"
               krwAmount={portfolio.totalPurchaseAmountKrw}

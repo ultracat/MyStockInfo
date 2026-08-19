@@ -41,6 +41,12 @@ export interface PortfolioOverview {
   totalProfitLossKrw: number;
   totalProfitLossUsd: number | null;
   profitLossRate: number | null;
+  /** 예수금(현금 보유분) — 브로커 Open API가 이 정보를 안 주면(또는 조회가
+   *  실패하면) null. CSV 전용 브로커는 어댑터 자체가 없어 이 필드가 적용되지
+   *  않는다(프론트가 "미지원"으로 고정 표시, backend/CLAUDE.md의 "계좌별 예수금"
+   *  절 참고). */
+  cashBalanceKrw: number | null;
+  cashBalanceUsd: number | null;
   positions: HoldingPosition[];
 }
 

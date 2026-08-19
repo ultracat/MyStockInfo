@@ -52,6 +52,12 @@ export interface PortfolioOverview {
   totalProfitLossKrw: number;
   totalProfitLossUsd: number | null;
   profitLossRate: number | null;
+  /** 예수금(현금 보유분) — API 연동 브로커(토스/KIS)만 채워진다. 브로커 API가
+   *  못 주거나 조회가 실패하면 null(Dashboard.tsx가 "정보 없음"으로 표시).
+   *  CSV/Sheets 전용 브로커(KB/삼성/미래에셋)는 값을 알 방법이 없어 이 필드
+   *  자체를 안 쓰고 화면에 "미지원"으로 고정 표시한다. */
+  cashBalanceKrw: number | null;
+  cashBalanceUsd: number | null;
   positions: HoldingPosition[];
 }
 

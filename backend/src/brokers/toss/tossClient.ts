@@ -424,6 +424,40 @@ export async function fetchTossOrders(
   );
 }
 
+/**
+ * 매수 가능 금액 조회 (`GET /api/v1/buying-power`, `ORDER_INFO` group, 공식
+ * OpenAPI 스펙 확인 2026-08-19) — 계좌에 "예수금" 자체를 돌려주는 엔드포인트가
+ * 없어서 이걸로 대체한다. 문서상 "미수거래를 제외한 현금 기반 매수 가능 금액
+ * (미수 미발생 기준)"이라 일반적인 현금 계좌에선 예수금과 거의 같지만, 매도
+ * 후 T+2 미정산분이 있는 시점엔 정확한 "지금 당장의 예수금"과 살짝 다를 수
+ * 있다(엄밀히 다른 개념) — 화면에 이 근사를 안내한다.
+ */
+export async function fetchTossBuyingPower(
+  accountSeq: number,
+  currency: 'KRW' | 'USD',
+  opts: FetchOpts = {}
+): Promise<number> {
+  return withCache(
+    `toss:buying-power:${accountSeq}:${currency}`,
+    DEFAULT_TTL_MS,
+    async () => {
+      const params = new URLSearchParams({ currency });
+      const raw = await tossFetch<any>(`/api/v1/buying-power?${params}`, 'ORDER_INFO', { accountSeq });
+      const data = raw?.result ?? raw;
+
+      if (!data || typeof data !== 'object' || typeof data.cashBuyingPower !== 'string') {
+        console.error('[toss] Unexpected /api/v1/buying-power response shape:', JSON.stringify(raw));
+        throw new Error(
+          '토스증권 매수 가능 금액(예수금) 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
+        );
+      }
+
+      return toNum(data.cashBuyingPower);
+    },
+    opts
+  );
+}
+
 export async function fetchTossExchangeRate(
   baseCurrency: string,
   quoteCurrency: string,

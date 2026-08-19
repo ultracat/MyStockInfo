@@ -9,6 +9,7 @@ import type {
 } from '../types';
 import {
   fetchTossAccounts,
+  fetchTossBuyingPower,
   fetchTossExchangeRate,
   fetchTossHoldings,
   fetchTossOrders,
@@ -74,6 +75,13 @@ export const tossAdapter: BrokerAdapter = {
     const accountSeq = Number(accountId);
     const overview = await fetchTossHoldings(accountSeq, opts);
 
+    // 예수금(매수 가능 금액)은 보유종목 조회와 별개 API라 실패해도 전체 조회를
+    // 막지 않는다 — allSettled로 KRW/USD 각각 독립적으로 실패를 흡수한다.
+    const [krwCash, usdCash] = await Promise.allSettled([
+      fetchTossBuyingPower(accountSeq, 'KRW', opts),
+      fetchTossBuyingPower(accountSeq, 'USD', opts),
+    ]);
+
     try {
       return {
         broker: 'toss',
@@ -85,6 +93,8 @@ export const tossAdapter: BrokerAdapter = {
         totalProfitLossKrw: overview.profitLoss.amountAfterCost.krw,
         totalProfitLossUsd: overview.profitLoss.amountAfterCost.usd,
         profitLossRate: overview.profitLoss.rateAfterCost,
+        cashBalanceKrw: krwCash.status === 'fulfilled' ? krwCash.value : null,
+        cashBalanceUsd: usdCash.status === 'fulfilled' ? usdCash.value : null,
         positions: overview.items.map(mapPosition),
       };
     } catch (err) {

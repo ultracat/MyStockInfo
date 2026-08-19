@@ -98,6 +98,10 @@ export const kisAdapter: BrokerAdapter = {
         // asst_icdc_erng_rt, a broader day-over-day asset-change metric) —
         // derived here instead of guessing a field that isn't there.
         profitLossRate: totalPurchaseAmountKrw > 0 ? totalProfitLossKrw / totalPurchaseAmountKrw : null,
+        // dnca_tot_amt(예수금총금액) — KIS 공식 필드명이 곧 "예수금"이라 별도 API
+        // 호출 없이 이미 받아온 summary에서 그대로 뽑는다. 국내 계좌라 USD는 없음.
+        cashBalanceKrw: num(summary.dnca_tot_amt),
+        cashBalanceUsd: null,
         positions: items.map(mapPosition),
       };
     } catch (err) {

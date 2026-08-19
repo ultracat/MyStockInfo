@@ -104,6 +104,13 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   쓰는 이상 못 줄인다. 우리 코드(`node_modules`+`frontend`+`electron`)는 asar로 묶은
   뒤 1.8MB밖에 안 된다 — 여기서 더 짤 게 별로 없다는 뜻. "용량이 너무 크다"고 느껴지면
   범인은 거의 항상 Electron 자체지 이 앱 코드가 아니다.
+- **`electronLanguages: ["ko", "en-US"]`.** Electron은 기본적으로 Chromium의 55개
+  로케일 `.pak` 파일(`locales/`)을 전부 포함하는데, 이 앱은 한국어 UI 전용이라 대부분
+  안 쓰인다. Windows 기준 unpacked 산출물에서 `locales/`가 47MB(전체 350MB의 13%)를
+  차지하고 있어서 실제로 확인 후 뺐다 — 한국어(`ko`)와 폴백용 영어(`en-US`)만 남기니
+  `locales/`가 1.3MB로 줄고 unpacked 총용량은 305MB, NSIS 인스톨러는 94MB가 됐다(둘 다
+  win-unpacked 실행 + `/api/accounts` 응답으로 정상 동작 재검증함). 다국어 지원을
+  추가하게 되면 그때 필요한 로케일 코드를 이 배열에 추가하면 된다.
 공통 설정(위 `files`/`asar`/`npmRebuild`) 위에, 플랫폼별로 아래 서브키가 따로 있다.
 
 ### Mac (`build.mac`, `npm run package:mac`)

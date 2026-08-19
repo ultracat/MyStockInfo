@@ -80,6 +80,7 @@
       "ko",
       "en-US"
     ],
+    "afterPack": "scripts/afterPack-trim-mac-locales.cjs",
     "mac": {
       "category": "public.app-category.finance",
       "target": [

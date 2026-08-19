@@ -76,6 +76,10 @@
     ],
     "asar": true,
     "npmRebuild": false,
+    "electronLanguages": [
+      "ko",
+      "en-US"
+    ],
     "mac": {
       "category": "public.app-category.finance",
       "target": [

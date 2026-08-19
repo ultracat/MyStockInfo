@@ -111,20 +111,39 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   `locales/`가 1.3MB로 줄고 unpacked 총용량은 305MB, NSIS 인스톨러는 94MB가 됐다(둘 다
   win-unpacked 실행 + `/api/accounts` 응답으로 정상 동작 재검증함). 다국어 지원을
   추가하게 되면 그때 필요한 로케일 코드를 이 배열에 추가하면 된다.
-- **Mac은 위 `electronLanguages`만으로는 안 줄어든다 — 별도로 `afterPack:
-  "scripts/afterPack-trim-mac-locales.cjs"` 훅을 뒀다.** electron-builder(25.1.8,
-  `app-builder-lib/out/electron/ElectronFramework.js`의 `getLocalesConfig`)가 Mac에서
-  로케일을 정리할 때 보는 디렉터리는 `packager.getResourcesDir()`(= 앱 최상위
-  `Contents/Resources` — 여긴 원래 거의 빈 스텁 `.lproj`뿐)인데, 실제 무거운 Chromium
-  로케일 데이터는 `Contents/Frameworks/Electron Framework.framework/Versions/A/
-  Resources/*.lproj`(개당 최대 ~1.6MB, 총합 ~47MB — Windows의 `locales/` 47MB와 같은
-  데이터)에 있다. 즉 이 버전의 electron-builder는 Mac에서 이 경로를 아예 안 건드리는
-  버그/제약이 있다(실측 확인, 2026-08-19) — `electronLanguages`를 설정해도 `.app`이
-  ~290MB 그대로였다. 그래서 `afterPack` 훅이 저 프레임워크 안의 `.lproj`를 직접
-  훑어서 `ko`/`en` 계열(성별 굴절형 `en_FEMININE.lproj` 등 포함)만 남기고 지운다 —
-  `.app` 288MB→232MB, DMG 120MB→108MB로 줄었다(패키징된 `.app`을 직접 실행 +
-  `/api/accounts` 응답 + 화면 렌더링까지 재검증함). electron-builder를 올려서 이
-  버그가 고쳐지면 이 훅은 지워도 된다.
+- **Mac은 위 `electronLanguages`만으로는 안 줄어든다 + `identity: null`만으로는
+  다른 맥에서 "손상된 앱" 오류가 난다 — 이 둘을 `afterPack:
+  "scripts/afterPack-mac-finalize.cjs"` 훅 하나에서 순서대로 처리한다(반드시 로케일
+  삭제 → 재서명 순서, 거꾸로 하면 재서명한 뒤에 파일을 지워서 서명이 다시 깨진다).**
+  1. **로케일 정리**: electron-builder(25.1.8, `app-builder-lib/out/electron/
+     ElectronFramework.js`의 `getLocalesConfig`)가 Mac에서 로케일을 정리할 때 보는
+     디렉터리는 `packager.getResourcesDir()`(= 앱 최상위 `Contents/Resources` — 여긴
+     원래 거의 빈 스텁 `.lproj`뿐)인데, 실제 무거운 Chromium 로케일 데이터는
+     `Contents/Frameworks/Electron Framework.framework/Versions/A/Resources/*.lproj`
+     (개당 최대 ~1.6MB, 총합 ~47MB — Windows의 `locales/` 47MB와 같은 데이터)에 있다.
+     즉 이 버전의 electron-builder는 Mac에서 이 경로를 아예 안 건드리는 버그/제약이
+     있다(실측 확인, 2026-08-19) — `electronLanguages`를 설정해도 `.app`이 ~290MB
+     그대로였다. 그래서 훅이 저 프레임워크 안의 `.lproj`를 직접 훑어서 `ko`/`en` 계열
+     (성별 굴절형 `en_FEMININE.lproj` 등 포함)만 남기고 지운다.
+  2. **번들 전체 ad-hoc 재서명**: `identity: null`이면 Electron이 미리 심어둔
+     "linker-signed" ad-hoc 서명만 남는데, 이건 번들 전체를 감싸는 리소스 시일
+     (`_CodeSignature/CodeResources`) 없이 Mach-O 실행 파일 하나만 가리키는 불완전한
+     상태다(`codesign --verify --deep --strict`가 "code has no resources but
+     signature indicates they must be present"로 실패 — **로케일 정리와 무관하게
+     원래부터 이랬다**, 0.1.0 dmg에서도 재현 확인, 2026-08-19). 빌드한 맥에서는
+     quarantine 속성이 없어 Gatekeeper가 서명 검증 자체를 건너뛰어 멀쩡히 실행되지만,
+     다른 맥으로 옮기면(다운로드/AirDrop 등으로 quarantine이 붙으면) Gatekeeper가 이
+     불일치를 "손상된 앱"으로 판정해 실행 자체를 막는다("휴지통으로 이동해야
+     합니다" 다이얼로그 — README.md가 이미 안내한 "확인되지 않은 개발자" 경고와는
+     다른, 훨씬 심한 증상). `codesign --deep --force --sign -`(하이픈 = ad-hoc, 유료
+     Apple Developer 인증서 불필요)로 번들 전체를 재서명하면 리소스 시일이 새로
+     생겨 해결된다 — 여전히 공증은 안 된 상태라 "확인되지 않은 개발자" 경고는
+     그대로 뜨지만, 우클릭 "열기"로 우회 가능한 정상 흐름으로 돌아온다.
+
+  결과: `.app` 288MB→232MB, DMG 120MB→108MB로 줄었고, 다른 맥에 옮겨서 실행 +
+  `/api/accounts` 응답까지 재검증했다. electron-builder를 올려서 로케일 정리 버그가
+  고쳐지면 1번 단계는 지워도 되지만, 2번(재서명)은 `identity: null`을 유지하는
+  한(=Apple Developer 인증서로 진짜 서명하기 전까지는) 계속 필요하다.
 공통 설정(위 `files`/`asar`/`npmRebuild`) 위에, 플랫폼별로 아래 서브키가 따로 있다.
 
 ### Mac (`build.mac`, `npm run package:mac`)

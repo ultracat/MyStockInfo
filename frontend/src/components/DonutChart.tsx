@@ -29,11 +29,14 @@ export default function DonutChart({
   centerLabel,
   centerValue,
   formatValue,
+  onCenterClick,
 }: {
   slices: DonutSlice[];
   centerLabel?: string;
   centerValue?: string;
   formatValue: (v: number) => string;
+  /** 있으면 가운데 숫자가 버튼이 된다(호출부가 상세 보기 등을 열 때 씀). */
+  onCenterClick?: () => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const total = slices.reduce((sum, s) => sum + s.value, 0);
@@ -89,7 +92,31 @@ export default function DonutChart({
             }}
           >
             {centerLabel && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{centerLabel}</div>}
-            {centerValue && <div style={{ fontSize: 18, fontWeight: 600 }}>{centerValue}</div>}
+            {centerValue &&
+              (onCenterClick ? (
+                <button
+                  type="button"
+                  onClick={onCenterClick}
+                  aria-label={`${centerLabel ?? ''} 상세 보기`}
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                    pointerEvents: 'auto',
+                    textDecoration: 'underline',
+                    textDecorationColor: 'var(--border)',
+                    textUnderlineOffset: 3,
+                  }}
+                >
+                  {centerValue}
+                </button>
+              ) : (
+                <div style={{ fontSize: 18, fontWeight: 600 }}>{centerValue}</div>
+              ))}
           </div>
         )}
       </div>

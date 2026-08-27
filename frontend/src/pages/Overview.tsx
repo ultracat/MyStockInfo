@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
 import { API_BROKER_IDS } from '../brokers';
 import DonutChart, { type DonutSlice } from '../components/DonutChart';
+import DonutDetailModal from '../components/DonutDetailModal';
 import DividendsChart from '../components/DividendsChart';
 import MonthlyReturnChart, { type MonthlyReturnRow } from '../components/MonthlyReturnChart';
 import MonthlyInvestmentChart, { type MonthlyInvestmentRow } from '../components/MonthlyInvestmentChart';
@@ -272,6 +273,26 @@ export default function Overview() {
     return topNSlices(bySymbol);
   }, [holdings, effectiveFxRate]);
 
+  // ---- 1-1) 보유종목 비중 도넛의 가운데 숫자를 눌렀을 때 보여줄 종목별 상세 ----
+  // holdingSlices는 상위 5종목 + "기타"로 접지만, 여기선 보유 중인 전 종목을
+  // 보유수량까지 포함해 그대로 보여준다.
+  const [showHoldingDetail, setShowHoldingDetail] = useState(false);
+  const holdingDetailRows = useMemo(() => {
+    const bySymbol = new Map<string, { name: string; valueKrw: number; quantity: number }>();
+    for (const h of holdings) {
+      const v = toKrw(h.quantity * h.lastPrice, h.currency);
+      if (v === null) continue;
+      const existing = bySymbol.get(h.symbol) ?? { name: h.name, valueKrw: 0, quantity: 0 };
+      existing.valueKrw += v;
+      existing.quantity += h.quantity;
+      bySymbol.set(h.symbol, existing);
+    }
+    return Array.from(bySymbol.entries())
+      .map(([symbol, v]) => ({ symbol, ...v }))
+      .filter((e) => e.valueKrw > 0)
+      .sort((a, b) => b.valueKrw - a.valueKrw);
+  }, [holdings, effectiveFxRate]);
+
   // ---- 2) 월별 배당금(막대) — 선택한 연도 ----
   const dividendMonthlyRows = useMemo<MonthlySummaryRow[]>(() => {
     const byMonth = new Map<string, { totalKrw: number; totalUsd: number; count: number }>();
@@ -304,6 +325,29 @@ export default function Overview() {
       bySymbol.set(d.symbol, existing);
     }
     return topNSlices(bySymbol);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividends, year, effectiveFxRate, monthlyAvgFxRates]);
+
+  // ---- 3-1) 배당금 비중 도넛의 가운데 숫자를 눌렀을 때 보여줄 종목별 상세 ----
+  // dividendSlices는 상위 5종목 + "기타"로 접지만, 여기선 그 해에 배당을 준
+  // 전 종목을 배당횟수(건수)까지 포함해 그대로 보여준다.
+  const [showDividendDetail, setShowDividendDetail] = useState(false);
+  const dividendDetailRows = useMemo(() => {
+    const bySymbol = new Map<string, { name: string; valueKrw: number; count: number }>();
+    for (const d of dividends) {
+      if (!d.paidDate.startsWith(String(year))) continue;
+      const rate = d.currency === 'USD' ? dividendFxRateFor(d.paidDate.slice(0, 7)) : null;
+      const v = d.currency === 'USD' ? (rate ? d.amount * rate : null) : d.amount;
+      if (v === null) continue;
+      const existing = bySymbol.get(d.symbol) ?? { name: d.name, valueKrw: 0, count: 0 };
+      existing.valueKrw += v;
+      existing.count += 1;
+      bySymbol.set(d.symbol, existing);
+    }
+    return Array.from(bySymbol.entries())
+      .map(([symbol, v]) => ({ symbol, ...v }))
+      .filter((e) => e.valueKrw > 0)
+      .sort((a, b) => b.valueKrw - a.valueKrw);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dividends, year, effectiveFxRate, monthlyAvgFxRates]);
 
@@ -530,8 +574,24 @@ export default function Overview() {
           centerLabel="총 평가금액"
           centerValue={formatKrwValue(totalMarketKrw)}
           formatValue={formatKrwValue}
+          onCenterClick={() => setShowHoldingDetail(true)}
         />
       </div>
+
+      {showHoldingDetail && (
+        <DonutDetailModal
+          title="전체 계좌 보유종목 상세"
+          totalValueKrw={totalMarketKrw}
+          rows={holdingDetailRows.map((r) => ({
+            symbol: r.symbol,
+            name: r.name,
+            valueKrw: r.valueKrw,
+            meta: `${r.quantity}주`,
+          }))}
+          formatValue={formatKrwValue}
+          onClose={() => setShowHoldingDetail(false)}
+        />
+      )}
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -563,8 +623,24 @@ export default function Overview() {
           centerLabel={`${year}년 배당금`}
           centerValue={formatKrwValue(totalDividendKrwThisYear)}
           formatValue={formatKrwValue}
+          onCenterClick={() => setShowDividendDetail(true)}
         />
       </div>
+
+      {showDividendDetail && (
+        <DonutDetailModal
+          title={`${year}년 배당금 상세`}
+          totalValueKrw={totalDividendKrwThisYear}
+          rows={dividendDetailRows.map((r) => ({
+            symbol: r.symbol,
+            name: r.name,
+            valueKrw: r.valueKrw,
+            meta: `배당 ${r.count}건`,
+          }))}
+          formatValue={formatKrwValue}
+          onClose={() => setShowDividendDetail(false)}
+        />
+      )}
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>매월 보유종목 투자금 대비 수익률</h3>

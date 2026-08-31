@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
 import DividendsChart from '../components/DividendsChart';
+import DonutDetailModal from '../components/DonutDetailModal';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
@@ -17,6 +18,10 @@ const DIVIDEND_CSV_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amoun
 
 const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
+
+function formatKrwValue(v: number) {
+  return `${krw.format(Math.round(v))}원`;
+}
 
 type YearFilter = 'ALL' | number;
 type BrokerFilter = 'ALL' | BrokerId;
@@ -709,6 +714,30 @@ export default function Dividends() {
       .sort((a, b) => (a.month < b.month ? -1 : 1));
   }, [chartRecords]);
 
+  // 월별 배당금 막대를 눌렀을 때 보여줄 그 달의 종목별 배당 상세 — 그래프와 같은
+  // 데이터(chartRecords, 즉 chartBroker/연도 필터가 적용된 범위)를 종목별로 합쳐
+  // 배당금이 큰 순서로 정렬한다(Overview.tsx의 selectedMonthDetailRows와 동일 방식).
+  const [selectedDividendMonth, setSelectedDividendMonth] = useState<string | null>(null);
+  const selectedMonthDetailRows = useMemo(() => {
+    if (!selectedDividendMonth) return [];
+    const bySymbol = new Map<string, { name: string; valueKrw: number; count: number }>();
+    for (const r of chartRecords) {
+      if (!r.paidDate.startsWith(selectedDividendMonth)) continue;
+      const rate = r.currency === 'USD' ? dividendFxRateFor(selectedDividendMonth) : null;
+      const v = r.currency === 'USD' ? (rate ? r.amount * rate : null) : r.amount;
+      if (v === null) continue;
+      const existing = bySymbol.get(r.symbol) ?? { name: r.name, valueKrw: 0, count: 0 };
+      existing.valueKrw += v;
+      existing.count += 1;
+      bySymbol.set(r.symbol, existing);
+    }
+    return Array.from(bySymbol.entries())
+      .map(([symbol, v]) => ({ symbol, ...v }))
+      .filter((e) => e.valueKrw > 0)
+      .sort((a, b) => b.valueKrw - a.valueKrw);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartRecords, selectedDividendMonth, effectiveFxRate, monthlyAvgFxRates]);
+
   const brokerDividendTotals = useMemo(() => {
     const byBroker = new Map<BrokerId, { krw: number; usd: number }>();
     for (const r of visibleRecords) {
@@ -946,7 +975,11 @@ export default function Dividends() {
         {!dividendPanelsCollapsed && (
           <div style={{ display: 'flex', alignItems: 'stretch', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
             <div style={{ flex: '1 1 420px', minWidth: 0 }}>
-              <DividendsChart rows={monthlyRows} fxRate={dividendFxRateFor} />
+              <DividendsChart
+                rows={monthlyRows}
+                fxRate={dividendFxRateFor}
+                onBarClick={(month) => setSelectedDividendMonth(month)}
+              />
             </div>
 
             <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--border)' }} />
@@ -992,6 +1025,21 @@ export default function Dividends() {
           </div>
         )}
       </div>
+
+      {selectedDividendMonth && (
+        <DonutDetailModal
+          title={`${selectedDividendMonth} 배당 내역`}
+          totalValueKrw={selectedMonthDetailRows.reduce((sum, r) => sum + r.valueKrw, 0)}
+          rows={selectedMonthDetailRows.map((r) => ({
+            symbol: r.symbol,
+            name: r.name,
+            valueKrw: r.valueKrw,
+            meta: `배당 ${r.count}건`,
+          }))}
+          formatValue={formatKrwValue}
+          onClose={() => setSelectedDividendMonth(null)}
+        />
+      )}
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>배당 기록 추가</h3>

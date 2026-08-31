@@ -310,6 +310,30 @@ export default function Overview() {
       .sort((a, b) => (a.month < b.month ? -1 : 1));
   }, [dividends, year]);
 
+  // ---- 2-1) 월별 배당금 막대를 눌렀을 때 보여줄 그 달의 종목별 배당 상세 ----
+  // 건별로 나열하지 않고 dividendDetailRows(연간 배당금 비중 상세)와 같은 방식으로
+  // 종목별로 합쳐서, 배당금이 큰 순서로 정렬해 보여준다.
+  const [selectedDividendMonth, setSelectedDividendMonth] = useState<string | null>(null);
+  const selectedMonthDetailRows = useMemo(() => {
+    if (!selectedDividendMonth) return [];
+    const bySymbol = new Map<string, { name: string; valueKrw: number; count: number }>();
+    for (const d of dividends) {
+      if (!d.paidDate.startsWith(selectedDividendMonth)) continue;
+      const rate = d.currency === 'USD' ? dividendFxRateFor(selectedDividendMonth) : null;
+      const v = d.currency === 'USD' ? (rate ? d.amount * rate : null) : d.amount;
+      if (v === null) continue;
+      const existing = bySymbol.get(d.symbol) ?? { name: d.name, valueKrw: 0, count: 0 };
+      existing.valueKrw += v;
+      existing.count += 1;
+      bySymbol.set(d.symbol, existing);
+    }
+    return Array.from(bySymbol.entries())
+      .map(([symbol, v]) => ({ symbol, ...v }))
+      .filter((e) => e.valueKrw > 0)
+      .sort((a, b) => b.valueKrw - a.valueKrw);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividends, selectedDividendMonth, effectiveFxRate, monthlyAvgFxRates]);
+
   // ---- 3) 배당금 비중(도넛) — 선택한 연도, 종목별 ----
   // 배당금은 toKrw(오늘/수동 환율)가 아니라 dividendFxRateFor(그 달 평균 환율,
   // 못 구하면 toKrw와 같은 값으로 대체)로 환산한다.
@@ -612,9 +636,28 @@ export default function Overview() {
           </div>
         )}
         <div style={{ marginTop: 12 }}>
-          <DividendsChart rows={dividendMonthlyRows} fxRate={dividendFxRateFor} />
+          <DividendsChart
+            rows={dividendMonthlyRows}
+            fxRate={dividendFxRateFor}
+            onBarClick={(month) => setSelectedDividendMonth(month)}
+          />
         </div>
       </div>
+
+      {selectedDividendMonth && (
+        <DonutDetailModal
+          title={`${selectedDividendMonth} 배당 내역`}
+          totalValueKrw={selectedMonthDetailRows.reduce((sum, r) => sum + r.valueKrw, 0)}
+          rows={selectedMonthDetailRows.map((r) => ({
+            symbol: r.symbol,
+            name: r.name,
+            valueKrw: r.valueKrw,
+            meta: `배당 ${r.count}건`,
+          }))}
+          formatValue={formatKrwValue}
+          onClose={() => setSelectedDividendMonth(null)}
+        />
+      )}
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>{year}년 배당금 비중</h3>

@@ -23,11 +23,21 @@ const AXIS_SPACE = 24; // room below the baseline for month labels
 export default function DividendsChart({
   rows,
   fxRate,
+  onBarClick,
 }: {
   rows: MonthlySummaryRow[];
   fxRate: number | null | ((month: string) => number | null);
+  /** 있으면 막대가 클릭 가능해지고, 그 달("YYYY-MM")을 인자로 호출된다(호출부가
+   *  그 달 상세 배당 내역 팝업 등을 열 때 씀). */
+  onBarClick?: (month: string) => void;
 }) {
-  const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null);
+  // 예전엔 마우스를 올린 막대 위에 떠다니는 말풍선(.tooltip, position:absolute)으로
+  // 상세를 보여줬는데, 카드 폭이 좁거나 막대가 가장자리에 있으면 화면/카드 밖으로
+  // 잘려서 안 보이는 경우가 있었다("계속 안 보이는 경우가 있다" 피드백) — 아무리
+  // 좌우/상하 위치를 보정해도 떠다니는 요소라 근본적으로 클리핑 위험이 남는다.
+  // 그래서 위치 계산이 필요 없는 방식으로 바꿨다: 차트 아래 항상 같은 자리에 고정된
+  // 영역을 하나 두고, 마우스를 올린 막대의 상세를 거기에 표시한다.
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
   if (rows.length === 0) {
     return <p style={{ color: 'var(--text-muted)' }}>배당 기록이 없습니다.</p>;
@@ -44,6 +54,7 @@ export default function DividendsChart({
   const max = Math.max(...rows.map(valueKrw), 1);
   const barWidth = Math.max(18, Math.min(48, 480 / rows.length - BAR_GAP));
   const width = rows.length * (barWidth + BAR_GAP);
+  const active = hoverIndex !== null ? rows[hoverIndex] : null;
 
   return (
     <div>
@@ -51,7 +62,7 @@ export default function DividendsChart({
         총 배당금 합계 <strong style={{ color: 'var(--text-primary)' }}>{krw.format(Math.round(total))}원</strong>
         {hasUnconvertedUsd && ' (달러 배당금은 환율 미적용 — 설정에서 환율을 등록해주세요)'}
       </div>
-      <div style={{ position: 'relative', overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto' }}>
         <svg
           width={width}
           height={LABEL_SPACE + HEIGHT + AXIS_SPACE}
@@ -77,13 +88,19 @@ export default function DividendsChart({
               const barHeight = Math.max(2, (v / max) * (HEIGHT - 8));
               const x = i * (barWidth + BAR_GAP);
               const y = HEIGHT - barHeight;
+              // 어떤 막대에 마우스가 올라가 있으면 나머지는 살짝 흐리게 해서
+              // "지금 아래 패널에 표시 중인 막대가 이것"임을 알려준다(DonutChart의
+              // 호버 딤아웃과 같은 패턴).
+              const dimmed = hoverIndex !== null && hoverIndex !== i;
               return (
-                <g key={row.month}>
+                <g key={row.month} style={{ opacity: dimmed ? 0.5 : 1, transition: 'opacity 0.1s ease' }}>
                   <path
                     d={`M ${x} ${HEIGHT} L ${x} ${y + 4} Q ${x} ${y} ${x + 4} ${y} L ${x + barWidth - 4} ${y} Q ${x + barWidth} ${y} ${x + barWidth} ${y + 4} L ${x + barWidth} ${HEIGHT} Z`}
                     fill="var(--series-1)"
-                    onMouseEnter={() => setHover({ index: i, x: x + barWidth / 2, y: y + LABEL_SPACE })}
-                    onMouseLeave={() => setHover(null)}
+                    style={onBarClick ? { cursor: 'pointer' } : undefined}
+                    onMouseEnter={() => setHoverIndex(i)}
+                    onMouseLeave={() => setHoverIndex(null)}
+                    onClick={() => onBarClick?.(row.month)}
                   />
                   <text
                     x={x + barWidth / 2}
@@ -108,17 +125,25 @@ export default function DividendsChart({
             })}
           </g>
         </svg>
-        {hover && (
-          <div className="tooltip" style={{ left: hover.x, top: hover.y }}>
-            {rows[hover.index].month}: {krw.format(Math.round(valueKrw(rows[hover.index])))}원 (
-            {rows[hover.index].count}건)
-            {rows[hover.index].totalUsd > 0 && (
-              <>
-                <br />
-                원화 {krw.format(rows[hover.index].totalKrw)}원 + 달러 {usd.format(rows[hover.index].totalUsd)}
-              </>
+      </div>
+      <div className="chart-detail-panel">
+        {active ? (
+          <>
+            <strong style={{ color: 'var(--text-primary)' }}>{active.month}</strong>
+            {': '}
+            {krw.format(Math.round(valueKrw(active)))}원 ({active.count}건)
+            {active.totalUsd > 0 && (
+              <span style={{ color: 'var(--text-muted)' }}>
+                {' '}
+                — 원화 {krw.format(active.totalKrw)}원 + 달러 {usd.format(active.totalUsd)}
+              </span>
             )}
-          </div>
+          </>
+        ) : (
+          <span style={{ color: 'var(--text-muted)' }}>
+            막대에 마우스를 올리면 그 달의 배당금 상세가 여기 표시됩니다
+            {onBarClick && ' (클릭하면 종목별 내역을 볼 수 있습니다)'}.
+          </span>
         )}
       </div>
     </div>

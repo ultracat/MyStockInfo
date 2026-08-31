@@ -338,6 +338,17 @@ button.ghost {
   overflow-y: auto;
 }
 
+.chart-detail-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--gridline);
+  font-size: 13px;
+  color: var(--text-secondary);
+  /* 내용이 있을 때/없을 때(호버 유무) 높이가 바뀌면 아래 카드들이 들썩여서,
+     두 줄 분량으로 고정해둔다 — DividendsChart.tsx의 막대 아래 고정 상세 패널. */
+  min-height: 36px;
+}
+
 .tooltip {
   position: absolute;
   background: var(--text-primary);

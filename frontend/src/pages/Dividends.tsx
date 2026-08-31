@@ -23,6 +23,12 @@ function formatKrwValue(v: number) {
   return `${krw.format(Math.round(v))}원`;
 }
 
+/** 배당내역 팝업의 종목별 행 meta — 지금 보유 중이 아닌 종목(전량 매도 등)은
+ *  수량 정보가 없어 배당 건수만 보여준다. */
+function formatDividendMeta(count: number, quantity: number | undefined) {
+  return quantity ? `배당 ${count}건 · 보유 ${quantity}주` : `배당 ${count}건`;
+}
+
 type YearFilter = 'ALL' | number;
 type BrokerFilter = 'ALL' | BrokerId;
 type PageSize = 10 | 20 | 30 | 'ALL';
@@ -36,10 +42,12 @@ interface BrokerInvested {
 }
 
 /** 종목 하나의 오늘 기준 평단가(브로커 안의 여러 계좌에 같은 심볼이 있으면
- *  가중평균) — "연도별 투자금 재구성"이 재구성한 수량에 곱하는 값. */
+ *  가중평균) — "연도별 투자금 재구성"이 재구성한 수량에 곱하는 값. quantity는
+ *  오늘 기준 실제 보유수량 합계 — 배당내역 팝업의 "총 주식갯수" 표시에 쓴다. */
 interface BrokerSymbolCost {
   avgCost: number;
   currency: string;
+  quantity: number;
 }
 
 interface BrokerLine {
@@ -232,7 +240,7 @@ export default function Dividends() {
     }
     const result = new Map<string, BrokerSymbolCost>();
     for (const [symbol, v] of bySymbol) {
-      if (v.qty > 0) result.set(symbol, { avgCost: v.amount / v.qty, currency: v.currency });
+      if (v.qty > 0) result.set(symbol, { avgCost: v.amount / v.qty, currency: v.currency, quantity: v.qty });
     }
     return result;
   }
@@ -714,6 +722,23 @@ export default function Dividends() {
       .sort((a, b) => (a.month < b.month ? -1 : 1));
   }, [chartRecords]);
 
+  // 배당내역 팝업에 "총 주식갯수"(오늘 기준 보유수량)를 같이 보여주기 위한 조회용
+  // 맵 — avgCostByBroker(오늘 기준 평단가 계산용으로 이미 조회해둔 값)가 종목별
+  // 수량도 갖고 있어(quantity) 재사용한다. chartBroker가 특정 증권사면 그 브로커만,
+  // "전체"면 전 브로커 합계로 — chartRecords/monthlyRows와 같은 범위를 유지한다.
+  const qtyBySymbol = useMemo(() => {
+    const m = new Map<string, number>();
+    const brokerIds = chartBroker === 'ALL' ? (Object.keys(avgCostByBroker) as BrokerId[]) : [chartBroker];
+    for (const brokerId of brokerIds) {
+      const costs = avgCostByBroker[brokerId];
+      if (!costs) continue;
+      for (const [symbol, v] of costs) {
+        m.set(symbol, (m.get(symbol) ?? 0) + v.quantity);
+      }
+    }
+    return m;
+  }, [avgCostByBroker, chartBroker]);
+
   // 월별 배당금 막대를 눌렀을 때 보여줄 그 달의 종목별 배당 상세 — 그래프와 같은
   // 데이터(chartRecords, 즉 chartBroker/연도 필터가 적용된 범위)를 종목별로 합쳐
   // 배당금이 큰 순서로 정렬한다(Overview.tsx의 selectedMonthDetailRows와 동일 방식).
@@ -1034,7 +1059,7 @@ export default function Dividends() {
             symbol: r.symbol,
             name: r.name,
             valueKrw: r.valueKrw,
-            meta: `배당 ${r.count}건`,
+            meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
           }))}
           formatValue={formatKrwValue}
           onClose={() => setSelectedDividendMonth(null)}

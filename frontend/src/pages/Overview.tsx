@@ -38,6 +38,12 @@ function formatKrwValue(v: number) {
   return `${krw.format(Math.round(v))}원`;
 }
 
+/** 배당내역 팝업의 종목별 행 meta — 지금 보유 중이 아닌 종목(전량 매도 등)은
+ *  수량 정보가 없어 배당 건수만 보여준다. */
+function formatDividendMeta(count: number, quantity: number | undefined) {
+  return quantity ? `배당 ${count}건 · 보유 ${quantity}주` : `배당 ${count}건`;
+}
+
 /**
  * 대시보드 — 전체 브로커/계좌를 한데 합친 요약 화면. 다른 화면들(보유 종목/배당금/
  * 매매내역)은 브로커·계좌 단위로 파고드는 화면이고, 이 화면만 유일하게 "전부 합쳐서"
@@ -292,6 +298,14 @@ export default function Overview() {
       .filter((e) => e.valueKrw > 0)
       .sort((a, b) => b.valueKrw - a.valueKrw);
   }, [holdings, effectiveFxRate]);
+
+  // 배당내역 팝업(연간/월별 종목별 상세)에 "총 주식갯수"(오늘 기준 보유수량)도
+  // 같이 보여주기 위한 조회용 맵 — holdingDetailRows가 이미 종목별로 집계해둔
+  // 수량을 그대로 재사용한다.
+  const qtyBySymbol = useMemo(
+    () => new Map(holdingDetailRows.map((r) => [r.symbol, r.quantity])),
+    [holdingDetailRows]
+  );
 
   // ---- 2) 월별 배당금(막대) — 선택한 연도 ----
   const dividendMonthlyRows = useMemo<MonthlySummaryRow[]>(() => {
@@ -652,7 +666,7 @@ export default function Overview() {
             symbol: r.symbol,
             name: r.name,
             valueKrw: r.valueKrw,
-            meta: `배당 ${r.count}건`,
+            meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
           }))}
           formatValue={formatKrwValue}
           onClose={() => setSelectedDividendMonth(null)}
@@ -678,7 +692,7 @@ export default function Overview() {
             symbol: r.symbol,
             name: r.name,
             valueKrw: r.valueKrw,
-            meta: `배당 ${r.count}건`,
+            meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
           }))}
           formatValue={formatKrwValue}
           onClose={() => setShowDividendDetail(false)}

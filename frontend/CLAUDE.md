@@ -237,6 +237,26 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   알림만 띄운다(전체 화면 로딩 스피너와 분리된 `kbSyncing`/`kbSyncNotice` state).
   `isKbSyncable`이면 수동 "새로고침" 버튼도 같이 뜬다(Toss/KIS의 자동 60초 폴링은
   KB엔 없음 — kbSync.ts 절 참고).
+  **`userPickedAccountRef`(계좌를 처음 볼 때 연동 계좌를 기본 선택으로 강제)**:
+  KB는 종합위탁계좌/IRP/연금저축처럼 계좌가 실제로 여러 개일 수 있는데(예:
+  "신연금저축"/"개인형 IRP 퇴직연금"/"종합위탁계좌" 셋 다 로컬 저장소에 있음),
+  그중 실시간 연동된 건 하나뿐이다. 위 두 effect(로컬 저장소에서 계좌 목록을
+  받아오는 effect와 `kbLink.linkedAccountId`를 합쳐 넣는 effect)는 서로 독립된
+  비동기라 어느 쪽이 먼저 끝나는지가 매번 다른데, 로컬 저장소 effect가 먼저
+  끝나 "그때 눈에 띈 첫 계좌"(Set 순서라 사실상 임의 — 연동 계좌가 아닌 경우가
+  흔함)를 이미 `accountId`로 골라버리면, KB 병합 effect의 예전 로직
+  (`setAccountId(prev => prev ?? linkedId)`)은 `prev`가 이미 non-null이라 그
+  잘못된 기본값을 절대 안 고쳤다 — 그 계좌는 동기화 트리거 조건
+  (`accountId === kbLink.linkedAccountId`)을 못 만족해 백그라운드 동기화 자체가
+  안 돌고, 화면엔 옛 로컬 데이터만 보이거나 비어 보였다. 처음 들어갔을 때
+  매매내역/보유종목이 안 보이다가 계좌를 몇 번 옮기면(우연히 연동 계좌를
+  직접 고르게 되어) 보이는 버그로 나타났다(실사용자 리포트로 발견,
+  2026-09-02). **고친 방식**: `userPickedAccountRef`(브로커가 바뀔 때마다
+  `false`로 리셋, 계좌 `<select>`의 `onChange`에서만 `true`로 세팅)가 "사용자가
+  이 브로커에서 직접 계좌를 골랐는가"를 표시한다 — KB 병합 effect는 이 값이
+  `false`인 동안은(=아직 사용자가 아무것도 안 골랐으면) 로컬 저장소 effect가
+  이미 뭘 골라놨든 상관없이 매번 연동 계좌로 강제 덮어쓴다. 사용자가 드롭다운에서
+  다른 KB 계좌(IRP 등)를 직접 고르면 그 이후로는 안 건드린다.
 - **Google Sheets 내보내기/가져오기**(Dashboard.tsx/Trades.tsx/Dividends.tsx, 각 화면
   헤더의 CSV 버튼 옆): `api.exportToGoogleSheet(dataType)`/`importFromGoogleSheet(dataType)`
   (`dataType`: `'holdings'|'trades'|'dividends'`)를 그대로 부르기만 하면 되고,

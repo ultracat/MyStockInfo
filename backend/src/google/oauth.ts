@@ -218,8 +218,42 @@ export function startConnectFlow(): void {
   }, CONNECT_TIMEOUT_MS);
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** refresh_token 자체가 죽었을 때(Google이 `invalid_grant`로 응답 — 만료되었거나,
+ *  사용자가 Google 계정 설정에서 이 앱의 접근 권한을 직접 취소한 경우) 더 이상
+ *  조용히 갱신할 방법이 없다. Sheets 내보내기/가져오기 도중 이 상태를 만나면
+ *  에러로 실패시키는 대신 로그인 플로우(`startConnectFlow`)를 자동으로 다시
+ *  띄우고(시스템 브라우저가 열림) 완료될 때까지 기다린 뒤 새 액세스 토큰을
+ *  돌려준다 — 사용자는 뜬 브라우저에서 로그인만 다시 하면 되고, 설정 화면에서
+ *  수동으로 "연결 해제 → 재연결"을 할 필요가 없다. */
+async function reconnectAndGetAccessToken(): Promise<string> {
+  store.clearAccount();
+  startConnectFlow();
+
+  const POLL_INTERVAL_MS = 1000;
+  const start = Date.now();
+  while (Date.now() - start < CONNECT_TIMEOUT_MS) {
+    await sleep(POLL_INTERVAL_MS);
+    const status = currentStatus;
+    if (status.state === 'connected') {
+      const token = store.getState().accessToken;
+      if (!token) throw new Error('Google 재연결 후 액세스 토큰을 확인하지 못했습니다.');
+      return token;
+    }
+    if (status.state === 'error') {
+      throw new Error(`Google 계정 재연결에 실패했습니다: ${status.message}`);
+    }
+  }
+  throw new Error('Google 계정 재연결 대기 시간이 초과되었습니다. 설정에서 다시 연결해주세요.');
+}
+
 /** Sheets API 호출 전에 항상 이걸 거친다 — 만료 임박이면 refresh_token으로
- *  자동 갱신 후 돌려준다. */
+ *  자동 갱신 후 돌려준다. refresh_token 자체가 만료/취소돼 갱신이 안 되면
+ *  (`invalid_grant`) 위 `reconnectAndGetAccessToken()`으로 자동 재로그인까지
+ *  시도한다. */
 export async function getValidAccessToken(): Promise<string> {
   const state = store.getState();
   if (!state.refreshToken) {
@@ -251,6 +285,9 @@ export async function getValidAccessToken(): Promise<string> {
     error_description?: string;
   };
   if (!res.ok || !body.access_token) {
+    if (body.error === 'invalid_grant') {
+      return reconnectAndGetAccessToken();
+    }
     throw new Error(
       body.error_description ?? body.error ?? `Google 액세스 토큰 갱신 실패: ${res.status}. 다시 연결해주세요.`
     );
@@ -258,4 +295,13 @@ export async function getValidAccessToken(): Promise<string> {
 
   store.setTokens({ accessToken: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 });
   return body.access_token;
+}
+
+/** 로컬에 캐시된 accessToken을 만료 시각과 무관하게 지운다 — Sheets/Drive API가
+ *  401을 돌려줬을 때(로컬 만료 시각은 아직 안 지났지만 실제로는 무효화된 경우,
+ *  주로 사용자가 Google 계정 설정에서 이 앱 접근 권한을 방금 취소한 직후) 다음
+ *  `getValidAccessToken()` 호출이 죽은 캐시를 다시 쓰지 않고 강제로 갱신을
+ *  시도하게 만든다. */
+export function invalidateAccessToken(): void {
+  store.invalidateAccessToken();
 }

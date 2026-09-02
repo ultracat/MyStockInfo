@@ -99,6 +99,12 @@ export function setEmail(email: string | null): void {
   writeState({ ...readState(), email });
 }
 
+/** oauth.ts의 `invalidateAccessToken()`이 위임하는 실제 저장소 갱신 — accessToken만
+ *  지우고 refreshToken/email/spreadsheet 정보는 그대로 둔다. */
+export function invalidateAccessToken(): void {
+  writeState({ ...readState(), accessToken: null, accessTokenExpiresAt: null });
+}
+
 export function setSpreadsheetInfo(spreadsheetId: string, spreadsheetUrl: string): void {
   writeState({ ...readState(), spreadsheetId, spreadsheetUrl });
 }

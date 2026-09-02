@@ -1,4 +1,4 @@
-import { getValidAccessToken } from './oauth';
+import { getValidAccessToken, invalidateAccessToken } from './oauth';
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
 
@@ -10,8 +10,7 @@ class SheetsApiError extends Error {
   }
 }
 
-async function sheetsFetch(path: string, init?: RequestInit): Promise<any> {
-  const token = await getValidAccessToken();
+async function rawFetch(path: string, init: RequestInit | undefined, token: string): Promise<any> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
@@ -25,6 +24,29 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<any> {
   }
   if (res.status === 204) return null;
   return res.json();
+}
+
+/** 401(권한 없음)이 나면 캐시된 accessToken을 버리고 한 번만 더 시도한다 —
+ *  `getValidAccessToken()`은 로컬에 기록된 만료 시각만 보고 캐시된 토큰을
+ *  돌려주는데, 사용자가 Google 계정 설정에서 이 앱 접근 권한을 방금 취소한
+ *  경우처럼 만료 시각은 안 지났지만 실제로는 이미 무효화된 토큰일 수 있다.
+ *  이럴 땐 `invalidateAccessToken()`으로 캐시를 지운 뒤 다시 `getValidAccessToken()`을
+ *  부르면 refresh_token으로 조용히 갱신되거나(정상 만료), refresh_token
+ *  자체도 죽었으면(`invalid_grant`) oauth.ts가 자동으로 재로그인 플로우를
+ *  띄우고 기다렸다가 새 토큰을 돌려준다 — 그래서 이 재시도가 실제로는
+ *  "브라우저에서 다시 로그인한 뒤 이어서 진행" 결과를 받아오는 경우도 있다. */
+async function sheetsFetch(path: string, init?: RequestInit): Promise<any> {
+  const token = await getValidAccessToken();
+  try {
+    return await rawFetch(path, init, token);
+  } catch (err) {
+    if (err instanceof SheetsApiError && err.status === 401) {
+      invalidateAccessToken();
+      const freshToken = await getValidAccessToken();
+      return rawFetch(path, init, freshToken);
+    }
+    throw err;
+  }
 }
 
 export interface SpreadsheetInfo {
@@ -97,16 +119,24 @@ const DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3';
  *  찾으면(사용자가 수동으로 사본을 만든 경우 등) 가장 최근에 수정된 것을
  *  쓴다 — 사용자가 최근에 실제로 편집하고 있던 파일일 가능성이 가장 높다. */
 export async function findSpreadsheetByName(title: string): Promise<SpreadsheetInfo | null> {
-  const token = await getValidAccessToken();
   const params = new URLSearchParams({
     q: `name = '${title.replace(/'/g, "\\'")}' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false`,
     fields: 'files(id,webViewLink,modifiedTime)',
     orderBy: 'modifiedTime desc',
     pageSize: '10',
   });
-  const res = await fetch(`${DRIVE_BASE_URL}/files?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const search = (token: string) =>
+    fetch(`${DRIVE_BASE_URL}/files?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+
+  const token = await getValidAccessToken();
+  let res = await search(token);
+  // 위 sheetsFetch와 같은 이유(캐시된 토큰이 만료 시각과 무관하게 이미 무효화된
+  // 경우) — 캐시를 버리고 한 번만 더 시도한다.
+  if (res.status === 401) {
+    invalidateAccessToken();
+    const freshToken = await getValidAccessToken();
+    res = await search(freshToken);
+  }
   if (!res.ok) {
     // 구 refresh_token에 drive.readonly 동의가 없는 경우(범위 추가 전에 연결한
     // 사용자) 403이 날 수 있다 — 검색 실패로 새 파일을 만들어버리지 않고, 그냥

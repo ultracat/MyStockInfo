@@ -480,6 +480,26 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   연결한 사용자의 refresh_token엔 없다** — "연결 해제" 후 재연결(재동의)해야
   Drive 검색이 실제로 동작한다, 안 그러면 `findSpreadsheetByName`이 403을 조용히
   삼키고 `null`을 반환해 기존 동작(새 파일 생성)으로 자연스럽게 넘어간다.
+  **refresh_token 자체가 만료/취소됐을 때(Google이 `invalid_grant`로 응답 —
+  가장 흔한 원인은 사용자가 Google 계정 설정에서 이 앱 접근 권한을 직접
+  취소한 경우) `getValidAccessToken()`이 에러를 던지는 대신 자동으로 재로그인한다** —
+  내부적으로 `reconnectAndGetAccessToken()`이 `store.clearAccount()`로 죽은
+  토큰을 지우고 `startConnectFlow()`를 다시 실행해(시스템 브라우저가 자동으로
+  뜬다) `currentStatus`가 `connected`/`error`가 될 때까지 1초 간격으로 폴링한
+  뒤(최대 `CONNECT_TIMEOUT_MS`=5분, 정상 로그인 플로우와 같은 타임아웃) 새
+  액세스 토큰을 돌려준다. Sheets/Trades/Dividends 화면의 "Google Sheets로
+  내보내기/가져오기" 버튼이 그대로 이 함수 위에 얹혀 있어서(`sheetsApi.ts`가
+  전부 `getValidAccessToken()`을 거침) 사용자 입장에선 버튼을 눌렀을 때
+  시스템 브라우저가 저절로 뜨고, 그 브라우저에서 로그인을 마치면 원래 누른
+  내보내기/가져오기가 그대로 이어서 완료된다 — 설정 화면에서 수동으로
+  "연결 해제 → 재연결"을 할 필요가 없다. **캐시된 accessToken이 로컬 만료
+  시각상으로는 아직 안 지났는데 실제로는 이미 죽은 경우**(같은 원인 —
+  refresh 시도 자체를 안 타는 시점에 권한이 취소된 경우)를 위해
+  `invalidateAccessToken()`(로컬 accessToken만 지움, refreshToken은 유지)도
+  같이 뒀다 — `sheetsApi.ts`의 각 호출이 401을 받으면 이걸로 캐시를 지우고
+  `getValidAccessToken()`을 한 번 더 불러 재시도한다(정상 만료면 조용히
+  refresh_token 갱신으로 끝나고, refresh_token도 죽었으면 위 자동 재로그인으로
+  이어진다).
 - **`sheetsApi.ts`** — `createSpreadsheet`/`spreadsheetExists`/`ensureTab`/
   `writeValues`/`readValues`/`findSpreadsheetByName`. 스프레드시트 생성·읽기·쓰기는
   전부 Sheets API만으로 되고(`spreadsheets.create`가 파일을 Drive 루트에 직접

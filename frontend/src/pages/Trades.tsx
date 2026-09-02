@@ -249,6 +249,18 @@ export default function Trades() {
   const [kbSyncing, setKbSyncing] = useState(false);
   const [kbSyncNotice, setKbSyncNotice] = useState<string | null>(null);
   const kbSyncRequestId = useRef(0);
+  // KB는 종합위탁계좌/IRP/연금저축처럼 계좌가 여러 개일 수 있는데, 그 중
+  // 실시간 API로 연동된 건 하나뿐이다(kbLink.linkedAccountId). 계좌 목록 조회
+  // effect(아래)는 로컬 저장소에서 "먼저 눈에 띈" accountId를 기본값으로
+  // 고르는데, 그게 연동 계좌가 아니면(흔한 경우 — IRP/연금저축 등 CSV 전용
+  // 계좌가 먼저 나올 수 있음) 아래 KB 동기화 트리거 effect의 조건
+  // (accountId === kbLink.linkedAccountId)을 못 만족해 자동 동기화가 전혀
+  // 안 일어나고, 화면엔 옛 로컬 데이터만 보이거나 아예 비어 보인다 — 계좌를
+  // 몇 번 옮기다 우연히 연동 계좌를 직접 고르면 그제서야 동기화가 도는 식으로
+  // "고쳐졌다"고 느껴졌던 버그. 그래서 연동 계좌를 기본값으로 강제하되, 사용자가
+  // 이미 계좌를 직접 골랐으면(아래 계좌 select의 onChange) 건드리지 않는다 —
+  // 브로커를 바꿀 때마다(아래 계좌 목록 조회 effect) false로 리셋된다.
+  const userPickedAccountRef = useRef(false);
 
   useEffect(() => {
     getKbLinkStatus()
@@ -312,6 +324,10 @@ export default function Trades() {
         setLoading(true);
         setError(null);
         setAccountId(null);
+        // 브로커가 바뀌면 "사용자가 계좌를 직접 골랐다"는 표시도 초기화한다 —
+        // 아래 KB 연동 계좌 merge effect가 이 브로커 선택에 대해 다시 기본값을
+        // (연동 계좌로) 정할 수 있게.
+        userPickedAccountRef.current = false;
         // 브로커를 바꾸는 즉시 이전 브로커의 매매내역을 지운다 — 새 브로커의 계좌
         // 목록이 비어 있으면(CSV 전용 브로커에 아직 아무 것도 안 넣은 경우) 아래
         // 매매내역 조회 effect가 accountId===null이라 아예 안 돌아서, 이 reset이
@@ -347,18 +363,29 @@ export default function Trades() {
     };
   }, [selectedBroker]);
 
-  // KB증권의 API 연동 계좌를 계좌 목록에 합쳐 넣는다 — Dashboard.tsx와 같은 이유
-  // (위 effect는 로컬 저장소에 이미 있는 accountId만 모으므로, 아직 한 번도
-  // 동기화/CSV 가져오기를 안 한 최초 상태에서는 그 계좌를 선택할 방법이 없다).
-  // accountId는 이미 선택돼 있으면 안 건드린다. `accounts`도 deps에 넣어야
-  // 한다 — 위 effect가 비동기라 이 effect가 먼저 실행된 뒤 `setAccounts(accs)`로
-  // 통째로 덮어써버리면 방금 추가한 연동 계좌가 사라지는데, `accounts`가 바뀔
-  // 때마다 다시 실행되게 해두면 그 시점에 다시 채워 넣어 수렴한다.
+  // KB증권의 API 연동 계좌를 계좌 목록에 합쳐 넣고, 기본 선택 계좌로 강제한다 —
+  // Dashboard.tsx와 같은 이유(위 effect는 로컬 저장소에 이미 있는 accountId만
+  // 모으므로, 아직 한 번도 동기화/CSV 가져오기를 안 한 최초 상태에서는 그 계좌를
+  // 선택할 방법이 없다). **"기본 선택 계좌로 강제"가 핵심 — 그냥 null일 때만
+  // 채우는 걸로는 부족하다.** KB는 종합위탁/IRP/연금저축처럼 계좌가 여러 개일 수
+  // 있는데, 위 effect는 로컬 저장소에서 "먼저 눈에 띈" accountId를 기본값으로
+  // 이미 골라놨을 수 있다(그 계좌가 연동 계좌가 아니면 흔함 — CSV 전용 계좌가
+  // 먼저 등록돼 있는 경우가 많음). 그 상태로 두면 아래 KB 동기화 트리거 effect의
+  // 조건(accountId === kbLink.linkedAccountId)을 못 만족해 자동 동기화가 전혀
+  // 안 일어나고, 처음 들어왔을 때 매매내역이 안 보이거나 오래된 로컬 데이터만
+  // 보인다 — 계좌를 몇 번 옮기다 우연히 연동 계좌를 직접 고르면 그제서야
+  // 동기화가 도는 식으로 "고쳐졌다"고 느껴졌던 버그(실측 재현). 그래서 사용자가
+  // 이미 계좌를 직접 고른 게 아니라면(`userPickedAccountRef`, 계좌 select의
+  // onChange에서 세팅) 위 effect가 뭘 먼저 선택해뒀든 연동 계좌로 덮어써서
+  // 기본값을 확정한다. `accounts`도 deps에 넣어야 한다 — 위 effect가 비동기라
+  // 이 effect가 먼저 실행된 뒤 `setAccounts(accs)`로 통째로 덮어써버리면 방금
+  // 추가한 연동 계좌가 사라지는데, `accounts`가 바뀔 때마다 다시 실행되게 해두면
+  // 그 시점에 다시 채워 넣어 수렴한다.
   useEffect(() => {
     if (selectedBroker !== 'kb' || !kbLink.linkedAccountId) return;
     const linkedId = kbLink.linkedAccountId;
     setAccounts((prev) => (prev.some((a) => a.id === linkedId) ? prev : [...prev, { id: linkedId }]));
-    setAccountId((prev) => prev ?? linkedId);
+    if (!userPickedAccountRef.current) setAccountId(linkedId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBroker, kbLink.linkedAccountId, accounts]);
 
@@ -1003,7 +1030,13 @@ export default function Trades() {
         {!isAllMode && accounts.length > 1 && selectedBroker && (
           <div className="form-row">
             <label>계좌</label>
-            <select value={accountId ?? ''} onChange={(e) => setAccountId(e.target.value)}>
+            <select
+              value={accountId ?? ''}
+              onChange={(e) => {
+                userPickedAccountRef.current = true;
+                setAccountId(e.target.value);
+              }}
+            >
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>
                   {formatAccountOption(

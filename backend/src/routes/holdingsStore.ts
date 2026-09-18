@@ -30,8 +30,6 @@ interface ImportRowShape {
   lastPrice?: number;
   purchaseAmount?: number;
   marketValue?: number;
-  profitLossAmount?: number;
-  profitLossRate?: number;
   commission?: number | null;
   tax?: number | null;
   memo?: string | null;
@@ -60,8 +58,6 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
     lastPrice,
     purchaseAmount,
     marketValue,
-    profitLossAmount,
-    profitLossRate,
     commission,
     tax,
     memo,
@@ -106,8 +102,6 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
       lastPrice: num(lastPrice),
       purchaseAmount: num(purchaseAmount),
       marketValue: num(marketValue),
-      profitLossAmount: num(profitLossAmount),
-      profitLossRate: num(profitLossRate),
       commission: numOrNull(commission) ?? null,
       tax: numOrNull(tax) ?? null,
       memo: typeof memo === 'string' && memo.trim() ? memo.trim() : null,
@@ -116,14 +110,21 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
 }
 
 // CSV 가져오기 — name(종목명)은 CSV에 없다(배당금과 같은 이유: 심볼로 자동조회).
-// lastPrice/marketValue/profitLossAmount/profitLossRate도 CSV에 안 넣으면(값을
-// 아예 안 보내면) 토스 현재가 조회로 자동 계산한다 — broker/accountId/symbol/
-// quantity/averagePurchasePrice/currency/market만 채우는 최소 CSV를 지원하려는
-// 목적. 명시적으로 값을 넣은 행은 그 값을 그대로 쓴다(override). 이름 조회
-// 실패는 행을 실패 처리하지만, 현재가 조회 실패는 그냥 0으로 남긴다 — 이름은
-// 화면 표시에 필수지만 현재가는 부가 정보라 없다고 가져오기 자체를 막을
-// 이유가 없다. 가져오기는 "덮어쓰기"다 — replaceHoldingsFromImport 참고: CSV에
-// 등장한 (broker,accountId)마다 기존 저장 행을 전부 지우고 이번 CSV로 교체한다.
+// lastPrice/marketValue/profitLossAmount/profitLossRate 넷 다 사용자가 CSV/시트에
+// 뭘 적어놨든 서버가 항상 다시 계산해서 덮어쓴다 — broker/accountId/symbol/
+// quantity/averagePurchasePrice/currency/market만 채운 최소 CSV도 지원하려는
+// 목적이자, 화면에 보이는 평가금액/손익이 항상 실제 시세 기준이게 하려는 목적
+// 둘 다다. **lastPrice/marketValue는 API(토스→KIS) 시세 조회가 성공하면 그
+// 값을 우선한다** — CSV/시트의 값은 API로 그 종목을 못 찾을 때만(해외 종목,
+// 토스 미연동 등) 쓰이는 폴백이다. 예전엔 반대로(CSV 값 우선, API는 값이 없을
+// 때만) 짜여 있었는데, "평가금액이 항상 접근 가능한 API로 자동 계산돼야 한다"는
+// 요청으로 뒤집었다. **profitLossAmount/profitLossRate는 폴백조차 없다** —
+// marketValue-purchaseAmount의 순수 산술 결과라 항상 그 둘로부터 다시 계산한다
+// (CSV/시트에 값이 있어도 무조건 무시). 이름 조회 실패는 행을 실패
+// 처리하지만, 현재가 조회 실패는 그냥 0으로 남긴다 — 이름은 화면 표시에
+// 필수지만 현재가는 부가 정보라 없다고 가져오기 자체를 막을 이유가 없다.
+// 가져오기는 "덮어쓰기"다 — replaceHoldingsFromImport 참고: CSV에 등장한
+// (broker,accountId)마다 기존 저장 행을 전부 지우고 이번 CSV로 교체한다.
 // 같은 CSV를 여러 번 가져와도 계속 누적되지 않는다.
 //
 // google/sheetsSync.ts도 Sheets에서 읽은 행을 이 함수에 그대로 넘겨 재사용한다
@@ -164,11 +165,25 @@ export async function importHoldingsRecords(
 
     const purchaseAmount = input.purchaseAmount ?? input.averagePurchasePrice * input.quantity;
     const resolvedPrice = pricesBySymbol[key];
-    const lastPrice = input.lastPrice ?? resolvedPrice ?? 0;
-    const marketValue = input.marketValue ?? (resolvedPrice !== undefined ? input.quantity * resolvedPrice : 0);
-    const profitLossAmount = input.profitLossAmount ?? marketValue - purchaseAmount;
-    const profitLossRate =
-      input.profitLossRate ?? (purchaseAmount > 0 ? profitLossAmount / purchaseAmount : 0);
+    // lastPrice/marketValue는 API(토스→KIS)로 시세를 조회할 수 있으면 그 값을
+    // 항상 우선한다 — CSV/시트에 사용자가 다른 값을 적어놨어도 무시한다. 예전엔
+    // 반대로(사용자 입력 우선, API는 값이 없을 때만 보충) 짜여 있었는데, "평가금액/
+    // 손익금액/손익률은 항상 접근 가능한 API로 자동 계산돼야 한다"는 요청으로
+    // 우선순위를 뒤집었다 — 사용자가 시트에 오래된/잘못된 값(placeholder 0 포함)을
+    // 남겨둬도 API가 그 종목 시세를 조회할 수 있는 한 항상 최신값으로 덮어써야
+    // 한다. API로 못 찾을 때만(해외 종목이라 KIS가 안 되는 경우, 토스 미연동 등)
+    // 사용자가 적어둔 값으로 폴백하고, 그마저 없으면 0이다.
+    const lastPrice = resolvedPrice ?? input.lastPrice ?? 0;
+    const marketValue = resolvedPrice !== undefined ? input.quantity * resolvedPrice : (input.marketValue ?? 0);
+    // profitLossAmount/profitLossRate는 marketValue-purchaseAmount로부터 100%
+    // 계산되는 값이라 독립적인 override를 절대 허용하지 않는다 — 손익은 항상
+    // 그 둘의 산술 결과여야 한다. CSV/Google Sheets에 값이 들어 있어도(과거엔
+    // 여기도 override였음) 무시하고 항상 다시 계산한다 — 안 그러면 사용자가
+    // 시트에 placeholder로 0을 적어 넣은 새 행이 실제 marketValue/purchaseAmount가
+    // 채워진 뒤에도 영원히 0으로 고정되는 버그가 생긴다(실사용자 리포트로 발견,
+    // 2026-09-18).
+    const profitLossAmount = marketValue - purchaseAmount;
+    const profitLossRate = purchaseAmount > 0 ? profitLossAmount / purchaseAmount : 0;
 
     toUpsert.push({ ...input, name, purchaseAmount, lastPrice, marketValue, profitLossAmount, profitLossRate });
   }

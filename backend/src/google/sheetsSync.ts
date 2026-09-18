@@ -204,8 +204,10 @@ function holdingsRowToInput(rec: Record<string, string>, tossReverseMap: Map<str
     lastPrice: numOrUndefined(rec.lastPrice ?? ''),
     purchaseAmount: numOrUndefined(rec.purchaseAmount ?? ''),
     marketValue: numOrUndefined(rec.marketValue ?? ''),
-    profitLossAmount: numOrUndefined(rec.profitLossAmount ?? ''),
-    profitLossRate: numOrUndefined(rec.profitLossRate ?? ''),
+    // profitLossAmount/profitLossRate는 안 보낸다 — routes/holdingsStore.ts가
+    // 이 두 필드를 항상 marketValue-purchaseAmount로 재계산하고 override를
+    // 안 받으므로(위 참고), 시트에 사용자가 뭘 적어놨든 여기서 굳이 옮길 필요가
+    // 없다.
     commission: numOrNull(rec.commission ?? ''),
     tax: numOrNull(rec.tax ?? ''),
     currency: (rec.currency ?? '').trim(),

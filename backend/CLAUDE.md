@@ -225,8 +225,22 @@ symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩�
 필수)만 채운 최소 CSV를 지원하려는 목적. `routes/holdingsStore.ts`가 `resolveStockNames`와
 함께 `resolveStockPrices`(`stockNameResolver.ts`)를 호출해 `lastPrice`/`marketValue`/
 `profitLossAmount`/`profitLossRate`를 계산한다(`marketValue = quantity * lastPrice`,
-`profitLossAmount = marketValue - purchaseAmount`) — CSV에 이 필드들을 명시적으로 넣으면
-그 값을 그대로 쓰고(override), 안 넣은 경우에만 계산한다. **현재가 조회는 토스 우선,
+`profitLossAmount = marketValue - purchaseAmount`). **넷 다 사용자가 CSV/Google
+Sheets에 뭘 적어놨든 서버가 항상 다시 계산해서 덮어쓴다** — "평가금액/손익금액/
+손익률은 항상 접근 가능한 API로 자동 계산돼야 한다"는 요청(2026-09-18)에 따른
+것. `lastPrice`/`marketValue`는 **API(토스→KIS) 시세 조회가 성공하면 그 값을
+항상 우선**하고, CSV/시트의 값은 API로 그 종목을 못 찾을 때만(해외 종목이라 KIS
+대체가 안 되는 경우, 토스 미연동 등) 쓰이는 폴백이다 — 처음엔 반대(CSV 값 우선,
+API는 값이 없을 때만 보충)로 짜여 있었는데, 그러면 사용자가 예전에 적어 넣었거나
+잘못 입력한 값이 실제 API로 조회 가능한 시세보다 항상 이겨버려서 뒤집었다.
+**`profitLossAmount`/`profitLossRate`는 폴백조차 없다** — `marketValue -
+purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 항상 같은 답이 나와야
+하므로, CSV/시트에 값이 들어 있어도 무조건 무시하고 매번 새로 계산한다. 처음엔 이
+둘도 override였는데, 사용자가 Google Sheets에 새 보유종목 행을 직접 추가하면서
+이 두 컬럼에 placeholder로 `0`을 적어 넣은 경우, 그 행의 실제 `marketValue`/
+`purchaseAmount`가 정상적으로 채워진 뒤에도 손익만 영원히 `0`으로 고정되는
+버그가 있었다(실사용자 리포트로 발견, 2026-09-18) — override를 완전히 없애서 고쳤다.
+**현재가 조회는 토스 우선,
 토스 미연동이면 한국투자증권으로 대체한다**(`kisClient.ts`의 `fetchKisDomesticPrice`,
 `inquire-price` TR `FHKST01010100` — 계좌 무관 공개 시세라 CANO 불필요, 공식 예제
 `examples_llm/domestic_stock/inquire_price/inquire_price.py` 확인, checked 2026-08-17).

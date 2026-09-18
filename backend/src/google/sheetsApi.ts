@@ -1,4 +1,4 @@
-import { getValidAccessToken, invalidateAccessToken } from './oauth';
+import { getValidAccessToken, invalidateAccessToken, reconnectAndGetAccessToken } from './oauth';
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
 
@@ -26,6 +26,16 @@ async function rawFetch(path: string, init: RequestInit | undefined, token: stri
   return res.json();
 }
 
+/** Google이 403과 함께 이 정확한 문구를 줄 때가 "액세스 토큰은 살아있지만
+ *  요청한 API에 필요한 스코프가 없다"는 뜻이다 — 코드의 `SCOPES`가 나중에
+ *  추가/변경됐는데 그보다 먼저 연결해둔 오래된 refresh_token을 그대로 쓰고
+ *  있을 때 전형적으로 발생한다(oauth.ts의 `reconnectAndGetAccessToken` 주석
+ *  참고). 다른 403(예: 특정 스프레드시트에 대한 실제 권한 없음)까지 여기 걸리면
+ *  안 되므로 이 정확한 메시지로만 판별한다. */
+function isInsufficientScopeError(err: unknown): boolean {
+  return err instanceof SheetsApiError && err.status === 403 && /insufficient authentication scopes/i.test(err.message);
+}
+
 /** 401(권한 없음)이 나면 캐시된 accessToken을 버리고 한 번만 더 시도한다 —
  *  `getValidAccessToken()`은 로컬에 기록된 만료 시각만 보고 캐시된 토큰을
  *  돌려주는데, 사용자가 Google 계정 설정에서 이 앱 접근 권한을 방금 취소한
@@ -34,7 +44,10 @@ async function rawFetch(path: string, init: RequestInit | undefined, token: stri
  *  부르면 refresh_token으로 조용히 갱신되거나(정상 만료), refresh_token
  *  자체도 죽었으면(`invalid_grant`) oauth.ts가 자동으로 재로그인 플로우를
  *  띄우고 기다렸다가 새 토큰을 돌려준다 — 그래서 이 재시도가 실제로는
- *  "브라우저에서 다시 로그인한 뒤 이어서 진행" 결과를 받아오는 경우도 있다. */
+ *  "브라우저에서 다시 로그인한 뒤 이어서 진행" 결과를 받아오는 경우도 있다.
+ *  **403 스코프 부족은 위 401과 원인이 달라 재시도 방법도 다르다** — access
+ *  token을 갱신해봐야(401 경로) refresh_token에 없는 스코프가 생기지 않으므로,
+ *  바로 `reconnectAndGetAccessToken()`으로 전체 재로그인(재동의 화면)을 띄운다. */
 async function sheetsFetch(path: string, init?: RequestInit): Promise<any> {
   const token = await getValidAccessToken();
   try {
@@ -43,6 +56,10 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<any> {
     if (err instanceof SheetsApiError && err.status === 401) {
       invalidateAccessToken();
       const freshToken = await getValidAccessToken();
+      return rawFetch(path, init, freshToken);
+    }
+    if (isInsufficientScopeError(err)) {
+      const freshToken = await reconnectAndGetAccessToken();
       return rawFetch(path, init, freshToken);
     }
     throw err;

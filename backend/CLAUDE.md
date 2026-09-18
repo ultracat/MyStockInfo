@@ -499,7 +499,18 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   같이 뒀다 — `sheetsApi.ts`의 각 호출이 401을 받으면 이걸로 캐시를 지우고
   `getValidAccessToken()`을 한 번 더 불러 재시도한다(정상 만료면 조용히
   refresh_token 갱신으로 끝나고, refresh_token도 죽었으면 위 자동 재로그인으로
-  이어진다).
+  이어진다). **403 "insufficient authentication scopes"도 같은 자동 재로그인으로
+  이어진다** — `sheetsApi.ts`가 이 정확한 Google 오류 메시지를 401과 구분해서
+  잡는다(`sheetsFetch`의 `isInsufficientScopeError`). 원인은 위 `SCOPES`가 코드에
+  추가/변경되기 *전에* 이미 연결해둔 오래된 refresh_token을 그대로 쓰고 있는
+  경우다 — access token을 새로 받는 401 경로(`invalidateAccessToken`)로는
+  refresh_token 자체에 없는 스코프가 생기지 않으므로(access token은 발급 시
+  refresh_token이 가진 스코프의 부분집합만 받을 수 있음), 이 경우엔 처음부터
+  `reconnectAndGetAccessToken()`으로 바로 건너뛰어 전체 재동의 화면을 다시
+  띄운다. `findSpreadsheetByName()`의 Drive 검색 요청 하나만 이 처리에서 제외돼
+  있다 — 그쪽은 원래부터(위 "이 범위는 중간에 추가돼서" 문단) 403을 "검색 실패
+  → 새로 생성"으로 조용히 넘기는 게 의도된 동작이라, 이걸 재로그인으로 승격시키면
+  이름 검색 실패만으로도 매번 브라우저가 뜨게 돼 오히려 불편해진다.
 - **`sheetsApi.ts`** — `createSpreadsheet`/`spreadsheetExists`/`ensureTab`/
   `writeValues`/`readValues`/`findSpreadsheetByName`. 스프레드시트 생성·읽기·쓰기는
   전부 Sheets API만으로 되고(`spreadsheets.create`가 파일을 Drive 루트에 직접

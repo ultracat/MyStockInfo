@@ -222,14 +222,19 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** refresh_token 자체가 죽었을 때(Google이 `invalid_grant`로 응답 — 만료되었거나,
- *  사용자가 Google 계정 설정에서 이 앱의 접근 권한을 직접 취소한 경우) 더 이상
- *  조용히 갱신할 방법이 없다. Sheets 내보내기/가져오기 도중 이 상태를 만나면
- *  에러로 실패시키는 대신 로그인 플로우(`startConnectFlow`)를 자동으로 다시
- *  띄우고(시스템 브라우저가 열림) 완료될 때까지 기다린 뒤 새 액세스 토큰을
- *  돌려준다 — 사용자는 뜬 브라우저에서 로그인만 다시 하면 되고, 설정 화면에서
- *  수동으로 "연결 해제 → 재연결"을 할 필요가 없다. */
-async function reconnectAndGetAccessToken(): Promise<string> {
+/** refresh_token 자체가 죽었거나(Google이 `invalid_grant`로 응답 — 만료되었거나,
+ *  사용자가 Google 계정 설정에서 이 앱의 접근 권한을 직접 취소한 경우) 스코프가
+ *  부족할 때(`sheetsApi.ts`가 403 "insufficient authentication scopes"를 보고
+ *  호출 — 코드에 스코프가 추가되기 전에 이미 연결해둔 오래된 refresh_token이
+ *  전형적인 원인) 더 이상 조용히 갱신할 방법이 없다(refresh_token으로 access
+ *  token만 새로 받아봐야 refresh_token 자체에 없는 스코프는 절대 생기지 않는다
+ *  — 재동의 화면을 다시 띄우는 것 외엔 방법이 없음). Sheets 내보내기/가져오기
+ *  도중 이 상태를 만나면 에러로 실패시키는 대신 로그인 플로우(`startConnectFlow`)를
+ *  자동으로 다시 띄우고(시스템 브라우저가 열림, `prompt: 'consent'`라 매번 전체
+ *  동의 화면이 뜬다) 완료될 때까지 기다린 뒤 새 액세스 토큰을 돌려준다 — 사용자는
+ *  뜬 브라우저에서 로그인/동의만 다시 하면 되고, 설정 화면에서 수동으로 "연결
+ *  해제 → 재연결"을 할 필요가 없다. */
+export async function reconnectAndGetAccessToken(): Promise<string> {
   store.clearAccount();
   startConnectFlow();
 

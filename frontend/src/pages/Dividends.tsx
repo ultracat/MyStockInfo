@@ -16,6 +16,13 @@ import { accountLabelKey } from '../accountLabels';
 // 선택 컬럼 — 브로커 한 곳에 계좌가 여러 개일 때만 채우면 된다.
 const DIVIDEND_CSV_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo'];
 
+// 토스 종목 기본 정보 API가 symbols 파라미터에 실제로 허용하는 문자 범위
+// (backend/src/routes/stockInfo.ts의 TOSS_SYMBOL_PATTERN과 동일 — 백엔드가 이미
+// 이 패턴 밖이면 토스를 안 부르고 바로 거부하지만, 한글 IME로 종목명 등을 이
+// 칸에 잘못 타이핑하는 동안 자모 하나짜리 중간 상태마다 500ms 디바운스로 왕복
+// 요청을 보내는 건 여전히 낭비라 프론트에서도 먼저 걸러 요청 자체를 생략한다).
+const SYMBOL_CODE_PATTERN = /^[A-Za-z0-9.,-]+$/;
+
 const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -178,6 +185,15 @@ export default function Dividends() {
       setName('');
       setNameStatus('idle');
       setNameError(null);
+      return;
+    }
+    // 한글 IME로 이 칸에 다른 값을 입력하는 도중(조합 중인 자모 하나짜리 상태
+    // 등)엔 토스가 아예 허용하지 않는 문자라 조회할 필요가 없다 — 매 디바운스마다
+    // 왕복 요청을 보내는 대신 여기서 바로 "찾을 수 없음"으로 처리한다.
+    if (!SYMBOL_CODE_PATTERN.test(trimmed)) {
+      setName('');
+      setNameStatus('error');
+      setNameError(`'${trimmed}' 종목 정보를 찾을 수 없습니다. 종목코드를 확인하거나 직접 입력해주세요.`);
       return;
     }
 

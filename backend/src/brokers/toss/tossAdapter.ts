@@ -73,14 +73,18 @@ export const tossAdapter: BrokerAdapter = {
 
   async getPortfolio(accountId: string, opts?: FetchOpts): Promise<PortfolioOverview> {
     const accountSeq = Number(accountId);
-    const overview = await fetchTossHoldings(accountSeq, opts);
-
     // 예수금(매수 가능 금액)은 보유종목 조회와 별개 API라 실패해도 전체 조회를
     // 막지 않는다 — allSettled로 KRW/USD 각각 독립적으로 실패를 흡수한다.
-    const [krwCash, usdCash] = await Promise.allSettled([
+    // 보유종목(ASSET 그룹)과 예수금(ORDER_INFO 그룹)은 서로 의존하지 않고 rate
+    // limit 그룹도 달라서 세 호출을 동시에 시작한다(예전엔 보유종목이 끝난 뒤에야
+    // 예수금 조회를 시작해 계좌마다 왕복 한 번이 더 걸렸다). 같은 그룹인 KRW/USD
+    // 두 호출은 그 그룹의 RateLimiter가 알아서 직렬화한다.
+    const cashPromise = Promise.allSettled([
       fetchTossBuyingPower(accountSeq, 'KRW', opts),
       fetchTossBuyingPower(accountSeq, 'USD', opts),
     ]);
+    const overview = await fetchTossHoldings(accountSeq, opts);
+    const [krwCash, usdCash] = await cashPromise;
 
     try {
       return {

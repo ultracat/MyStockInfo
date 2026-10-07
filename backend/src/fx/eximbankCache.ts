@@ -22,12 +22,39 @@ function store() {
 
 export type CachedRate = { hit: true; rate: number | null } | { hit: false };
 
+// 아직 디스크에 안 쓴 새 캐시 항목 — 월평균 환율 조회(eximbankClient.ts)는 달
+// 하나에 평일 20여 개 날짜를 동시에 조회하는데, 날짜마다 setCachedRate가 캐시
+// 파일 전체를 다시 쓰면(sync, Electron 메인 프로세스) 첫 조회 때 파일 쓰기만
+// 날짜 수만큼 반복된다. 메모리에 모았다가 잠깐 뒤 한 번에 쓴다 — 쓰기 전에
+// 프로세스가 죽어도 잃는 건 "다음 실행 때 그 날짜를 한 번 더 조회한다"뿐이다.
+const pending = new Map<string, number | null>();
+let flushTimer: NodeJS.Timeout | null = null;
+const FLUSH_DELAY_MS = 500;
+
+function flush(): void {
+  flushTimer = null;
+  if (pending.size === 0) return;
+  const entries = Object.fromEntries(pending);
+  pending.clear();
+  try {
+    store().update((current) => ({ ratesByDate: { ...current.ratesByDate, ...entries } }));
+  } catch (err) {
+    console.error('[eximbank-cache] 디스크 캐시 저장 실패:', err);
+  }
+}
+
 export function getCachedRate(searchdate: string): CachedRate {
+  if (pending.has(searchdate)) return { hit: true, rate: pending.get(searchdate)! };
   const data = store().read();
   if (searchdate in data.ratesByDate) return { hit: true, rate: data.ratesByDate[searchdate] };
   return { hit: false };
 }
 
 export function setCachedRate(searchdate: string, rate: number | null): void {
-  store().update((current) => ({ ratesByDate: { ...current.ratesByDate, [searchdate]: rate } }));
+  pending.set(searchdate, rate);
+  if (!flushTimer) {
+    flushTimer = setTimeout(flush, FLUSH_DELAY_MS);
+    // 대기 중인 flush 하나 때문에 프로세스 종료가 늦어지지 않게.
+    flushTimer.unref();
+  }
 }

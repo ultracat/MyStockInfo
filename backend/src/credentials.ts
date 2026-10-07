@@ -55,9 +55,19 @@ export function setCredentialFields(broker: BrokerId, fields: Record<string, str
   store().update((current) => ({ ...current, [broker]: stored }));
 }
 
+// 복호화 결과 캐시 — KIS/KB는 API 요청 하나마다 requireCredentials()로 이
+// 함수를 부르는데, safeStorage.decryptString은 OS 키체인을 거치는 동기 호출이라
+// Electron 메인 프로세스를 그만큼 붙잡는다. 저장된 암호문(`data`)이 그대로면
+// 결과도 같으므로 암호문 문자열을 키로 재사용한다 — 설정 화면에서 다시 저장하거나
+// 지우면 암호문이 바뀌거나 사라져 자연히 다시 복호화된다(별도 무효화 불필요).
+const decryptedCache = new Map<BrokerId, { data: string; fields: Record<string, string> }>();
+
 export function getCredentialFields(broker: BrokerId): Record<string, string> | null {
   const stored = store().read()[broker];
   if (!stored) return null;
+
+  const cached = decryptedCache.get(broker);
+  if (cached && cached.data === stored.data) return { ...cached.fields };
 
   let json: string;
   if (stored.encrypted) {
@@ -83,7 +93,9 @@ export function getCredentialFields(broker: BrokerId): Record<string, string> | 
     json = Buffer.from(stored.data, 'base64').toString('utf-8');
   }
 
-  return JSON.parse(json);
+  const fields = JSON.parse(json) as Record<string, string>;
+  decryptedCache.set(broker, { data: stored.data, fields });
+  return { ...fields };
 }
 
 export function hasCredential(broker: BrokerId): boolean {

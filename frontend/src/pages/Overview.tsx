@@ -140,7 +140,9 @@ export default function Overview() {
     if (requestId === monthlyAvgFxRequestId.current) setMonthlyAvgFxRates(rates);
   }
 
-  async function loadAll() {
+  // forceRefresh: 새로고침 버튼 전용 — 백엔드가 보유종목/계좌/환율을 30초 캐시하므로
+  // (backend/src/brokers/responseCache.ts의 PORTFOLIO_TTL_MS) 그걸 건너뛰고 새로 받는다.
+  async function loadAll(opts: { forceRefresh?: boolean } = {}) {
     setError(null);
 
     // FX rate는 아래 보유종목 합계 계산에 바로 쓰이므로 브로커/보유종목 조회보다
@@ -159,7 +161,7 @@ export default function Overview() {
       api.listBrokers(),
       // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
       // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다.
-      api.getUsdKrwRate().catch(() => ({ rate: null })),
+      api.getUsdKrwRate(opts).catch(() => ({ rate: null })),
     ]);
     const resolvedLiveFxRate = live.rate ? live.midRate ?? live.rate : null;
     const resolvedFxRate = fx.usdKrwRate ?? resolvedLiveFxRate;
@@ -186,8 +188,10 @@ export default function Overview() {
         configured.map(async (b) => {
           const rows = API_BROKER_IDS.includes(b.id)
             ? await api
-                .listAccounts(b.id)
-                .then((accounts) => Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id).catch(() => null))))
+                .listAccounts(b.id, opts)
+                .then((accounts) =>
+                  Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id, opts).catch(() => null)))
+                )
                 .then((portfolios) =>
                   portfolios
                     .filter((p): p is NonNullable<typeof p> => p !== null)
@@ -255,7 +259,7 @@ export default function Overview() {
   async function handleRefresh() {
     setRefreshing(true);
     try {
-      await loadAll();
+      await loadAll({ forceRefresh: true });
     } catch (e) {
       setError((e as Error).message);
     } finally {

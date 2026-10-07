@@ -57,6 +57,29 @@ async function fetchWithTimeout(url: string): Promise<Response> {
   }
 }
 
+// 동시에 진행할 수 있는 실제 네트워크 요청 수 상한 — 월평균 환율은 달 하나에
+// 평일 20여 개를 Promise.all로 쏘고, 라우트가 여러 달을 다시 Promise.all로
+// 묶어서, 콜드 캐시에서 배당 이력이 긴 계정은 수백 건이 한꺼번에 나갔다. 앱에
+// 박힌 공유 인증키(eximbankConfig.ts)라 요청 폭주는 피하고 싶고, 개별 응답이
+// 0.1~0.2초라 이 정도 상한이면 전체 소요 시간도 크게 안 늘어난다. 캐시 히트는
+// 이 상한과 무관하게 즉시 반환된다(아래 fetchEximbankRateForDate).
+const MAX_CONCURRENT_REQUESTS = 6;
+let activeRequests = 0;
+const waitQueue: (() => void)[] = [];
+
+async function withRequestSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeRequests >= MAX_CONCURRENT_REQUESTS) {
+    await new Promise<void>((resolve) => waitQueue.push(resolve));
+  }
+  activeRequests++;
+  try {
+    return await fn();
+  } finally {
+    activeRequests--;
+    waitQueue.shift()?.();
+  }
+}
+
 function isPastDate(searchdate: string): boolean {
   return searchdate < yyyymmdd(new Date());
 }
@@ -83,11 +106,12 @@ async function fetchEximbankRateForDate(authKey: string, searchdate: string): Pr
 
   let items: unknown;
   try {
-    const res = await fetchWithTimeout(
-      `${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`
-    );
-    if (!res.ok) return null;
-    items = await res.json();
+    items = await withRequestSlot(async () => {
+      const res = await fetchWithTimeout(
+        `${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`
+      );
+      return res.ok ? res.json() : null;
+    });
   } catch {
     return null; // 타임아웃(AbortError) 포함
   }

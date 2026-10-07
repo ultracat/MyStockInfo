@@ -74,6 +74,17 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 
 ## 다음 단계 (미구현)
 
+- **성능 최적화 Mac 검증(2026-10-07 Linux에서 구현·push, 실제 증권사 API로는 미검증)** —
+  `npm run build:backend` 후 Electron 재시작해서 확인할 것:
+  1. 토스 `getPortfolio`가 보유종목+예수금을 동시에 호출하도록 바꿨다(`tossAdapter.ts`) —
+     `account-not-found` 같은 오류가 나면 이 병렬화만 되돌린다.
+  2. 화면 전환 시 재조회 감소(`PORTFOLIO_TTL_MS` 30초), 대시보드 새로고침 버튼이 실제로
+     새 값을 받는지(`forceRefresh`), 앱 재시작 후 월별 종가 카드가 바로 뜨는지
+     (`db/monthlyCloseCache.ts`).
+  3. 남은 항목: Electron 창 `show: false` + `ready-to-show`로 시작 시 흰 화면 제거
+     (`electron/src/main.ts`).
+  확인이 끝나면 이 항목을 지운다.
+
 - KIS 모의투자(paper trading) 지원
 - 배포용 빌드 코드 서명/공증 (Mac은 Apple Developer ID, Windows는 코드 서명 인증서
   필요 — 현재는 서명 없이 본인 머신 실행 전용)

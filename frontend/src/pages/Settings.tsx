@@ -261,6 +261,7 @@ export default function Settings() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>증권사 연동 상태</h3>
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -310,6 +311,7 @@ export default function Settings() {
             })}
           </tbody>
         </table>
+        </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 12 }}>
           KB증권/삼성증권/미래에셋증권은 API 연동 없이 CSV로 보유종목·매매내역을 직접 관리합니다 — 보유
           종목/매매내역 화면에서 CSV 가져오기를 이용하세요.
@@ -442,6 +444,7 @@ export default function Settings() {
         ) : knownAccounts.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>아직 등록된 계좌가 없습니다.</p>
         ) : (
+          <div className="table-scroll">
           <table>
             <thead>
               <tr>
@@ -481,6 +484,7 @@ export default function Settings() {
               })}
             </tbody>
           </table>
+          </div>
         )}
 
         <h4>새 계좌 등록</h4>

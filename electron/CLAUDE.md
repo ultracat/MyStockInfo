@@ -30,7 +30,13 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
     모든 API 호출이 이유 없이 실패하거나, backend 쪽에서 처리 안 하면 uncaught
     exception으로 "A JavaScript error occurred in the main process" 팝업이 뜬다.
   - `createWindow()` — dev 모드는 `http://localhost:5173`(Vite) 로드 + DevTools 자동
-    오픈, 패키징된 빌드는 `frontend/dist/index.html`을 파일로 로드.
+    오픈, 패키징된 빌드는 `frontend/dist/index.html`을 파일로 로드. **`show: false`로
+    만들고 `ready-to-show` 이벤트에서만 `show()`한다** — 기본값(즉시 표시)이면 로드가
+    끝나기 전 빈 창(흰 화면)이 그대로 보였다가 콘텐츠가 뒤늦게 나타난다. Vite
+    HMR 서버가 아직 안 뜬 상태로 dev 모드를 너무 일찍 띄우는 등 로드 자체가 실패하는
+    경우엔 `ready-to-show`가 영영 안 와서 창이 계속 안 보일 수 있다 — 그런 경우는
+    로드 실패 자체(백엔드 EADDRINUSE 같은 것과는 별개)라 별도 타임아웃 안전장치는
+    아직 안 뒀다.
   - `webPreferences`: `contextIsolation: true`, `nodeIntegration: false`,
     `sandbox: true` — 렌더러 보안 기본값 유지. 완화하지 않는다.
   - `mainWindow.webContents.setWindowOpenHandler(...)` — 렌더러가 `target="_blank"`로

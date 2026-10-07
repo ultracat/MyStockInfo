@@ -44,6 +44,7 @@ export default function About() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>오픈소스 패키지</h3>
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -70,6 +71,7 @@ export default function About() {
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

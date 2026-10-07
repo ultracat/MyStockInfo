@@ -1285,6 +1285,7 @@ export default function Trades() {
             </select>
           </div>
         </div>
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -1450,7 +1451,18 @@ export default function Trades() {
                         )}
                       </td>
                     )}
-                    <td>{t.name ? `${t.name} (${t.symbol})` : t.symbol}</td>
+                    <td>
+                      {t.name ? (
+                        <>
+                          <span className="cell-name-truncate" title={t.name}>
+                            {t.name}
+                          </span>{' '}
+                          <span style={{ color: 'var(--text-muted)' }}>({t.symbol})</span>
+                        </>
+                      ) : (
+                        t.symbol
+                      )}
+                    </td>
                     <td>
                       <span
                         style={{
@@ -1491,6 +1503,7 @@ export default function Trades() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

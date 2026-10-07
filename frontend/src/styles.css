@@ -210,6 +210,19 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 표 컬럼이 전부 white-space:nowrap이라 창을 좁히면 내용 너비가 쉽게 뷰포트를
+   넘는다 — 표를 담은 카드가 가로 스크롤을 직접 떠안게 해서, 넘치는 너비가
+   .main/사이드바까지 밀어내며 레이아웃 전체가 깨지는 대신 표 영역 안에서만
+   스크롤되게 한다(실사용자가 창을 좁혔을 때 발견, 2026-10-07).
+   `container-type: inline-size`로 이 요소를 컨테이너 쿼리 기준점으로 삼는다 —
+   아래 `.cell-name-truncate`가 "창이 넓어서 자리가 있는데도 무조건 줄여서
+   보여준다"는 피드백을 받아서(2026-10-07), 고정폭 대신 이 컨테이너의 실제 폭을
+   기준으로 좁을 때만 줄이게 바꿨다. */
+.table-scroll {
+  overflow-x: auto;
+  container-type: inline-size;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -222,6 +235,27 @@ td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--gridline);
   white-space: nowrap;
+}
+
+/* 종목명이 길면(특히 해외 ETF) "종목" 컬럼 하나가 표 전체 너비를 끌어올려서
+   가로 스크롤이 필요해지는 폭을 키운다 — 종목코드(숫자/티커, 항상 짧음)는 그대로
+   보여주고 이름만 말줄임표로 줄인다. 전체 이름은 title 툴팁으로 여전히 볼 수
+   있다. **창이 넓어서 자리가 충분하면 평소엔 줄이지 않는다** — `.table-scroll`
+   컨테이너 자체의 폭(표 내용 너비가 아니라 실제로 쓸 수 있는 공간)이 700px
+   밑으로 좁아질 때만 아래 컨테이너 쿼리로 줄임을 켠다. 기본(평소) 상태는 줄임
+   효과가 아예 없는 평문이다. */
+.cell-name-truncate {
+  display: inline-block;
+  vertical-align: bottom;
+}
+
+@container (max-width: 700px) {
+  .cell-name-truncate {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 th:first-child,

@@ -1283,6 +1283,7 @@ export default function Dividends() {
             </select>
           </div>
         </div>
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -1394,7 +1395,11 @@ export default function Dividends() {
                   <td>{BROKER_LABELS[r.broker]}</td>
                   <td>{displayAccountId(r.broker, r.accountId)}</td>
                   <td>{r.symbol}</td>
-                  <td>{r.name}</td>
+                  <td>
+                    <span className="cell-name-truncate" title={r.name}>
+                      {r.name}
+                    </span>
+                  </td>
                   <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>
                   <td>{r.memo ?? '-'}</td>
                   <td>
@@ -1412,6 +1417,7 @@ export default function Dividends() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

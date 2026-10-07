@@ -6,7 +6,12 @@ import fs from 'node:fs';
  * stored. Uses Electron's userData directory when running inside Electron
  * (main process), otherwise falls back to ./data for standalone/dev runs.
  */
+// 경로는 프로세스가 사는 동안 바뀌지 않는다 — 모든 저장소 접근마다
+// require('electron') + mkdirSync를 반복하지 않도록 한 번만 계산한다.
+let resolvedDir: string | null = null;
+
 export function getDataDir(): string {
+  if (resolvedDir) return resolvedDir;
   let dir: string;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -23,5 +28,6 @@ export function getDataDir(): string {
   }
 
   fs.mkdirSync(dir, { recursive: true });
+  resolvedDir = dir;
   return dir;
 }

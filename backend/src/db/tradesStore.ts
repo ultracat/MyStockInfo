@@ -43,6 +43,30 @@ function store() {
   return new JsonStore<StoredTrade[]>('trades.json', getDataDir(), []);
 }
 
+// upsert 대상 행을 찾을 때 레코드마다 전체를 findIndex로 훑으면 O(저장 건수 ×
+// 새 건수)라, 매매내역이 쌓일수록 연도별 재조회/CSV 가져오기가 눈에 띄게
+// 느려진다 — (broker, accountId, id) → 배열 인덱스 맵을 한 번만 만들어 쓴다.
+function tradeKey(broker: BrokerId, accountId: string, id: string): string {
+  return `${broker}\u0000${accountId}\u0000${id}`;
+}
+
+function indexByKey(trades: StoredTrade[]): Map<string, number> {
+  const index = new Map<string, number>();
+  trades.forEach((t, i) => index.set(tradeKey(t.broker, t.accountId, t.id), i));
+  return index;
+}
+
+function upsertInto(next: StoredTrade[], index: Map<string, number>, entry: StoredTrade): void {
+  const key = tradeKey(entry.broker, entry.accountId, entry.id);
+  const idx = index.get(key);
+  if (idx === undefined) {
+    index.set(key, next.length);
+    next.push(entry);
+  } else {
+    next[idx] = entry;
+  }
+}
+
 // 기존 저장분엔 name 필드 자체가 없던 레코드가 있다(이 필드가 생기기 전에 저장된
 // 행) — JsonStore가 그대로 읽으면 undefined가 되는데, holdings의 memo/dividends의
 // accountId와 같은 이유로 여기서 null로 정규화해 프론트가 항상 string | null만
@@ -65,8 +89,8 @@ export function listTrades(filter?: { broker?: BrokerId; accountId?: string }): 
 export function upsertTrades(broker: BrokerId, accountId: string, records: TradeRecord[]): void {
   store().update((current) => {
     const next = [...current];
+    const index = indexByKey(next);
     for (const r of records) {
-      const idx = next.findIndex((t) => t.broker === broker && t.accountId === accountId && t.id === r.id);
       const entry: StoredTrade = {
         broker,
         accountId,
@@ -82,8 +106,7 @@ export function upsertTrades(broker: BrokerId, accountId: string, records: Trade
         tax: r.tax,
         executedAt: r.executedAt,
       };
-      if (idx === -1) next.push(entry);
-      else next[idx] = entry;
+      upsertInto(next, index, entry);
     }
     return next;
   });
@@ -95,9 +118,9 @@ export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
   const inserted: StoredTrade[] = [];
   store().update((current) => {
     const next = [...current];
+    const index = indexByKey(next);
     for (const row of rows) {
       const id = row.id || randomUUID();
-      const idx = next.findIndex((t) => t.broker === row.broker && t.accountId === row.accountId && t.id === id);
       const entry: StoredTrade = {
         broker: row.broker,
         accountId: row.accountId,
@@ -113,8 +136,7 @@ export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
         tax: row.tax ?? null,
         executedAt: row.executedAt,
       };
-      if (idx === -1) next.push(entry);
-      else next[idx] = entry;
+      upsertInto(next, index, entry);
       inserted.push(entry);
     }
     return next;

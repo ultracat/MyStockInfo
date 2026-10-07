@@ -2,7 +2,7 @@ import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
 import { JsonStore } from '../../jsonStore';
-import { DEFAULT_TTL_MS, withCache } from '../responseCache';
+import { DEFAULT_TTL_MS, PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
 
 // koreainvestment/open-trading-api (examples_user/kis_auth.py, checked
@@ -328,7 +328,7 @@ export async function fetchKisBalance(
   // double-invoked effect firing two real requests a moment apart) are
   // coalesced onto one in-flight call by withCache itself — see
   // brokers/responseCache.ts.
-  return withCache('kis:balance', DEFAULT_TTL_MS, fetchKisBalanceUncached, opts);
+  return withCache('kis:balance', PORTFOLIO_TTL_MS, fetchKisBalanceUncached, opts);
 }
 
 function ymd(d: Date): string {

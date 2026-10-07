@@ -1,7 +1,8 @@
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { withRateLimitRetry } from '../rateLimiter';
 import { getTossRateLimiter, type TossRateLimitGroup } from './rateLimitGroups';
-import { DEFAULT_TTL_MS, withCache } from '../responseCache';
+import { DEFAULT_TTL_MS, PORTFOLIO_TTL_MS, withCache } from '../responseCache';
+import { getCachedCloses, setCachedCloses, type CachedSymbolCloses } from '../../db/monthlyCloseCache';
 import type { FetchOpts } from '../types';
 
 const BASE_URL = 'https://openapi.tossinvest.com';
@@ -325,7 +326,7 @@ export function isTossConfigured(): boolean {
 export async function fetchTossAccounts(opts: FetchOpts = {}): Promise<TossAccountsResponse['result']> {
   return withCache(
     'toss:accounts',
-    DEFAULT_TTL_MS,
+    PORTFOLIO_TTL_MS,
     async () => {
       const data = await tossFetch<TossAccountsResponse>('/api/v1/accounts', 'ACCOUNT');
       return data.result;
@@ -340,7 +341,7 @@ export async function fetchTossHoldings(
 ): Promise<TossHoldingsOverviewResponse> {
   return withCache(
     `toss:holdings:${accountSeq}`,
-    DEFAULT_TTL_MS,
+    PORTFOLIO_TTL_MS,
     async () => {
       // Holdings/balance falls under the docs' ASSET group (5 req/s), distinct
       // from ACCOUNT (1 req/s, accounts list only) — conflating the two was
@@ -439,7 +440,7 @@ export async function fetchTossBuyingPower(
 ): Promise<number> {
   return withCache(
     `toss:buying-power:${accountSeq}:${currency}`,
-    DEFAULT_TTL_MS,
+    PORTFOLIO_TTL_MS,
     async () => {
       const params = new URLSearchParams({ currency });
       const raw = await tossFetch<any>(`/api/v1/buying-power?${params}`, 'ORDER_INFO', { accountSeq });
@@ -465,7 +466,7 @@ export async function fetchTossExchangeRate(
 ): Promise<TossExchangeRateResponse> {
   return withCache(
     `toss:fx:${baseCurrency}:${quoteCurrency}`,
-    DEFAULT_TTL_MS,
+    PORTFOLIO_TTL_MS,
     async () => {
       const params = new URLSearchParams({ baseCurrency, quoteCurrency });
       const raw = await tossFetch<any>(`/api/v1/exchange-rate?${params}`, 'MARKET_INFO');
@@ -668,6 +669,23 @@ export interface MonthlyClosePrice {
   currency: string;
 }
 
+function yearMonth(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthsAgo(n: number): string {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - n);
+  return yearMonth(d);
+}
+
+function toMonthlyList(byMonth: Map<string, { closePrice: number; currency: string }>): MonthlyClosePrice[] {
+  return Array.from(byMonth.entries())
+    .map(([month, c]) => ({ month, closePrice: c.closePrice, currency: c.currency }))
+    .sort((a, b) => (a.month < b.month ? -1 : 1));
+}
+
 /**
  * 종목 하나의 최근 `months`개월치 "월별 종가"(그 달의 마지막 거래일 종가)를
  * 구한다 — 일봉을 과거로 페이지네이션하며 모은 뒤 달마다 가장 최근(=timestamp가
@@ -676,6 +694,12 @@ export interface MonthlyClosePrice {
  * 상장폐지/오타 등으로 종목을 못 찾음, 네트워크 오류) 예외를 던지지 않고 빈
  * 배열을 준다 — 호출부(Overview.tsx)가 그 종목/그 달은 오늘 현재가로 대체하는
  * fallback을 이미 갖고 있어서, 여기서 막을 이유가 없다.
+ *
+ * **확정된 달은 디스크에 영구 캐시한다**(`db/monthlyCloseCache.ts`) — 캐시가
+ * 요청 범위를 이미 덮고 있으면 최신 일봉 한 페이지(이번 달·지난달 포함, 약
+ * 9개월치)만 받아 합친다. "확정"은 지난달보다 이전 달만 친다 — 지난달 마지막
+ * 거래일 종가는 한국 시간 1일 새벽(미국장 마감)까지 아직 안 나왔을 수 있어서,
+ * 한 달 여유를 둬도 최신 페이지 하나에 항상 들어가므로 추가 비용이 없다.
  */
 export async function fetchTossMonthlyClosePrices(
   symbol: string,
@@ -683,29 +707,76 @@ export async function fetchTossMonthlyClosePrices(
   opts: FetchOpts = {}
 ): Promise<MonthlyClosePrice[]> {
   if (!isTossConfigured()) return [];
+
+  const finalizedBefore = monthsAgo(1); // 이 달 "미만"만 확정으로 취급
+  const requiredFrom = monthsAgo(months);
+  let cached: CachedSymbolCloses | null = null;
   try {
-    const byMonth = new Map<string, TossCandle>();
+    cached = getCachedCloses(symbol);
+  } catch (err) {
+    console.error(`[toss] 월별 종가 캐시 읽기 실패 (${symbol}):`, err);
+  }
+
+  const byMonth = new Map<string, { closePrice: number; currency: string; timestamp: string }>();
+  const mergePage = (candles: TossCandle[]) => {
+    for (const c of candles) {
+      const month = c.timestamp.slice(0, 7);
+      const existing = byMonth.get(month);
+      if (!existing || c.timestamp > existing.timestamp) {
+        byMonth.set(month, { closePrice: c.closePrice, currency: c.currency, timestamp: c.timestamp });
+      }
+    }
+  };
+
+  try {
+    if (cached && cached.coveredFrom <= requiredFrom) {
+      const { candles } = await fetchTossDailyCandlesPage(symbol, undefined, opts);
+      mergePage(candles);
+      const merged = new Map<string, { closePrice: number; currency: string }>(Object.entries(cached.months));
+      for (const [month, c] of byMonth) merged.set(month, c);
+      return toMonthlyList(merged);
+    }
+
     let before: string | undefined;
+    let reachedStart = false;
     // 하루 평균 거래일 ~21일 기준 200봉 ≈ 9~10개월치라, 대부분 1~2페이지면
     // 충분하다. 상장 시작이 얼마 안 된 종목처럼 nextBefore가 일찍 null이 되는
     // 경우를 대비해 페이지 수 상한만 넉넉히(5) 둔다.
     for (let page = 0; page < 5; page++) {
       const { candles, nextBefore } = await fetchTossDailyCandlesPage(symbol, before, opts);
-      if (candles.length === 0) break;
-      for (const c of candles) {
-        const month = c.timestamp.slice(0, 7);
-        const existing = byMonth.get(month);
-        if (!existing || c.timestamp > existing.timestamp) byMonth.set(month, c);
+      if (candles.length === 0) {
+        reachedStart = page > 0;
+        break;
       }
-      if (!nextBefore || byMonth.size >= months + 2) break;
+      mergePage(candles);
+      if (!nextBefore) {
+        reachedStart = true;
+        break;
+      }
+      if (byMonth.size >= months + 2) break;
       before = nextBefore;
     }
-    return Array.from(byMonth.entries())
-      .map(([month, c]) => ({ month, closePrice: c.closePrice, currency: c.currency }))
-      .sort((a, b) => (a.month < b.month ? -1 : 1));
+
+    if (byMonth.size > 0) {
+      const finalized: CachedSymbolCloses['months'] = { ...(cached?.months ?? {}) };
+      for (const [month, c] of byMonth) {
+        if (month < finalizedBefore) finalized[month] = { closePrice: c.closePrice, currency: c.currency };
+      }
+      const earliestFetched = [...byMonth.keys()].sort()[0];
+      const coveredFrom = reachedStart ? '0000-00' : earliestFetched;
+      try {
+        setCachedCloses(symbol, { coveredFrom, months: finalized });
+      } catch (err) {
+        console.error(`[toss] 월별 종가 캐시 저장 실패 (${symbol}):`, err);
+      }
+    }
+
+    return toMonthlyList(byMonth);
   } catch (err) {
     console.error(`[toss] 월별 종가 조회 실패 (${symbol}):`, err);
-    return [];
+    // 최신 페이지 조회만 실패했으면 확정된 달이라도 돌려준다 — 그 달들은 어차피
+    // 다시 안 바뀌는 값이라 프론트의 "오늘 현재가로 대체"보다 정확하다.
+    return cached ? toMonthlyList(new Map(Object.entries(cached.months))) : [];
   }
 }
 

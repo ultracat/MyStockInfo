@@ -15,13 +15,20 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 - `src/paths.ts` — `getDataDir()`: Electron 안에서 `app.getPath('userData')/data`,
   단독 실행 시 `backend/data/`(gitignore).
 - `src/jsonStore.ts` — `JsonStore<T>`: atomic write(tmp+rename) JSON 파일 저장 헬퍼.
-  자격증명/배당/보유종목/매매내역/설정이 전부 이걸 쓴다.
+  자격증명/배당/보유종목/매매내역/설정이 전부 이걸 쓴다. **파싱 결과를 파일 경로별로
+  메모리에 캐시한다**(mtime/size가 같으면 재파싱 안 함) — 이 백엔드는 Electron 메인
+  프로세스 안에서 돌아서 요청마다 sync 읽기+`JSON.parse`를 반복하면 창 이벤트까지
+  같이 멈춘다. 그래서 **`read()` 결과는 캐시와 공유되는 객체다 — 제자리 수정
+  (push/필드 대입 등) 금지**, 항상 새 배열/객체를 만들어 `write`/`update`로 넘긴다.
+  `getCredentialFields()`도 같은 이유로 복호화 결과를 암호문 문자열 기준으로 캐시한다.
 
 ## 브로커 어댑터 (`src/brokers/`)
 
 - `types.ts` — `BrokerAdapter`(`isConfigured`, `listAccounts`, `getPortfolio`, 선택적
   `getExchangeRate`/`getTradeHistory`), `FetchOpts.forceRefresh`.
-- `responseCache.ts` — `withCache(key, ttlMs, fetcher, opts)`: 5초(`DEFAULT_TTL_MS`) TTL +
+- `responseCache.ts` — `withCache(key, ttlMs, fetcher, opts)`: 5초(`DEFAULT_TTL_MS`) TTL
+  (보유종목/예수금/계좌목록/현재 환율은 30초 `PORTFOLIO_TTL_MS` — 화면 전환마다
+  재조회되는 걸 막는 용도, 새로고침 버튼은 `forceRefresh`로 우회) +
   **in-flight promise 공유**(같은 key로 거의 동시에 온 호출은 하나만 실제 요청). React
   StrictMode의 effect 이중실행이 이 없이는 rate-limit과 무관해 보이는 에러(토스
   `account-not-found` 등)로 샐 수 있어서 생긴 장치 — 새 브로커 클라이언트도 이걸로 감싼다.
@@ -420,6 +427,11 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
   대상으로 삼는다(전량 매도해 더는 안 갖고 있는 과거 거래 종목은 제외) — 그래도
   종목 수만큼 API 호출이 늘어나므로(종목당 1~2페이지), 이미 다른 화면보다 호출량이
   많다고 문서화된 `Overview.tsx`의 특성이 여기서 한 번 더 커진다.
+- **확정된 달(지난달보다 이전)의 종가는 디스크에 영구 캐시한다**
+  (`db/monthlyCloseCache.ts`, `monthly-close-cache.json`) — 캐시가 요청 범위를
+  덮으면(`coveredFrom`) 최신 일봉 한 페이지만 받아 합친다, 앱 재시작 후에도 종목당
+  1페이지. 지난달은 한국 시간 1일 새벽 미국장 마감 전엔 미확정일 수 있어 일부러
+  캐시하지 않는다(최신 페이지에 항상 포함돼 추가 비용 없음).
 - **캐시 TTL을 다른 브로커 응답(`DEFAULT_TTL_MS`, 5초)보다 훨씬 길게(`CANDLE_CACHE_TTL_MS`,
   4시간) 잡는다** — 이미 지나간 달의 종가는 다시 안 바뀌고, 오늘이 속한 달의
   봉만 장중에 계속 움직인다. 이 기능을 처음 붙였을 때 대시보드 진입 시
@@ -449,6 +461,10 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
   없다. 이번 달처럼 아직 안 끝난 달은 오늘까지만 평균낸다. 달 하나당 최대
   20여 회 호출이 필요하지만 전부 병렬로(`Promise.all`) 쏘고, 개별 호출이
   평균 0.1~0.2초라 실측 3개월치 배치 조회가 0.24초 걸렸다(캐시 없는 상태).
+  단 실제 네트워크 요청은 동시 6개로 제한하고(`MAX_CONCURRENT_REQUESTS` — 여러
+  달이 겹치면 수백 건이 한꺼번에 나가던 문제), 디스크 캐시 기록은 메모리에
+  모았다가 500ms 뒤 한 번에 쓴다(`eximbankCache.ts` — 날짜마다 파일 전체를 다시
+  쓰던 문제).
 - **캐시 TTL도 위 종가 캐시와 같은 논리**: 이미 끝난 달의 평균은 다시 안
   바뀌니 30일(`PAST_MONTH_TTL_MS`, 이 프로세스가 사는 동안은 사실상 영구)로
   길게, 아직 진행 중인 이번 달만 4시간(`CURRENT_MONTH_TTL_MS`)으로 짧게

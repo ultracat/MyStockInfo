@@ -34,11 +34,18 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: 'MyStock',
+    // 처음부터 보여주면 로드가 끝나기 전의 흰 화면이 그대로 노출된다 —
+    // 렌더러가 첫 페인트를 마친 뒤('ready-to-show') 보여줘서 그 틈을 없앤다.
+    show: false,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
   });
 
   if (app.isPackaged) {

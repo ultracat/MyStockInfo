@@ -232,7 +232,16 @@ class TossApiError extends Error {
 // don't refresh speculatively — only when expired/near-expiry or on 401.
 let cachedToken: { accessToken: string; expiresAt: number } | null = null;
 
-async function fetchToken(): Promise<string> {
+// Two concurrent callers that both see an expired/missing cachedToken (e.g.
+// two screens' requests landing at the same moment right after expiry) would
+// otherwise each fire their own `/oauth2/token` request — and since Toss
+// invalidates the previous token on every reissue (comment above), whichever
+// request loses the race gets a token that's already dead, 401s, and forces
+// yet another reissue. Sharing one in-flight fetch across concurrent callers
+// avoids both the wasted call and the self-inflicted invalidation.
+let inFlightFetch: Promise<string> | null = null;
+
+async function fetchTokenUncached(): Promise<string> {
   const creds = getCredentialFields('toss');
   if (!creds) {
     throw new Error('토스증권 API 키가 설정되지 않았습니다. 설정 화면에서 Client ID/Secret을 입력해주세요.');
@@ -265,6 +274,15 @@ async function fetchToken(): Promise<string> {
   // 60s safety buffer before expiry.
   cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in - 60) * 1000 };
   return cachedToken.accessToken;
+}
+
+function fetchToken(): Promise<string> {
+  if (!inFlightFetch) {
+    inFlightFetch = fetchTokenUncached().finally(() => {
+      inFlightFetch = null;
+    });
+  }
+  return inFlightFetch;
 }
 
 async function getToken(forceRefresh = false): Promise<string> {

@@ -142,7 +142,7 @@ function loadCachedToken(): StoredKisToken | null {
   return null;
 }
 
-async function fetchToken(): Promise<string> {
+async function fetchTokenUncached(): Promise<string> {
   const creds = requireCredentials();
 
   const res = await kisLimiter.schedule(() =>
@@ -168,6 +168,21 @@ async function fetchToken(): Promise<string> {
   cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
   tokenStore().write(cachedToken);
   return cachedToken.accessToken;
+}
+
+// 캐시된 토큰이 만료/부재 상태일 때 동시에 들어온 호출들이 각자 fetchTokenUncached를
+// 부르면 KIS 토큰을 중복 발급하게 된다 — 문서화된 "1일 1회 발급 제한"(EGW00133,
+// kis-token.json 주석 참고)에 걸리면 그날 하루 종일 API가 막힌다. in-flight
+// 프로미스를 공유해서 동시 요청이 실제 발급 요청 하나만 타게 한다.
+let inFlightFetch: Promise<string> | null = null;
+
+function fetchToken(): Promise<string> {
+  if (!inFlightFetch) {
+    inFlightFetch = fetchTokenUncached().finally(() => {
+      inFlightFetch = null;
+    });
+  }
+  return inFlightFetch;
 }
 
 async function getToken(forceRefresh = false): Promise<string> {

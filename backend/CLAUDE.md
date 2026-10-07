@@ -21,6 +21,21 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   같이 멈춘다. 그래서 **`read()` 결과는 캐시와 공유되는 객체다 — 제자리 수정
   (push/필드 대입 등) 금지**, 항상 새 배열/객체를 만들어 `write`/`update`로 넘긴다.
   `getCredentialFields()`도 같은 이유로 복호화 결과를 암호문 문자열 기준으로 캐시한다.
+  **`google/store.ts`의 `readState()`도 같은 패턴**으로 Google OAuth 상태(암호화된
+  refresh/access token)를 캐시한다 — Sheets API 호출 하나하나가 그 전에 거치는
+  `getValidAccessToken()`이 매번 이걸 부르므로, 캐시 없인 내보내기/가져오기 한 번에
+  `safeStorage.decryptString`(OS 키체인 동기 호출)이 여러 번(스프레드시트 확인, 탭
+  생성, 읽기/쓰기 등 호출 수만큼) 반복됐다.
+- **브로커 토큰 발급(`toss/tossClient.ts`/`kis/kisClient.ts`/`kb/kbClient.ts`의
+  `getToken`/`fetchToken`) 전부 in-flight 프로미스를 공유한다** — 캐시된 토큰이
+  만료/부재일 때 두 요청이 동시에 들어오면(예: 화면 두 개가 거의 동시에 API를
+  부르는 경우) 각자 독립적으로 토큰을 재발급받던 걸 하나로 합쳤다. KIS는 공식
+  문서에 "1일 1회 발급 제한"(`EGW00133`)이 있다고 이미 적혀 있어서(`kis-token.json`
+  영속화 이유), 이 레이스가 실제로 발생하면 중복 발급이 그 제한에 걸려 그날 하루
+  API 전체가 막힐 수 있는 실질적인 버그였다(토스/KB도 같은 레이스가 있어서 동일하게
+  고쳤다 — 토스는 "재발급 시 이전 토큰이 즉시 무효화된다"는 특성 때문에 레이스가
+  나면 더 나쁘다: 동시 요청 중 하나가 막 발급받아 쓰고 있는 토큰을 다른 하나가
+  재발급하면서 무효화시켜버릴 수 있음).
 
 ## 브로커 어댑터 (`src/brokers/`)
 

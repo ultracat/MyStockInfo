@@ -51,9 +51,26 @@ function blobStore() {
   return new JsonStore<StoredBlob | null>('google-account.json', getDataDir(), null);
 }
 
+// 복호화 결과 캐시 — credentials.ts의 getCredentialFields와 같은 이유. Sheets
+// API 호출 하나하나가(sheetsApi.ts의 각 함수) 그 전에 항상 oauth.ts의
+// getValidAccessToken()을 거치고, 그게 매번 이 readState()를 불러 accessToken을
+// 확인한다 — safeStorage.decryptString은 OS 키체인을 거치는 동기 호출이라, 캐싱
+// 없이는 내보내기/가져오기 한 번에 여러 번(스프레드시트 존재 확인, 탭 생성,
+// 읽기/쓰기 등) 반복해서 Electron 메인 프로세스를 그만큼 붙잡는다. 저장된
+// 암호문(`data`)이 그대로면 결과도 같으므로 그 문자열을 키로 재사용한다 —
+// writeState가 호출되면 암호문 자체가 바뀌어 자연히 다시 복호화된다.
+let cachedState: { data: string; state: GoogleAccountState } | null = null;
+
 function readState(): GoogleAccountState {
   const stored = blobStore().read();
-  if (!stored) return { ...EMPTY_STATE };
+  if (!stored) {
+    cachedState = null;
+    return { ...EMPTY_STATE };
+  }
+
+  if (cachedState && cachedState.data === stored.data) {
+    return { ...cachedState.state };
+  }
 
   let json: string;
   if (stored.encrypted) {
@@ -69,7 +86,9 @@ function readState(): GoogleAccountState {
     json = Buffer.from(stored.data, 'base64').toString('utf-8');
   }
 
-  return { ...EMPTY_STATE, ...JSON.parse(json) };
+  const state = { ...EMPTY_STATE, ...JSON.parse(json) };
+  cachedState = { data: stored.data, state };
+  return { ...state };
 }
 
 function writeState(state: GoogleAccountState): void {

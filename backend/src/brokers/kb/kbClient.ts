@@ -85,7 +85,7 @@ interface KbEnvelope<T = Record<string, unknown>> {
 // example/python/README.md(공식): 토큰 발급 요청도 dataHeader(ipAddr/macAddr만
 // 사용) + dataBody({appKey, appSecret, grantType:"client_credentials"}) 포맷으로
 // 감싼다. 응답의 access_token은 dataBody.access_token 경로.
-async function fetchToken(): Promise<string> {
+async function fetchTokenUncached(): Promise<string> {
   const creds = requireCredentials();
 
   const res = await kbLimiter.schedule(() =>
@@ -128,6 +128,20 @@ async function fetchToken(): Promise<string> {
   cachedToken = { accessToken, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
   tokenStore().write(cachedToken);
   return cachedToken.accessToken;
+}
+
+// kisClient.ts와 같은 이유 — 캐시된 토큰이 만료/부재일 때 동시 호출이 각자
+// 발급을 시도하면 중복 발급된다(KB는 빈도 제한 수치가 공식 문서에 없지만,
+// KIS의 EGW00133 같은 제약이 없다고 확인된 것도 아니라 똑같이 방어해둔다).
+let inFlightFetch: Promise<string> | null = null;
+
+function fetchToken(): Promise<string> {
+  if (!inFlightFetch) {
+    inFlightFetch = fetchTokenUncached().finally(() => {
+      inFlightFetch = null;
+    });
+  }
+  return inFlightFetch;
 }
 
 async function getToken(forceRefresh = false): Promise<string> {

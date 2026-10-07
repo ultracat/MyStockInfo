@@ -55,10 +55,31 @@ export function listHoldings(filter?: { broker?: BrokerId; accountId?: string })
     .filter((h) => (filter?.accountId ? h.accountId === filter.accountId : true));
 }
 
+/** `updatedAt`을 뺀 내용이 같은지 비교 — 같은 호출에서 만든 객체끼리라 키 순서가
+ *  항상 같으므로 `JSON.stringify` 비교로 충분하다(순서가 달라질 수 있는 입력이면
+ *  오탐 가능성이 있지만, 그래도 "달라졌다"고 오판해 다시 쓰는 쪽으로만 안전하게
+ *  어긋난다 — 데이터가 틀리게 저장될 위험은 없음). */
+function sameHoldingsIgnoringUpdatedAt(a: StoredHolding[], b: StoredHolding[]): boolean {
+  if (a.length !== b.length) return false;
+  const strip = (h: StoredHolding) => {
+    const { updatedAt, ...rest } = h;
+    return rest;
+  };
+  return JSON.stringify(a.map(strip)) === JSON.stringify(b.map(strip));
+}
+
 /** 실시간 동기화(routes/holdings.ts)용 — 해당 (broker,accountId)의 기존 행을 전부
  *  지우고 방금 받아온 포지션으로 교체한다. 보유종목은 "현재 상태"의 스냅샷이지
  *  누적 히스토리가 아니므로, 팔아서 사라진 종목이 로컬 DB에 유령처럼 남지 않게
- *  이렇게 전체 교체한다. */
+ *  이렇게 전체 교체한다.
+ *
+ *  **내용이 전과 같으면 쓰기 자체를 건너뛴다** — 이 함수는 보유종목 화면을 열
+ *  때마다(`routes/holdings.ts`의 write-through) 호출되는데, 30초 캐시
+ *  (`responseCache.ts`의 `PORTFOLIO_TTL_MS`) 때문에 짧은 시간 안에 화면을 오가면
+ *  같은 데이터로 반복 호출된다. 그때마다 전체 파일을 다시 stringify+쓰기 하는 건
+ *  이 백엔드가 Electron 메인 프로세스 안에서 돈다는 점(루트 CLAUDE.md 참고)을
+ *  생각하면 불필요한 비용이다 — `positions.map`이 매번 새 배열/객체를 만들어서
+ *  참조 비교로는 못 거르므로, 내용을 직접 비교한다. */
 export function replaceSnapshot(broker: BrokerId, accountId: string, positions: HoldingPosition[]): void {
   const now = new Date().toISOString();
   const fresh: StoredHolding[] = positions.map((p) => ({
@@ -81,10 +102,11 @@ export function replaceSnapshot(broker: BrokerId, accountId: string, positions: 
     updatedAt: now,
   }));
 
-  store().update((current) => [
-    ...current.filter((h) => !(h.broker === broker && h.accountId === accountId)),
-    ...fresh,
-  ]);
+  const current = store().read();
+  const existing = current.filter((h) => h.broker === broker && h.accountId === accountId);
+  if (sameHoldingsIgnoringUpdatedAt(existing, fresh)) return;
+
+  store().write([...current.filter((h) => !(h.broker === broker && h.accountId === accountId)), ...fresh]);
 }
 
 /** CSV 가져오기 전용 — 가져온 CSV에 등장한 (broker,accountId) 조합마다, 그 계좌의

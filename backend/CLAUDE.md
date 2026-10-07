@@ -223,6 +223,16 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 점만 다르고(프론트가 보유종목/매매내역 화면 진입 시 자동으로 이 라우트를 호출한다
 — "KB증권 Open API" 절 참고), 쓰는 함수(`replaceSnapshot`/`upsertTrades`)는 동일하다.
 
+**`replaceSnapshot`은 내용이 전과 같으면 디스크 쓰기 자체를 건너뛴다.** 보유종목
+화면은 `PORTFOLIO_TTL_MS`(30초) 캐시 때문에 짧은 시간 안에 화면을 오가면 같은
+포지션 데이터로 이 함수가 반복 호출되는데, `getPortfolio`가 돌려주는 `positions`를
+매번 `.map()`으로 새 배열/객체로 바꾸므로 참조 비교로는 "같은 데이터"를 못 거른다
+— `sameHoldingsIgnoringUpdatedAt`이 `updatedAt`을 뺀 내용을 직접 비교해서, 같으면
+`store().write()` 자체를 안 부른다(Electron 메인 프로세스에서 매번 전체 파일을
+다시 stringify+쓰기 하는 비용을 줄임). 키 순서가 항상 같은 같은 코드에서 만든
+객체끼리의 비교라 `JSON.stringify` 비교로 충분하다 — 혹시 순서가 달라지는 입력이
+들어와도 "달라졌다"고 오판해 다시 쓰는 쪽으로만 안전하게 어긋난다.
+
 `GET /api/holdings-store`, `GET /api/trades-store`(둘 다 `?broker=&accountId=` 필터)로
 저장된 걸 조회한다 — CSV 전체 내보내기와 CSV 전용 브로커(실시간 조회가 안 되는)의 데이터
 확인용.

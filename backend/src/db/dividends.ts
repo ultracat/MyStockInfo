@@ -51,7 +51,7 @@ function normalize(r: DividendRecord): DividendRecord {
 export function listDividends(): DividendRecord[] {
   return store()
     .read()
-    .map(normalize)
+    .map((r) => (r.accountId === undefined ? normalize(r) : r))
     .sort((a, b) => (a.paidDate < b.paidDate ? 1 : -1));
 }
 

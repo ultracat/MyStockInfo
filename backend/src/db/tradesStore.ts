@@ -75,12 +75,19 @@ function normalize(t: StoredTrade): StoredTrade {
   return { ...t, name: t.name ?? null };
 }
 
+// 필터 두 번 + normalize 한 번, 총 세 번 배열을 훑는 대신 한 번에 처리한다 —
+// trades.json은 누적 히스토리라 다른 저장소보다 훨씬 커지는데("전체" 모드가
+// 필터 없이 매번 전체를 받는다), normalize도 name이 이미 있는(지금은 모든
+// write 경로가 항상 채우는) 대다수 행에 대해 매번 새 객체를 복제해 쓸모없는
+// 할당을 반복했다 — 실제로 바꿔야 하는(undefined인) 행만 새로 만든다.
 export function listTrades(filter?: { broker?: BrokerId; accountId?: string }): StoredTrade[] {
-  return store()
-    .read()
-    .filter((t) => (filter?.broker ? t.broker === filter.broker : true))
-    .filter((t) => (filter?.accountId ? t.accountId === filter.accountId : true))
-    .map(normalize);
+  const result: StoredTrade[] = [];
+  for (const t of store().read()) {
+    if (filter?.broker && t.broker !== filter.broker) continue;
+    if (filter?.accountId && t.accountId !== filter.accountId) continue;
+    result.push(t.name === undefined ? normalize(t) : t);
+  }
+  return result;
 }
 
 /** 실시간 동기화(routes/trades.ts)용 — 브로커가 내려준 `id` 기준 upsert. 매매내역은

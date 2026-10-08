@@ -306,6 +306,24 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 없는데, `listDividends()`가 읽을 때 `normalize()`로 항상 `null`로 채워서(마이그레이션
 불필요) 이 밖의 코드는 `undefined` 케이스를 신경 안 써도 된다.
 
+## 일별 자산 스냅샷 (`src/db/portfolioSnapshots.ts`, `src/routes/portfolioSnapshots.ts`)
+
+`Overview.tsx`가 전체 브로커/계좌를 합산해 이미 계산해둔 KRW 환산 총액
+(`totalMarketValueKrw`/`totalPurchaseAmountKrw`/`totalProfitLossKrw`)을 하루 한 번
+그대로 받아 기록하는 시계열(`portfolio-snapshots.json`) — **서버는 이 합산을 다시
+계산하지 않는다**(Overview.tsx의 "순수 클라이언트 집계" 원칙을 그대로 따름, 새
+집계 로직을 중복 구현하지 않으려는 의도). `POST /api/portfolio-snapshots`가 같은
+`date`면 덮어쓰기(upsert) — 하루에 앱을 몇 번을 열어도 그 날짜 행 하나로 수렴하고,
+지난 날짜는 다시 안 바뀐다. `GET /api/portfolio-snapshots`는 날짜순 정렬 전체 목록.
+
+기존 "매월 보유종목 투자금 대비 수익률"/"월별 총 투자금 · 총 수입금" 두 카드
+(`MonthlyReturnChart`/`MonthlyInvestmentChart`, `frontend/CLAUDE.md`의
+`MonthlyInvestmentChart.tsx` 절 참고)는 매매내역에서 수량만 재구성하고 오늘
+평단가/종가를 곱하는 **근사치**라 과거까지 소급해서 보여줄 수 있지만, 이 스냅샷은
+**이 기능을 쓰기 시작한 날부터만** 쌓이는 대신 매일 실제로 계산된 값 그대로라 더
+정확하다 — 두 방식을 경쟁시키지 않고 "순자산 추이(기록 시작 이후)" 카드로
+별도로 둔다(`NetWorthChart.tsx`).
+
 ## 계좌 별칭 (`src/db/accountLabels.ts`, `src/routes/accountLabels.ts`)
 
 `(broker, accountId) → label` 매핑을 저장하는 작은 `JsonStore`(`account-labels.json`).
@@ -317,6 +335,38 @@ holdings-store/trades-store/dividends 세 로컬 저장소에 실제로 CSV/수�
 (body `{label}`, upsert), `DELETE /api/account-labels/:broker/:accountId`.
 **관리 UI는 `Settings.tsx` 한 곳에만 있다** — Dashboard.tsx/Trades.tsx/Dividends.tsx는
 마운트 시 한 번 불러와 표시할 때 읽기만 한다(`frontend/CLAUDE.md` 참고).
+
+## 계좌별 세금 유형 (`src/db/accountTaxTypes.ts`, `src/routes/accountTaxTypes.ts`)
+
+ISA/연금저축/IRP 계좌를 표시해두는 작은 `JsonStore`(`account-tax-types.json`,
+`{broker, accountId, taxType}[]`) — `frontend/src/pages/RealizedGains.tsx`(실현손익
+리포트)가 유일한 소비처다. 저장 안 돼 있으면 `'GENERAL'`(일반계좌)로 취급하고,
+`'GENERAL'`로 되돌리는 건 그냥 엔트리를 지우는 것과 같다(`DELETE`가 엔트리
+없어도 404를 안 던진다 — `routes/accountTaxTypes.ts`의 주석 참고, "일반계좌 선택"이
+"애초에 분류 안 된 상태"와 결과적으로 같아서). **왜 기존 "계좌 별칭"
+(`accountLabels.ts`)을 확장하지 않고 새로 만들었나** — 계좌 별칭은 CSV 전용
+브로커(KB/삼성/미래에셋)만 다룬다(API 브로커는 계좌번호 자체가 이미 사람이 읽을
+수 있는 값이라 라벨이 필요 없다는 전제, `frontend/CLAUDE.md`의 "Settings.tsx"
+절 참고). 반면 세금 유형 분류는 **토스/KIS 계좌에도 똑같이 필요하다**(실사용자의
+한국투자증권 ISA 계좌가 실제 사례) — 그래서 CSV 전용 브로커 전제를 깨지 않고
+별도 저장소로 뺐다. ISA는 손익통산 후 비과세 한도 초과분만 9.9% 분리과세,
+연금저축/IRP는 매도 시점엔 과세되지 않고 나중에 연금·퇴직소득으로 인출할 때
+과세된다 — 셋 다 일반 해외주식 양도소득세(22%)와 무관한 별도 규정이라,
+`RealizedGains.tsx`는 이 분류가 `GENERAL`이 아닌 계좌의 매도 내역을 실현손익
+합계·추정 세액 계산에서 제외하고 별도 표로 보여준다.
+
+## 관심종목 (`src/db/watchlist.ts`, `src/routes/watchlist.ts`)
+
+보유하지 않은 종목의 현재가만 추적하는 목록 — `watchlist.json`,
+`JsonStore<WatchlistEntry[]>`, 브로커/계좌 개념이 없고 심볼 하나로만 식별한다.
+`POST /api/watchlist`(body `{symbol}`)가 `resolveStockNames`(토스→KIS→KB 폴백,
+`stockNameResolver.ts`)로 이름/시장/통화를 한 번 자동조회해 저장하고, 실패하면
+보유종목 CSV 가져오기와 같은 에러 메시지로 400/404를 응답한다 — 자동조회 결과를
+영구 저장하는 이유는 이름/시장/통화가 거의 안 바뀌는 값이라서(종목명 캐시와 같은
+전제). **현재가(`lastPrice`)는 저장하지 않는다** — `GET /api/watchlist`가 매번
+`resolveStockPrices`로 등록된 심볼 전체를 한 번에 라이브 조회해 합쳐서 응답한다
+(보유종목 CSV의 `lastPrice` 자동조회와 같은 원칙 — 시시각각 바뀌는 값을 저장해두면
+바로 stale해짐). `DELETE /api/watchlist/:symbol`.
 
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/stockNameResolver.ts`, `src/routes/stockInfo.ts`)
 
@@ -618,6 +668,37 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   `POST /sync/:dataType/export`, `POST /sync/:dataType/import`
   (`dataType`은 `holdings`|`trades`|`dividends`). Client ID/Secret을 받는
   라우트는 없다(위 `clientConfig.ts` 참고).
+
+## 백업/복원 (`src/backup.ts`, `src/routes/backup.ts`)
+
+데이터 폴더(`getDataDir()`) 전체를 zip으로 묶어 내려받고, 다시 그 zip으로 통째로
+되돌리는 기능 — Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이
+아니므로, 진짜 전체 백업 수단이 따로 필요해서 추가했다.
+
+- **`createBackupZip()`** — `fs.readdirSync(getDataDir())`로 찾은 파일 중
+  `SAFE_FILENAME_RE`(`/^[\w.-]+\.(json|sqlite)$/`)에 맞는 것만(임시 파일 등 제외)
+  화이트리스트 없이 전부(`credentials.json`/`kis-token.json`/`kb-token.json`/
+  `google-account.json`/`stockNames.sqlite` 등) 담는다 — "백업 = 데이터 폴더
+  전체"가 가장 단순하고, 저장소가 하나 늘어도 이 함수를 안 고쳐도 된다.
+  `manifest.json`(생성 시각 + 앱 버전)도 같이 넣지만 복원 대상은 아니다(메타데이터일
+  뿐). 의존성은 `adm-zip`(순수 JS, 네이티브 바인딩 없음 — `electron/CLAUDE.md`의
+  `asar:true`+`npmRebuild:false` 전제를 깨지 않음) — **루트 `package.json`에도
+  같은 버전을 중복 선언해뒀다**(`cors`/`express`와 같은 이유, electron-builder가
+  패키징 대상 결정에 루트 `package.json`의 `dependencies`를 본다).
+- **`restoreBackupZip(buf)`** — 엔트리 이름을 `createBackupZip`과 같은
+  `SAFE_FILENAME_RE`로 재검증한 뒤(zip-slip 방어 — `..`/경로 구분자가 섞인
+  이름은 이 패턴에 아예 안 걸려서 데이터 폴더 밖에 못 씀) `fs.writeFileSync`로
+  직접 덮어쓴다. **`JsonStore`/각 브로커의 메모리 캐시(토큰 캐시, 복호화 캐시
+  등)를 전혀 거치지 않는다** — 파일을 통째로 바꿔치기하는 작업이라 캐시를 하나씩
+  무효화하는 것보다 "복원 후 앱을 재시작해주세요"를 안내하는 쪽이 훨씬 단순하고
+  안전하다(라우트/프론트 둘 다 이 전제로 설계됨).
+- **`routes/backup.ts`** — `GET /`(zip 바이너리를
+  `Content-Disposition: attachment`로 응답), `POST /restore`(body
+  `{zipBase64: string}`). **raw/multipart body 파서를 새로 안 쓰고 base64로
+  감싼 평범한 JSON body로 받는다** — 이 프로젝트가 지금까지 모든 API에서 JSON
+  body만 썼다는 관례를 유지하기 위해서다. 대신 `server.ts`의
+  `express.json()` 기본 바디 크기 제한(100kb)을 20mb로 올렸다(안 그러면 복원
+  업로드가 데이터가 조금만 쌓여도 막힘).
 
 ## 앱 정보(About) 화면 (`src/routes/about.ts`, `src/generated/appInfo.ts`, `scripts/generate-app-info.cjs`)
 

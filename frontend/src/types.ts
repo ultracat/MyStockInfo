@@ -173,6 +173,37 @@ export interface StockInfo {
   currency: string | null;
 }
 
+/** ISA/연금저축/IRP처럼 매매차익에 일반 해외주식 양도소득세(22%)가 아니라
+ *  완전히 다른 과세 체계가 적용되는 계좌 분류 — 저장 안 돼 있으면
+ *  'GENERAL'(일반계좌)로 취급한다. `RealizedGains.tsx`에서만 쓴다. */
+export type AccountTaxType = 'GENERAL' | 'ISA' | 'PENSION_SAVINGS' | 'IRP';
+
+export interface AccountTaxTypeEntry {
+  broker: BrokerId;
+  accountId: string;
+  taxType: AccountTaxType;
+}
+
+/** 보유하지 않은 종목을 가격만 추적하려고 등록해두는 목록 — `lastPrice`는
+ *  저장되지 않고 조회할 때마다 서버가 라이브로 채워서 내려준다. */
+export interface WatchlistEntry {
+  symbol: string;
+  name: string;
+  market: string | null;
+  currency: string | null;
+  addedAt: string;
+  lastPrice: number | null;
+}
+
+/** 하루 한 번(앱 진입 시) 기록되는 전체 브로커/계좌 합산 KRW 환산 총액 — 이
+ *  기능을 쓰기 시작한 날부터만 쌓이는 실제 기록(과거 소급 불가). */
+export interface SnapshotRecord {
+  date: string;
+  totalMarketValueKrw: number;
+  totalPurchaseAmountKrw: number;
+  totalProfitLossKrw: number;
+}
+
 export interface OssPackageInfo {
   name: string;
   version: string;

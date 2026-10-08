@@ -13,6 +13,10 @@ import { accountLabelsRouter } from './routes/accountLabels';
 import { kbRouter } from './routes/kb';
 import { googleRouter } from './routes/google';
 import { aboutRouter } from './routes/about';
+import { watchlistRouter } from './routes/watchlist';
+import { portfolioSnapshotsRouter } from './routes/portfolioSnapshots';
+import { backupRouter } from './routes/backup';
+import { accountTaxTypesRouter } from './routes/accountTaxTypes';
 
 export function createApp() {
   const app = express();
@@ -20,7 +24,10 @@ export function createApp() {
   // Renderer runs on a localhost Vite dev port (or file:// once packaged);
   // this backend is only ever reachable from the local machine.
   app.use(cors());
-  app.use(express.json());
+  // 기본 제한(100kb)으로는 데이터 백업 복원(zip을 base64로 감싼 JSON body,
+  // routes/backup.ts)이 조금만 쌓여도 막힌다 — 이 앱 전체가 JSON body만 쓰는
+  // 관례를 유지하려고 별도 multipart/raw 파서 대신 여기 제한값만 올렸다.
+  app.use(express.json({ limit: '20mb' }));
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/settings', settingsRouter);
@@ -36,6 +43,10 @@ export function createApp() {
   app.use('/api/kb', kbRouter);
   app.use('/api/google', googleRouter);
   app.use('/api/about', aboutRouter);
+  app.use('/api/watchlist', watchlistRouter);
+  app.use('/api/portfolio-snapshots', portfolioSnapshotsRouter);
+  app.use('/api/backup', backupRouter);
+  app.use('/api/account-tax-types', accountTaxTypesRouter);
 
   // Last-resort safety net: any route that throws without its own
   // try/catch would otherwise fall through to Express's default HTML error

@@ -1,4 +1,15 @@
-import type { BrokerAccount, BrokerId } from './types';
+import type { AccountTaxType, BrokerAccount, BrokerId } from './types';
+
+/** ISA/연금저축/IRP 표시 문구 — Settings.tsx("계좌 별칭" 표의 "세금 유형" 열,
+ *  관리 UI 전체)와 RealizedGains.tsx(일반계좌만 세액 계산에 포함) 둘 다 같은
+ *  표기를 써야 해서 여기 한 곳에 둔다. */
+export const TAX_TYPE_LABELS: Record<AccountTaxType, string> = {
+  GENERAL: '일반계좌',
+  ISA: 'ISA',
+  PENSION_SAVINGS: '연금저축',
+  IRP: 'IRP',
+};
+export const TAX_TYPE_OPTIONS: AccountTaxType[] = ['GENERAL', 'ISA', 'PENSION_SAVINGS', 'IRP'];
 
 /** Dashboard.tsx/Trades.tsx/Dividends.tsx가 라벨 맵을 만들 때 공통으로 쓰는 키
  *  조합 — accountId 자체는 브로커 간에 겹칠 수 있어서(우연히 같은 문자열) broker도

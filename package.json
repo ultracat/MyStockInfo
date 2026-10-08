@@ -25,6 +25,7 @@
     "package:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
+    "adm-zip": "^0.6.1",
     "cors": "^2.8.5",
     "express": "^4.21.1"
   },

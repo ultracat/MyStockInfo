@@ -1,13 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
+import type { DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
 import { API_BROKER_IDS } from '../brokers';
 import DonutChart, { type DonutSlice } from '../components/DonutChart';
 import DonutDetailModal from '../components/DonutDetailModal';
 import DividendsChart from '../components/DividendsChart';
 import MonthlyReturnChart, { type MonthlyReturnRow } from '../components/MonthlyReturnChart';
 import MonthlyInvestmentChart, { type MonthlyInvestmentRow } from '../components/MonthlyInvestmentChart';
+import NetWorthChart from '../components/NetWorthChart';
 import { krw } from '../format';
+
+function todayDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 const SERIES_COLORS = [
   'var(--series-1)',
@@ -60,6 +65,7 @@ export default function Overview() {
   const [unconvertedUsdHoldings, setUnconvertedUsdHoldings] = useState(false);
   const [dividends, setDividends] = useState<DividendRecord[]>([]);
   const [trades, setTrades] = useState<StoredTrade[]>([]);
+  const [netWorthSnapshots, setNetWorthSnapshots] = useState<SnapshotRecord[]>([]);
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
   const [monthlyClosePrices, setMonthlyClosePrices] = useState<
@@ -236,6 +242,29 @@ export default function Overview() {
     const heldSymbols = new Set(flat.filter((h) => h.quantity > 0).map((h) => h.symbol));
     void loadMonthlyClosePrices(heldSymbols, allTrades);
     void loadMonthlyAvgFxRates(divs);
+
+    // 하루 한 번(이 화면에 들어올 때마다, 서버가 같은 날짜면 upsert로 덮어써서
+    // 중복이 안 쌓인다) 지금 막 계산한 합계를 그대로 기록해둔다 — "순자산 추이"
+    // 카드가 쓰는 실제 데이터. loadAll()을 안 막도록(화면에 영향 없음) void로
+    // 분리한다. 기록이 실패해도 이미 쌓여 있는 이력은 그대로 보여줘야 하므로
+    // 목록 조회는 기록 성공/실패와 무관하게 항상 시도한다.
+    void (async () => {
+      try {
+        await api.capturePortfolioSnapshot({
+          date: todayDate(),
+          totalMarketValueKrw: marketKrw,
+          totalPurchaseAmountKrw: purchaseKrw,
+          totalProfitLossKrw: marketKrw - purchaseKrw,
+        });
+      } catch {
+        // 오늘 기록이 실패해도 아래에서 기존 이력은 그대로 보여준다.
+      }
+      try {
+        setNetWorthSnapshots(await api.listPortfolioSnapshots());
+      } catch {
+        // 조용히 무시 — 카드가 "기록 없음" 상태로 남을 뿐, 화면 전체엔 영향 없음.
+      }
+    })();
   }
 
   useEffect(() => {
@@ -725,6 +754,16 @@ export default function Overview() {
           {loadingClosePrices && ' 실제 월별 종가를 불러오는 중 — 그동안 오늘 현재가로 표시됩니다.'}
         </p>
         <MonthlyInvestmentChart rows={monthlyAmountRows} />
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>순자산 추이(기록 시작 이후)</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+          위 두 차트와 달리 매매내역에서 재구성한 근사치가 아니라, 이 화면에 들어올 때마다
+          실제로 계산된 합계를 하루 한 번 그대로 기록한 값입니다 — 그만큼 정확하지만
+          이 기능을 쓰기 시작한 날부터만 쌓입니다(과거 소급 불가).
+        </p>
+        <NetWorthChart rows={netWorthSnapshots} />
       </div>
     </div>
   );

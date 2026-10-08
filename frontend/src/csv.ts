@@ -77,13 +77,19 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => !(r.length === 1 && r[0] === ''));
 }
 
-export function downloadCsv(filename: string, rows: string[][]) {
-  // BOM을 붙여야 엑셀/한글 스프레드시트에서 UTF-8로 바로 인식한다.
-  const blob = new Blob(['﻿' + toCsv(rows)], { type: 'text/csv;charset=utf-8;' });
+/** 브라우저 표준 API(Blob + objectURL + <a download>)만으로 파일을 내려받는다 —
+ *  Electron IPC나 네이티브 저장 대화상자 없이도 되는 방식이라 CSV 외의
+ *  다운로드(예: 데이터 백업 zip, Settings.tsx)에도 그대로 쓴다. */
+export function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export function downloadCsv(filename: string, rows: string[][]) {
+  // BOM을 붙여야 엑셀/한글 스프레드시트에서 UTF-8로 바로 인식한다.
+  downloadBlob(filename, new Blob(['﻿' + toCsv(rows)], { type: 'text/csv;charset=utf-8;' }));
 }

@@ -1,5 +1,7 @@
 import type {
   AccountLabel,
+  AccountTaxType,
+  AccountTaxTypeEntry,
   AppInfo,
   BrokerAccount,
   BrokerId,
@@ -10,9 +12,11 @@ import type {
   ExchangeRate,
   PortfolioOverview,
   StockInfo,
+  SnapshotRecord,
   StoredHolding,
   StoredTrade,
   TradeRecord,
+  WatchlistEntry,
 } from './types';
 
 const BASE_URL = 'http://127.0.0.1:4317/api';
@@ -237,4 +241,48 @@ export const api = {
     }),
 
   getAppInfo: () => request<AppInfo>('/about'),
+
+  // 보유하지 않은 종목을 가격만 추적하는 관심종목 — lastPrice는 조회할 때마다
+  // 서버가 라이브로 채워서 내려준다(저장 안 함).
+  listWatchlist: () => request<WatchlistEntry[]>('/watchlist'),
+  addWatchlist: (symbol: string) =>
+    request<WatchlistEntry>('/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }),
+  removeWatchlist: (symbol: string) =>
+    request<void>(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
+
+  // 하루 한 번(Overview.tsx 진입 시) 이미 계산된 합산 총액을 그대로 저장 —
+  // 서버는 집계를 다시 하지 않고 upsert만 한다(backend/CLAUDE.md의
+  // "일별 자산 스냅샷" 절 참고). 실패해도 화면에 영향 없게 호출부가 await 없이 부른다.
+  capturePortfolioSnapshot: (record: SnapshotRecord) =>
+    request<SnapshotRecord>('/portfolio-snapshots', { method: 'POST', body: JSON.stringify(record) }),
+  listPortfolioSnapshots: () => request<SnapshotRecord[]>('/portfolio-snapshots'),
+
+  // 데이터 폴더 전체를 묶은 zip — 응답이 JSON이 아니라 바이너리라 request<T>
+  // 헬퍼(항상 .json()을 기대)를 거치지 않고 직접 fetch해서 Blob으로 받는다.
+  downloadBackup: async (): Promise<Blob> => {
+    const res = await fetch(`${BASE_URL}/backup`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? `백업 다운로드 실패: ${res.status}`);
+    }
+    return res.blob();
+  },
+  // zip을 base64로 감싸 보통 JSON body로 보낸다(이 앱이 전부 JSON body만 쓰는
+  // 관례 유지 — backend/CLAUDE.md의 "백업/복원" 절 참고).
+  restoreBackup: (zipBase64: string) =>
+    request<{ restored: string[]; skipped: string[] }>('/backup/restore', {
+      method: 'POST',
+      body: JSON.stringify({ zipBase64 }),
+    }),
+
+  // ISA/연금저축/IRP 계좌 분류 — RealizedGains.tsx 전용(backend/CLAUDE.md의
+  // "계좌별 세금 유형" 절 참고).
+  listAccountTaxTypes: () => request<AccountTaxTypeEntry[]>('/account-tax-types'),
+  upsertAccountTaxType: (broker: BrokerId, accountId: string, taxType: AccountTaxType) =>
+    request<AccountTaxTypeEntry>(`/account-tax-types/${broker}/${encodeURIComponent(accountId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ taxType }),
+    }),
+  deleteAccountTaxType: (broker: BrokerId, accountId: string) =>
+    request<void>(`/account-tax-types/${broker}/${encodeURIComponent(accountId)}`, { method: 'DELETE' }),
 };

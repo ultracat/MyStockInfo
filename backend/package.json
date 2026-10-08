@@ -10,10 +10,12 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
+    "adm-zip": "^0.6.1",
     "cors": "^2.8.5",
     "express": "^4.21.1"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.9.0",

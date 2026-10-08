@@ -3,10 +3,12 @@ import Overview from './pages/Overview';
 import Dashboard from './pages/Dashboard';
 import Dividends from './pages/Dividends';
 import Trades from './pages/Trades';
+import RealizedGains from './pages/RealizedGains';
+import Watchlist from './pages/Watchlist';
 import Settings from './pages/Settings';
 import About from './pages/About';
 
-type Page = 'overview' | 'dashboard' | 'dividends' | 'trades' | 'settings' | 'about';
+type Page = 'overview' | 'dashboard' | 'dividends' | 'trades' | 'realizedGains' | 'watchlist' | 'settings' | 'about';
 
 // 사이드바가 접혔을 때 라벨 대신 보여줄 아이콘 — 외부 아이콘 라이브러리를 새로
 // 추가하지 않으려고 최소한의 인라인 SVG로 직접 그린다(Feather 아이콘 스타일).
@@ -78,6 +80,25 @@ function SlidersIcon() {
   );
 }
 
+function StarIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <polygon points="12 2 15 8.5 22 9.5 17 14.5 18.5 21.5 12 18 5.5 21.5 7 14.5 2 9.5 9 8.5 12 2" />
+    </svg>
+  );
+}
+
+function FileTextIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="16" y1="13" x2="8" y2="13" />
+      <line x1="16" y1="17" x2="8" y2="17" />
+    </svg>
+  );
+}
+
 function InfoIcon() {
   return (
     <svg {...ICON_PROPS}>
@@ -101,6 +122,8 @@ const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] =
   { id: 'dashboard', label: '보유 종목', icon: GridIcon },
   { id: 'dividends', label: '배당금', icon: PercentIcon },
   { id: 'trades', label: '매매내역', icon: RepeatIcon },
+  { id: 'realizedGains', label: '실현손익', icon: FileTextIcon },
+  { id: 'watchlist', label: '관심종목', icon: StarIcon },
   { id: 'settings', label: '설정', icon: SlidersIcon },
   { id: 'about', label: '정보', icon: InfoIcon },
 ];
@@ -142,6 +165,8 @@ export default function App() {
         {page === 'dashboard' && <Dashboard />}
         {page === 'dividends' && <Dividends />}
         {page === 'trades' && <Trades />}
+        {page === 'realizedGains' && <RealizedGains />}
+        {page === 'watchlist' && <Watchlist />}
         {page === 'settings' && <Settings />}
         {page === 'about' && <About />}
       </main>

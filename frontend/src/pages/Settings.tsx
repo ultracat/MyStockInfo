@@ -1,8 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AccountLabel, BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
+import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
-import { accountLabelKey } from '../accountLabels';
+import { accountLabelKey, TAX_TYPE_LABELS, TAX_TYPE_OPTIONS } from '../accountLabels';
+import { downloadBlob } from '../csv';
+
+// 복원 업로드는 zip을 base64로 감싸 보통 JSON body로 보낸다(api.ts의
+// restoreBackup 참고) — ArrayBuffer를 base64로 바꿀 때 `String.fromCharCode(...bytes)`를
+// 통째로 한 번에 spread하면 파일이 조금만 커져도(수만 바이트) 인자 개수 한도에
+// 걸려 "Maximum call stack size exceeded"가 날 수 있어, 32KB씩 나눠 처리한다.
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 
 export default function Settings() {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
@@ -17,6 +32,63 @@ export default function Settings() {
   const [fxRate, setFxRate] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [backingUp, setBackingUp] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
+  async function onDownloadBackup() {
+    setError(null);
+    setMessage(null);
+    setBackingUp(true);
+    try {
+      const blob = await api.downloadBackup();
+      downloadBlob(`mystock-backup-${new Date().toISOString().slice(0, 10)}.zip`, blob);
+      setMessage('백업 파일을 다운로드했습니다.');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBackingUp(false);
+    }
+  }
+
+  function onRestoreFileClick() {
+    restoreFileInputRef.current?.click();
+  }
+
+  // 파일만 고르고 바로 복원하지 않는다 — onConfirmRestore에서 2단계로 한 번 더
+  // 확인을 받는다(이 작업은 현재 저장된 모든 데이터를 덮어쓰는 돌이킬 수 없는
+  // 작업이라, 이 앱이 지금까지 써온 "네이티브 confirm 없이 인라인 state로
+  // 확인 단계를 두는" 관례를 그대로 따른다 — Dividends.tsx의 인라인 수정
+  // 저장/취소와 같은 패턴).
+  function onRestoreFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(null);
+    setMessage(null);
+    setRestoreFile(file);
+  }
+
+  async function onConfirmRestore() {
+    if (!restoreFile) return;
+    setRestoring(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const base64 = arrayBufferToBase64(await restoreFile.arrayBuffer());
+      const result = await api.restoreBackup(base64);
+      setMessage(
+        `복원이 완료되었습니다(${result.restored.length}개 파일). 변경사항을 반영하려면 앱을 재시작해주세요.`
+      );
+      setRestoreFile(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRestoring(false);
+    }
+  }
 
   async function refresh() {
     const [s, fx, specs, info] = await Promise.all([
@@ -86,13 +158,20 @@ export default function Settings() {
 
   const activeFields = fieldSpecs?.[broker] ?? [];
 
-  // CSV 전용 브로커의 (broker, accountId) → 별칭. 관리는 여기서만 하고
-  // Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 한다. "알려진 계좌"
-  // 목록은 이미 라벨이 붙은 계좌 + holdings-store/trades-store/배당 기록에 실제로
-  // 나온 accountId 전부의 합집합이다 — 데이터가 없어도 라벨만 미리 등록해둘 수
-  // 있고, 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다.
+  // (broker, accountId) → 별칭 + 세금 유형(ISA/연금저축/IRP 등). 관리는 여기서만
+  // 하고 Dashboard.tsx/Trades.tsx/Dividends.tsx(별칭)/RealizedGains.tsx(세금
+  // 유형)는 표시/계산할 때 읽기만 한다. "알려진 계좌" 목록은 이미 라벨/세금
+  // 유형이 붙은 계좌 + holdings-store/trades-store/배당 기록에 실제로 나온
+  // accountId(CSV 전용 브로커) + 실시간 계좌 목록(API 브로커, 자격증명이 설정된
+  // 경우만) 전부의 합집합이다 — 데이터가 없어도 라벨/세금 유형만 미리 등록해둘
+  // 수 있고, 반대로 라벨이 없어도 실제 데이터/계좌가 있으면 목록에 뜬다.
+  // **API 브로커(토스/KIS)도 포함한다** — 계좌번호 자체는 이미 읽을 수 있는 값이라
+  // 별칭은 잘 안 쓰지만, 세금 유형(ISA 등)은 API 브로커 계좌에도 똑같이 필요하다
+  // (실사용자의 한국투자증권 ISA 계좌가 실제 사례 — backend/CLAUDE.md의
+  // "계좌별 세금 유형" 절 참고).
   const [knownAccounts, setKnownAccounts] = useState<{ broker: BrokerId; accountId: string }[]>([]);
   const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
+  const [taxTypes, setTaxTypes] = useState<AccountTaxTypeEntry[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [newAccountBroker, setNewAccountBroker] = useState<BrokerId>(CSV_ONLY_BROKER_IDS[0]);
   const [newAccountId, setNewAccountId] = useState('');
@@ -100,8 +179,10 @@ export default function Settings() {
 
   async function refreshAccounts() {
     setAccountsLoading(true);
-    const [labels, allDividends, perBroker] = await Promise.all([
+    const credStatus = await api.getCredentialStatus().catch(() => ({}) as CredentialStatus);
+    const [labels, taxTypeEntries, allDividends, perBroker, perApiBroker] = await Promise.all([
       api.listAccountLabels(),
+      api.listAccountTaxTypes(),
       api.listDividends(),
       Promise.all(
         CSV_ONLY_BROKER_IDS.map((b) =>
@@ -113,10 +194,18 @@ export default function Settings() {
           )
         )
       ),
+      Promise.all(
+        API_BROKER_IDS.filter((b) => credStatus[b]).map((b) =>
+          api
+            .listAccounts(b)
+            .then((accounts) => ({ broker: b, accountIds: new Set(accounts.map((a) => a.id)) }))
+            .catch(() => ({ broker: b, accountIds: new Set<string>() }))
+        )
+      ),
     ]);
 
     const known = new Map<string, { broker: BrokerId; accountId: string }>();
-    for (const { broker: b, accountIds } of perBroker) {
+    for (const { broker: b, accountIds } of [...perBroker, ...perApiBroker]) {
       for (const accountId of accountIds) known.set(accountLabelKey(b, accountId), { broker: b, accountId });
     }
     for (const d of allDividends) {
@@ -127,13 +216,15 @@ export default function Settings() {
     for (const l of labels) {
       known.set(accountLabelKey(l.broker, l.accountId), { broker: l.broker, accountId: l.accountId });
     }
+    for (const t of taxTypeEntries) {
+      known.set(accountLabelKey(t.broker, t.accountId), { broker: t.broker, accountId: t.accountId });
+    }
 
     const list = Array.from(known.values()).sort(
-      (a, b) =>
-        CSV_ONLY_BROKER_IDS.indexOf(a.broker) - CSV_ONLY_BROKER_IDS.indexOf(b.broker) ||
-        a.accountId.localeCompare(b.accountId)
+      (a, b) => BROKER_ORDER.indexOf(a.broker) - BROKER_ORDER.indexOf(b.broker) || a.accountId.localeCompare(b.accountId)
     );
     setKnownAccounts(list);
+    setTaxTypes(taxTypeEntries);
 
     const drafts: Record<string, string> = {};
     for (const a of list) {
@@ -142,6 +233,31 @@ export default function Settings() {
     }
     setLabelDrafts(drafts);
     setAccountsLoading(false);
+  }
+
+  const taxTypeByAccount = useMemo(() => {
+    const m = new Map<string, AccountTaxType>();
+    for (const t of taxTypes) m.set(accountLabelKey(t.broker, t.accountId), t.taxType);
+    return m;
+  }, [taxTypes]);
+
+  function taxTypeFor(b: BrokerId, accountId: string): AccountTaxType {
+    return taxTypeByAccount.get(accountLabelKey(b, accountId)) ?? 'GENERAL';
+  }
+
+  async function onChangeTaxType(b: BrokerId, accountId: string, next: AccountTaxType) {
+    setError(null);
+    setMessage(null);
+    try {
+      if (next === 'GENERAL') {
+        await api.deleteAccountTaxType(b, accountId);
+      } else {
+        await api.upsertAccountTaxType(b, accountId, next);
+      }
+      setTaxTypes(await api.listAccountTaxTypes());
+    } catch (e) {
+      setError((e as Error).message);
+    }
   }
 
   useEffect(() => {
@@ -433,11 +549,14 @@ export default function Settings() {
       </div>
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>계좌 별칭</h3>
+        <h3 style={{ marginTop: 0 }}>계좌 별칭 · 세금 유형</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           CSV 전용 브로커(KB증권/삼성증권/미래에셋증권)는 한 증권사 안에 계좌가 여러 개일 수 있습니다
           (예: 종합위탁계좌, 연금저축, IRP). 여기서 계좌번호에 별칭을 붙이면 보유종목/매매내역/배당금
-          화면에서 계좌를 구분해 보여줍니다.
+          화면에서 계좌를 구분해 보여줍니다. <strong>세금 유형</strong>에 ISA/연금저축/IRP를
+          지정하면(토스/KIS 계좌 포함) 실현손익 화면의 양도소득세 계산에서 그 계좌의 매도
+          내역이 빠지고 별도로 분리해 보여줍니다 — 이 계좌들은 일반 해외주식 양도소득세
+          (22%)와 완전히 다른 과세 체계가 적용되기 때문입니다.
         </p>
         {accountsLoading ? (
           <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>
@@ -451,6 +570,7 @@ export default function Settings() {
                 <th>증권사</th>
                 <th>계좌번호</th>
                 <th>별칭</th>
+                <th>세금 유형</th>
                 <th></th>
               </tr>
             </thead>
@@ -470,6 +590,18 @@ export default function Settings() {
                           setLabelDrafts((prev) => ({ ...prev, [key]: e.target.value }))
                         }
                       />
+                    </td>
+                    <td>
+                      <select
+                        value={taxTypeFor(a.broker, a.accountId)}
+                        onChange={(e) => onChangeTaxType(a.broker, a.accountId, e.target.value as AccountTaxType)}
+                      >
+                        {TAX_TYPE_OPTIONS.map((t) => (
+                          <option key={t} value={t}>
+                            {TAX_TYPE_LABELS[t]}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td>
                       <button className="ghost" onClick={() => onSaveLabel(a.broker, a.accountId)}>
@@ -521,6 +653,46 @@ export default function Settings() {
             등록
           </button>
         </form>
+      </div>
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>데이터 백업/복원</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          자격증명, 보유종목/매매내역/배당 기록 등 로컬에 저장된 데이터 전체를 zip
+          파일로 내려받거나, 백업 파일로 되돌릴 수 있습니다. 다른 기기로 복원하면
+          저장된 API 키는 암호화 방식(OS 키체인) 특성상 다시 입력해야 할 수 있습니다.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          <button className="ghost" onClick={onDownloadBackup} disabled={backingUp}>
+            {backingUp ? '백업 생성 중...' : '백업 다운로드'}
+          </button>
+          <button className="ghost" onClick={onRestoreFileClick} disabled={restoring}>
+            복원할 백업 파일 선택
+          </button>
+          <input
+            ref={restoreFileInputRef}
+            type="file"
+            accept=".zip"
+            style={{ display: 'none' }}
+            onChange={onRestoreFileChosen}
+          />
+        </div>
+        {restoreFile && (
+          <div style={{ padding: 12, border: '1px solid var(--critical)', borderRadius: 8 }}>
+            <p className="text-critical" style={{ marginTop: 0, fontWeight: 600 }}>
+              "{restoreFile.name}" 파일로 복원하면 현재 저장된 모든 데이터가 이 백업
+              파일 내용으로 완전히 대체됩니다. 계속하려면 아래 버튼을 눌러주세요.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="primary" onClick={onConfirmRestore} disabled={restoring}>
+                {restoring ? '복원 중...' : '정말 복원하기'}
+              </button>
+              <button className="ghost" onClick={() => setRestoreFile(null)} disabled={restoring}>
+                취소
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

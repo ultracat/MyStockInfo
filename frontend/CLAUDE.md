@@ -120,6 +120,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   진행 중엔 두 카드 설명문 아래에 안내 문구가 붙는다(`loadingClosePrices`
   state). 새로고침을 연타해도 오래된 응답이 최신 상태를 덮어쓰지 않도록
   `monthlyCloseRequestId`(useRef 카운터)로 마지막 호출만 반영한다.
+- `src/components/NetWorthChart.tsx` — "순자산 추이(기록 시작 이후)" 카드(위 두
+  카드 바로 아래) 전용. `MonthlyInvestmentChart`와 그리는 방식(2-series line,
+  `--series-1`/`--series-2`)은 똑같지만 입력이 다르다 — 매매내역 재구성 근사치가
+  아니라 `backend/CLAUDE.md`의 "일별 자산 스냅샷" 절에서 하루 한 번 실제로 기록해둔
+  값을 그대로 그린다. `loadAll()`의 나머지 로직(합계 계산)이 끝난 직후 그 합계를
+  `api.capturePortfolioSnapshot(...)`으로 서버에 기록한 다음(실패해도 무시),
+  `api.listPortfolioSnapshots()`로 전체 이력을 다시 받아 `netWorthSnapshots`
+  state에 채운다 — 기록 자체가 실패해도 목록 조회는 별도로 항상 시도해서, 이미
+  쌓여 있는 과거 기록은 그대로 보여준다.
 - `src/accountLabels.ts` — `(broker, accountId) → label`(백엔드 `account-labels`) 조회용
   공용 유틸. `accountLabelKey(broker, accountId)`(맵 키 조합 — accountId만으로는 브로커
   간에 우연히 겹칠 수 있어서 broker도 같이 묶는다), `formatAccountOption(account, label?)`
@@ -177,6 +186,19 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   시스템 브라우저를 열게 만들고(백엔드가 즉시 응답, 실제 로그인은 그 브라우저에서),
   연결되면 이메일과 스프레드시트 링크(`target="_blank"`, electron/CLAUDE.md의
   `setWindowOpenHandler`로 시스템 브라우저로 열림)를 보여준다.
+  "데이터 백업/복원" 카드(맨 아래) — 백업 다운로드는 `api.downloadBackup()`이
+  받은 `Blob`을 `csv.ts`의 `downloadBlob`(CSV 전용이던 다운로드 트리거를
+  범용으로 뺌)으로 저장한다. **복원은 파일을 고른다고 바로 실행되지 않는다** —
+  `restoreFile` state에 담아두고 "현재 데이터가 전부 대체된다"는 경고 문구 +
+  "정말 복원하기" 버튼을 보여주는 2단계 확인을 거친다(네이티브 `confirm()` 없이
+  인라인 state로 확인 단계를 두는 이 앱의 기존 관례 — Dividends.tsx의 인라인
+  수정 저장/취소와 같은 패턴). 업로드는 `File.arrayBuffer()` → 로컬
+  `arrayBufferToBase64`(32KB씩 청크 처리 — `String.fromCharCode(...bytes)`를
+  통째로 spread하면 파일이 커질 때 "Maximum call stack size exceeded"가 날 수
+  있어서) → `api.restoreBackup(base64)`. 복원 성공 후 화면을 자동으로 새로고침하지
+  않는다 — 이 프로젝트에 IPC가 없어 렌더러가 Electron 프로세스를 재시작시킬 방법이
+  없고(`backend/CLAUDE.md`의 "백업/복원" 절 참고), 어차피 백엔드 캐시 전체가
+  무효화돼야 하므로 "앱을 재시작해주세요" 안내 문구로 끝낸다.
 
 ## 공용 패턴 (여러 페이지가 공유)
 
@@ -538,6 +560,39 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   좌우로 튀어나감)까지는 못 막아서, `MonthlyReturnChart.tsx`처럼 값 자체가
   길어질 수 있는 차트는 컴포넌트 쪽에서 좌/우/상/하 정렬을 직접 뒤집는 로직이
   따로 필요했다(위 참고).
+- `src/pages/RealizedGains.tsx` — 실현손익(해외주식 양도소득세 참고용). **새
+  백엔드 저장소/라우트가 없다** — `api.listTradesStore()`(필터 없이 전체
+  매매내역)와 `api.getMonthlyAvgUsdKrwRates()`(Dividends.tsx와 동일 패턴)만으로
+  전부 클라이언트에서 계산한다. 심볼별로 매매내역을 시간순으로 훑는 이동평균법
+  구현이 핵심(`useMemo` 안의 `bySymbol` 루프) — 과거 Overview.tsx에 있다가
+  "수량만 재구성"하는 지금 방식으로 바뀌면서 지워진 "BUY는 원가에 더하고 SELL은
+  그 시점 평균단가만큼 뺀다" 로직을 되살린 것이고, 이번엔 원가(KRW 환산 누적)도
+  같이 추적해 매도마다 실현손익 레코드를 만든다. **환율은 거래 당일이 아니라
+  그 달 평균**을 쓴다 — 배당금 환산에 이미 월평균을 공식 채택해둔 기존 결정과
+  일관성을 맞춘 것(`backend/CLAUDE.md`의 "배당금 월평균 환율" 절 참고), 이
+  화면도 "참고용 추정치"이지 공식 세무 자료가 아니라고 캡션에 명시한다. **종목의
+  달러 거래 중 하나라도 환율을 못 구하면(월평균도, `effectiveFxRate` 폴백도
+  없음) 그 종목 전체를 계산에서 제외한다**(`excludedSymbols`) — 일부 거래만
+  반영하면 원가 추적 자체가 깨져서 숫자가 틀어지므로, 부분 반영보다 통째로
+  빼고 안내 문구로 알리는 쪽을 택했다. 매수 기록 없이 매도만 있는 경우(로컬
+  매매내역이 다 안 모여있을 수 있다는, 이 앱 여러 화면의 기존 한계와 동일)는
+  그 시점 보유수량만큼만 반영하고 나머지는 조용히 버린다. 추정 세액(`기본공제
+  250만원 → 22%`)은 매년 바뀔 수 있는 세법 수치라 "참고용"이라고 항상 같이
+  표시한다 — 개인 세무 자문으로 오인되지 않도록, 계산 근거와 한계를 화면에
+  그대로 드러내는 선에서 그친다. **ISA/연금저축/IRP 계좌는 이 22% 계산에서
+  제외한다** — 실사용자가 한국투자증권 ISA 계좌(12345678-01)와 KB증권
+  연금저축/IRP 계좌 둘을 갖고 있어서, 섞어서 계산하면 틀린 숫자가 나온다는
+  피드백으로 추가했다(`backend/CLAUDE.md`의 "계좌별 세금 유형" 절 참고). 화면
+  맨 위 "계좌별 세금 유형" 표(매매내역에 실제로 등장하는 계좌만 나열)에서
+  `<select>`로 즉시 저장/반영되고(별도 저장 버튼 없음), `GENERAL`이 아닌
+  계좌의 매도는 `taxAdvantagedSales`로 갈려 "세제혜택 계좌 매도 내역" 카드에
+  따로 보여준다 — 위쪽 실현손익 합계/추정 세액 스탯 타일은 `generalSales`만
+  합산한다. **표의 증권사/계좌 컬럼은 `isAllMode`(위쪽 증권사 필터가 "전체"일
+  때)에만 보여준다** — Trades.tsx의 같은 패턴 재사용. 특정 증권사를 골랐으면
+  모든 행이 같은 값이라 그 두 컬럼이 불필요한데, 계좌정보(라벨이 붙으면 특히
+  길어짐) + 종목명 때문에 수량/금액/손익 같은 핵심 숫자를 보려고 매번 가로
+  스크롤해야 한다는 피드백으로 뺐다. "전체"일 때 보이는 계좌 셀도
+  `.cell-name-truncate`로 감싸 종목명과 똑같이 반응형으로 줄어든다.
 - `src/pages/About.tsx` — 사이드바 "설정" 바로 아래 "정보" 화면. `GET /api/about`
   (`api.getAppInfo()`) 하나만 마운트 시 호출해 SW 이름/버전 + Electron/Chromium/
   Node 런타임 버전 + 사용 중인 오픈소스 패키지(이름/버전/라이선스) 표를 보여준다.
@@ -545,6 +600,24 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `backend/src/generated/appInfo.ts`를 그대로 내려받은 것**이다 — 버전을 올리려면
   루트 `version.json` 하나만 고치면 되고(`backend/CLAUDE.md`의 "앱 정보(About)
   화면" 절 참고), 이 페이지 자체는 고칠 게 없다.
+- `src/pages/Watchlist.tsx` — 관심종목(보유하지 않은 종목의 현재가만 추적).
+  다른 화면들의 "종목코드 입력 → 디바운스 자동조회" 패턴과 달리, 입력칸은
+  그냥 값만 들고 있다가 "추가" 버튼을 눌러야 `api.addWatchlist(symbol)`을
+  호출한다 — 백엔드가 어차피 이름을 자동조회해서 저장하므로(`backend/CLAUDE.md`의
+  "관심종목" 절 참고) 프론트에서 미리보기용으로 한 번 더 조회할 필요가 없다고
+  판단해 뺐다. 실패하면(종목코드가 틀렸거나 자동조회 실패) 서버 에러 메시지를
+  폼 아래 그대로 보여준다. 표는 다른 화면들과 동일하게 `.table-scroll`로 감싸고
+  종목명 셀도 `.cell-name-truncate`를 그대로 재사용한다. **행을 누르면 그 종목의
+  상세(현재가/시장/통화 + 월별 종가 차트)가 아래 카드에 뜬다** — 처음엔 표에
+  "등록일" 컬럼이 있었는데 "별로 중요하지 않다"는 피드백을 받고 빼면서, 그
+  대신 클릭하면 상세를 보여주는 쪽으로 바꿨다(`selectedSymbol` state, 삭제
+  버튼은 `stopPropagation`으로 행 클릭과 분리). 차트는
+  `components/PriceChart.tsx`(단일 시리즈 line chart, `MonthlyInvestmentChart`류와
+  같은 그리기 방식이지만 비교 대상이 없어 더 단순함) — 선택된 종목이 바뀔 때마다
+  `api.getMonthlyClosePrices([symbol], 12)`(Overview.tsx가 이미 쓰는 같은
+  엔드포인트, `backend/CLAUDE.md`의 "월별 종가 조회" 절 참고)를 새로 호출한다.
+  토스 미연동이거나 그 종목을 못 찾으면 빈 배열이 와서 차트 대신 안내 문구를
+  보여준다.
 
 ## 개발
 

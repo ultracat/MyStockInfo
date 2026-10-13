@@ -162,18 +162,31 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   안 보여준다(백엔드가 애초에 응답에서 뺌, `backend/CLAUDE.md`의 `credentialFields.ts`
   참고). 자격증명 저장/해제(`onSaveCredential`/`onClearCredential`)가 성공하면
   `refresh()`를 다시 불러서 이 컬럼도 같이 갱신된다.
-  "계좌 별칭"
-  카드는 CSV 전용 브로커의 `(broker, accountId) → label` 매핑을 관리하는 **유일한
-  화면**이다(Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 함 — 편집 UI를
-  세 군데에 중복해서 두지 않으려는 결정). "알려진 계좌" 목록은 이미 라벨이 붙은
-  accountId와 `listHoldingsStore`/`listTradesStore`/`listDividends`에 실제로 나온
-  accountId 전체의 합집합이라, 데이터가 없어도 "새 계좌 등록" 폼으로 라벨만 미리
-  등록해둘 수 있고(사용자가 실제로 이렇게 씀 — 계좌부터 이름 붙이고 나중에 CSV로
-  채움), 반대로 라벨이 없어도 실제 데이터가 있으면 목록에 뜬다. **KB증권 실시간
-  동기화는 이 화면에 없다** — "API 키 등록" 폼에서 appKey/appSecret/계좌번호를
-  저장하기만 하면, 실제 동기화는 Dashboard.tsx/Trades.tsx에서 그 계좌를 선택할 때
-  자동으로 일어난다(아래 `kbSync.ts` 절 참고, 예전엔 여기 별도 카드에 수동
-  버튼이 있었지만 "화면 들어가면 알아서 최신화"가 더 낫다는 피드백으로 없앴다).
+  "계좌 별칭 · 세금 유형"
+  카드는 `(broker, accountId) → label`(별칭)과 `(broker, accountId) → taxType`
+  (ISA/연금저축/IRP/일반) 둘 다 관리하는 **유일한 화면**이다 — 편집 UI를
+  여러 화면에 중복해서 두지 않으려는 결정으로, Dashboard.tsx/Trades.tsx/
+  Dividends.tsx는 별칭을, `RealizedGains.tsx`는 세금 유형을 표시/계산할 때
+  읽기만 한다(`api.listAccountTaxTypes()`, `backend/CLAUDE.md`의 "계좌별 세금
+  유형" 절 참고 — 처음엔 세금 유형 편집 UI가 RealizedGains.tsx 안에 따로
+  있었지만, "설정의 기존 별칭 화면에서 같이 설정되게 해달라"는 피드백으로 여기로
+  옮겼다). "알려진 계좌" 목록은 라벨/세금 유형이 이미 붙은 계좌 +
+  holdings-store/trades-store/배당 기록에 실제로 나온 accountId(CSV 전용
+  브로커) + **API 브로커(토스/KIS)의 실시간 계좌 목록**(자격증명이 설정된
+  경우만, `listAccounts`)까지 전부의 합집합이다(`refreshAccounts()`) — 별칭은
+  CSV 전용 브로커 전제라 API 브로커 계좌엔 거의 안 쓰지만, 세금 유형은
+  **API 브로커 계좌에도 똑같이 필요하다**(실사용자의 한국투자증권 ISA 계좌가
+  실제 사례라 이 목록에 API 브로커를 추가하게 됐다). 데이터가 없어도 "새 계좌
+  등록" 폼으로 라벨만 미리 등록해둘 수 있고(사용자가 실제로 이렇게 씀 — 계좌부터
+  이름 붙이고 나중에 CSV로 채움), 반대로 라벨이 없어도 실제 데이터가 있으면
+  목록에 뜬다. 세금 유형은 "세금 유형" 열의 `<select>`(`taxTypeFor`/
+  `onChangeTaxType`)로 고르는 즉시 저장된다(별도 저장 버튼 없음) —
+  `GENERAL`(일반계좌)로 되돌리면 엔트리 자체를 지운다(저장 안 돼 있으면
+  기본값이 `GENERAL`이라 결과가 같음). **KB증권 실시간 동기화는 이 화면에 없다**
+  — "API 키 등록" 폼에서 appKey/appSecret/계좌번호를 저장하기만 하면, 실제
+  동기화는 Dashboard.tsx/Trades.tsx에서 그 계좌를 선택할 때 자동으로 일어난다
+  (아래 `kbSync.ts` 절 참고, 예전엔 여기 별도 카드에 수동 버튼이 있었지만
+  "화면 들어가면 알아서 최신화"가 더 낫다는 피드백으로 없앴다).
   "USD/KRW 환율" 카드는 이제 수동 환율(`1 USD = ? KRW`) 입력만 있다 — 한국수출입은행
   Open API 인증키는 더 이상 여기서 입력받지 않는다(Google Client ID/Secret과 같은
   이유로 앱 빌드에 미리 박아 넣는 방식으로 바뀜, `backend/CLAUDE.md`의 "환율 조회"
@@ -582,12 +595,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   그대로 드러내는 선에서 그친다. **ISA/연금저축/IRP 계좌는 이 22% 계산에서
   제외한다** — 실사용자가 한국투자증권 ISA 계좌(12345678-01)와 KB증권
   연금저축/IRP 계좌 둘을 갖고 있어서, 섞어서 계산하면 틀린 숫자가 나온다는
-  피드백으로 추가했다(`backend/CLAUDE.md`의 "계좌별 세금 유형" 절 참고). 화면
-  맨 위 "계좌별 세금 유형" 표(매매내역에 실제로 등장하는 계좌만 나열)에서
-  `<select>`로 즉시 저장/반영되고(별도 저장 버튼 없음), `GENERAL`이 아닌
-  계좌의 매도는 `taxAdvantagedSales`로 갈려 "세제혜택 계좌 매도 내역" 카드에
-  따로 보여준다 — 위쪽 실현손익 합계/추정 세액 스탯 타일은 `generalSales`만
-  합산한다. **표의 증권사/계좌 컬럼은 `isAllMode`(위쪽 증권사 필터가 "전체"일
+  피드백으로 추가했다(`backend/CLAUDE.md`의 "계좌별 세금 유형" 절 참고).
+  **이 화면엔 세금 유형을 고치는 UI가 없다** — `api.listAccountTaxTypes()`로
+  읽기만 하고(`taxTypeByAccount`/`taxTypeFor`), 분류 자체는 `Settings.tsx`의
+  "계좌 별칭 · 세금 유형" 카드에서만 고친다(처음엔 이 화면 맨 위에 편집용 표가
+  있었는데, "설정의 기존 별칭 화면에서 같이 설정되게 해달라"는 피드백으로
+  옮겼다 — 위 `Settings.tsx` 절 참고). `GENERAL`이 아닌 계좌의 매도는
+  `taxAdvantagedSales`로 갈려 "세제혜택 계좌 매도 내역" 카드에 따로 보여준다
+  — 위쪽 실현손익 합계/추정 세액 스탯 타일은 `generalSales`만 합산한다.
+  **표의 증권사/계좌 컬럼은 `isAllMode`(위쪽 증권사 필터가 "전체"일
   때)에만 보여준다** — Trades.tsx의 같은 패턴 재사용. 특정 증권사를 골랐으면
   모든 행이 같은 값이라 그 두 컬럼이 불필요한데, 계좌정보(라벨이 붙으면 특히
   길어짐) + 종목명 때문에 수량/금액/손익 같은 핵심 숫자를 보려고 매번 가로

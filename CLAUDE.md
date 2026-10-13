@@ -15,6 +15,11 @@ Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS)**�
 `backend/src/brokers/knownBrokers.ts`에 `hasApiIntegration: false`로 한 줄만
 추가하면 된다.
 
+> **`web-app` 브랜치**에 이 Electron 전용 구조를 건드리지 않고 일반 Node
+> 서버로도 띄울 수 있게 만드는 작업(개인/가족용 1단계 웹 배포, PWA)이 진행
+> 중이다 — `main`에는 사용자가 머지를 명시적으로 요청하기 전까지 들어오지
+> 않는다. 상세는 그 브랜치의 `backend/CLAUDE.md` 참고.
+
 ## 워크스페이스 구조
 
 npm workspaces 모노레포이며, 각 폴더에 더 상세한 `CLAUDE.md`가 있다.

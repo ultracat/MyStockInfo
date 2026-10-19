@@ -372,6 +372,17 @@ ISA/연금저축/IRP 계좌를 표시해두는 작은 `JsonStore`(`account-tax-t
 `RealizedGains.tsx`는 이 분류가 `GENERAL`이 아닌 계좌의 매도 내역을 실현손익
 합계·추정 세액 계산에서 제외하고 별도 표로 보여준다.
 
+## 종목 외부 링크 (`src/db/stockLinks.ts`, `src/routes/stockLinks.ts`)
+
+종목별 외부 링크 중 **사용자가 직접 입력한 값만** 저장하는 `JsonStore`
+(`stock-links.json`, `{symbol, url, updatedAt}[]`, 심볼 하나로 식별 — 브로커/계좌
+무관). 국내 종목처럼 규칙으로 만들 수 있는 자동 링크는 저장하지 않고 프론트
+(`frontend/src/stockLinks.ts`)가 계산한다. `url`이 빈 문자열이면 "링크 없음"을
+명시적으로 고른 것. `GET /api/stock-links`, `PUT /api/stock-links/:symbol`(body
+`{url}`), `DELETE /api/stock-links/:symbol`(자동 링크로 되돌림). **`PUT`은 http/https
+주소만 받는다** — 이 값이 그대로 `<a href>`로 렌더링되고 Electron이
+`shell.openExternal`로 여는 대상이라 `javascript:`/`file:` 같은 스킴을 막는다.
+
 ## 관심종목 (`src/db/watchlist.ts`, `src/routes/watchlist.ts`)
 
 보유하지 않은 종목의 현재가만 추적하는 목록 — `watchlist.json`,
@@ -530,7 +541,13 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
   파일 전체(종목 수에 비례해 계속 커짐)를 다시 썼다.
 - **캐시 TTL을 다른 브로커 응답(`DEFAULT_TTL_MS`, 5초)보다 훨씬 길게(`CANDLE_CACHE_TTL_MS`,
   4시간) 잡는다** — 이미 지나간 달의 종가는 다시 안 바뀌고, 오늘이 속한 달의
-  봉만 장중에 계속 움직인다. 이 기능을 처음 붙였을 때 대시보드 진입 시
+  봉만 장중에 계속 움직인다.
+- **`months=all`(최대 600개월)**: 관심종목 상세의 "전체 기간"/연도별 보기용 — 페이지
+  상한이 요청 기간에 비례해 늘어나(`ceil(months/9)+2`, 최소 5·최대 80) 상장 초기까지
+  내려간다. 토스 일봉은 미국 종목이 1990년부터, 국내는 그 이전(삼성전자 1976-08~)까지
+  있다. 첫 조회 실측 0.8~6.7초(NVDY 42개월 ~ AAPL 442개월), 끝까지 받으면
+  `coveredFrom='0000-00'`으로 디스크 캐시돼 이후엔 최신 1페이지만 받는다. 캐시 경로는
+  `months`와 무관하게 캐시된 달 전체를 돌려주므로 호출부가 필요한 달만 고른다. 이 기능을 처음 붙였을 때 대시보드 진입 시
   "몇 초간 빈 화면"이 되는 문제가 있었는데(41개 종목 기준 콜드 캐시 실측 약
   4.2초), 짧은 TTL로는 새로고침을 누를 때마다 이 비용을 매번 다시 치렀다 —
   긴 TTL로 같은 세션 안의 재조회는 캐시로 즉시 끝난다. 첫 진입(콜드 캐시)의

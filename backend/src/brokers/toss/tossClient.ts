@@ -759,8 +759,13 @@ export async function fetchTossMonthlyClosePrices(
     let reachedStart = false;
     // 하루 평균 거래일 ~21일 기준 200봉 ≈ 9~10개월치라, 대부분 1~2페이지면
     // 충분하다. 상장 시작이 얼마 안 된 종목처럼 nextBefore가 일찍 null이 되는
-    // 경우를 대비해 페이지 수 상한만 넉넉히(5) 둔다.
-    for (let page = 0; page < 5; page++) {
+    // 경우를 대비해 페이지 수 상한은 요청 기간에 맞춰 넉넉히 둔다(최소 5) —
+    // 관심종목의 "전체 기간"(months=600)은 상장 초기까지 내려가야 해서 수십
+    // 페이지가 필요할 수 있다(AAPL 1980년~ ≈ 60페이지, MARKET_DATA_CHART 20tps라
+    // 몇 초). 한 번 끝까지 받으면 coveredFrom='0000-00'으로 캐시돼 이후엔 위
+    // 캐시 경로(최신 1페이지)만 탄다.
+    const maxPages = Math.min(80, Math.max(5, Math.ceil(months / 9) + 2));
+    for (let page = 0; page < maxPages; page++) {
       const { candles, nextBefore } = await fetchTossDailyCandlesPage(symbol, before, opts);
       if (candles.length === 0) {
         reachedStart = page > 0;

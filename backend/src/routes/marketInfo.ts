@@ -28,9 +28,15 @@ marketInfoRouter.get('/exchange-rate/usd-krw', async (req, res) => {
 // 받는다. 심볼마다 독립적으로 실패할 수 있어(상장폐지, 오타, 토스 미연동 등)
 // 개별 실패가 다른 심볼까지 막지 않도록 Promise.all이 아니라 항상 성공하는
 // 개별 호출(fetchTossMonthlyClosePrices 자체가 실패 시 빈 배열)을 모은다.
+const MAX_CLOSE_MONTHS = 600;
+
 marketInfoRouter.get('/monthly-close-prices', async (req, res) => {
   const symbolsParam = typeof req.query.symbols === 'string' ? req.query.symbols : '';
-  const months = Math.max(1, Math.min(60, Number(req.query.months) || 12));
+  // months=all → 상장 초기까지(최대 50년, 관심종목 "전체 기간" 보기용).
+  const months =
+    req.query.months === 'all'
+      ? MAX_CLOSE_MONTHS
+      : Math.max(1, Math.min(MAX_CLOSE_MONTHS, Number(req.query.months) || 12));
   const symbols = [...new Set(symbolsParam.split(',').map((s) => s.trim()).filter(Boolean))];
 
   const entries = await Promise.all(

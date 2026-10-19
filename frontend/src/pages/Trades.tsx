@@ -7,6 +7,7 @@ import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS, BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
+import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
 import { getKbLinkStatus, type KbLinkStatus } from '../kbSync';
 
 // CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
@@ -139,6 +140,8 @@ export default function Trades() {
   const [accounts, setAccounts] = useState<BrokerAccount[]>([]);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
+  // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
+  const stockLinkFor = useStockLinkResolver();
   const [year, setYear] = useState(CURRENT_YEAR);
   const [viewMode, setViewMode] = useState<ViewMode>('year');
   const [month, setMonth] = useState(CURRENT_MONTH);
@@ -1465,13 +1468,11 @@ export default function Trades() {
                     <td>
                       {t.name ? (
                         <>
-                          <span className="cell-name-truncate" title={t.name}>
-                            {t.name}
-                          </span>{' '}
+                          <StockNameLink name={t.name} url={stockLinkFor(t.symbol, t.currency)} />{' '}
                           <span style={{ color: 'var(--text-muted)' }}>({t.symbol})</span>
                         </>
                       ) : (
-                        t.symbol
+                        <StockNameLink name={t.symbol} url={stockLinkFor(t.symbol, t.currency)} />
                       )}
                     </td>
                     <td>

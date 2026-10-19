@@ -14,6 +14,14 @@ export interface BrokerAccount {
 
 /** `(broker, accountId)` → 사람이 읽을 수 있는 별칭. Settings.tsx에서만 관리하고
  *  Dashboard.tsx/Trades.tsx/Dividends.tsx는 표시할 때 읽기만 한다. */
+/** 종목별 외부 링크(사용자 입력분만 — 자동 링크는 `stockLinks.ts`가 계산). `url`이
+ *  빈 문자열이면 "링크 없음"을 명시적으로 고른 것. */
+export interface StockLinkEntry {
+  symbol: string;
+  url: string;
+  updatedAt: string;
+}
+
 export interface AccountLabel {
   broker: BrokerId;
   accountId: string;

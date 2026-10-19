@@ -14,6 +14,7 @@ import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
+import { useStockLinkResolver } from '../components/StockNameLink';
 import { getKbLinkStatus, type KbLinkStatus } from '../kbSync';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
@@ -293,6 +294,8 @@ export default function Dashboard() {
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
+  // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
+  const stockLinkFor = useStockLinkResolver();
 
   const configuredBrokers = brokers.filter((b) => b.configured);
 
@@ -842,8 +845,9 @@ export default function Dashboard() {
               : undefined
           )
         : undefined,
+      externalUrl: stockLinkFor(p.symbol, p.currency) ?? undefined,
     }));
-  }, [portfolio, effectiveFxRate, accountLabels, selectedBroker]);
+  }, [portfolio, effectiveFxRate, accountLabels, selectedBroker, stockLinkFor]);
 
   const hasUnconvertedUsd = portfolio?.positions.some((p) => p.currency === 'USD') && !effectiveFxRate;
 

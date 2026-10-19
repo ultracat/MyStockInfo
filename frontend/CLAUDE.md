@@ -68,11 +68,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/components/DonutDetailModal.tsx` — Overview.tsx의 상세 팝업(보유종목 상세,
   연간 배당금 상세, 월별 배당 내역) 공용 목록 모달. 선택 prop `views`(`{id, label,
   rows, countLabel}[]`)를 넘기면 제목 아래에 보기 전환 버튼이 생긴다 — 월별 배당
-  내역만 "종목별"(기본, 예전 화면 그대로)/"계좌별" 두 보기를 넘기고, 나머지 두
-  팝업은 `rows` 하나만 넘겨 예전과 똑같다. 행의 선택 필드 `label`(심볼 없는 행의
+  내역·연간 배당금 상세·전체 계좌 보유종목 상세 세 팝업 모두 "종목별"(기본, 예전
+  화면 그대로)/"계좌별" 두 보기를 넘긴다(`rows` 하나만 넘기면 전환 버튼 없이 예전
+  모양). 보유종목의 계좌별 보기(`holdingAccountRows`)는 계좌마다 평가금액·매입금액·
+  손익률과 그 아래 종목별 수량·평가금액을 보여준다 — 이를 위해 `FlatHolding`에
+  `broker`/`accountId`를 남긴다(API 브로커 포지션엔 accountId가 없어서 계좌별
+  포트폴리오를 펼칠 때 붙인다). IRP처럼 memo로 나뉜 같은 종목은 계좌 안에서 합친다. 행의 선택 필드 `label`(심볼 없는 행의
   제목)·`details`(행 아래에 펼치는 하위 내역)는 계좌별 보기용이다 — 계좌 한 줄
-  아래에 그 계좌의 종목별 배당금을 펼친다. 계좌별 묶음은 `selectedMonthAccountRows`
-  (Overview.tsx)가 만들고, 배당 기록의 `accountId`가 토스처럼 표시용 계좌번호
+  아래에 그 계좌의 종목별 배당금을 펼친다. 계좌별 묶음은 Overview.tsx의
+  `buildAccountDividendRows(날짜 접두어)`(월별 `2026-10` / 연간 `2026` 공용, 달러는
+  기록마다 지급월 평균 환율)가 만들고, 배당 기록의 `accountId`가 토스처럼 표시용 계좌번호
   (별칭의 `accountNumber`)로 적혀 있으면 내부 accountId로 되돌려 같은 계좌로 묶는다.
 - `src/components/MonthlyReturnChart.tsx` — 월별 diverging 막대(0% 기준선 위/아래로
   자람, Overview.tsx의 "매월 보유종목 투자금 대비 수익률" 카드가 씀). 카테고리 색이 아니라
@@ -641,6 +646,23 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `backend/src/generated/appInfo.ts`를 그대로 내려받은 것**이다 — 버전을 올리려면
   루트 `version.json` 하나만 고치면 되고(`backend/CLAUDE.md`의 "앱 정보(About)
   화면" 절 참고), 이 페이지 자체는 고칠 게 없다.
+- `src/pages/StockLinks.tsx` — "종목 링크"(사이드바 관심종목 아래). 보유종목/배당금/
+  매매내역 로컬 저장소와 관심종목에 나온 종목을 매번 모아(별도 "종목 추가" 없음 — 새 종목은
+  자동으로 나타남) 종목별 외부 링크를 관리한다. 링크 해석은 `src/stockLinks.ts`의
+  `resolveStockLink` 하나로 통일: **사용자 입력 > 자동 링크**, 사용자가 빈 값을
+  저장하면 "링크 없음"(자동 링크도 끔), "자동으로"는 입력값을 지워 자동으로 되돌린다.
+  자동 링크는 토스증권 웹 종목 페이지(`/stocks/{코드}/order`) — 국내는 `A`+6자리
+  코드 규칙(KRW이고 6자리일 때), 미국은 토스 내부 코드가 규칙으로 안 나와서(대개
+  `US`+상장일+순번이지만 NVDY는 `AMX0230510001`, 공식 Open API에도 없음) 직접 확인한
+  종목만 `KNOWN_TOSS_US_CODES`에 둔다. 자동 링크와 같은 값을 저장하면 저장하지 않고
+  자동으로 둔다(규칙이 고쳐지면 따라가게). **링크가 실제로 걸리는 곳은 보유 종목/
+  배당금/매매내역/관심종목 네 표의 종목명**이고, 전부 `components/StockNameLink.tsx`의
+  `StockNameLink`(링크가 없으면 텍스트) + `useStockLinkResolver()`(마운트 시 사용자
+  입력 링크를 한 번 읽어 `(symbol, currency) → url`을 돌려줌)를 쓴다 — 새 화면에
+  종목명 링크를 붙일 땐 이 둘만 쓰면 된다. `<a target="_blank">`는 Electron에선
+  `setWindowOpenHandler`가 시스템 브라우저로 넘기고, 링크 클릭은 행 클릭으로 번지지
+  않게 막는다(관심종목 표는 행을 누르면 상세가 열려서). 상장폐지 종목(예: 028080 휴맥스홀딩스)은 국내 규칙상 링크가
+  만들어지지만 토스에 페이지가 없으니 "링크 없음"으로 저장하면 된다.
 - `src/pages/Watchlist.tsx` — 관심종목(보유하지 않은 종목의 현재가만 추적).
   다른 화면들의 "종목코드 입력 → 디바운스 자동조회" 패턴과 달리, 입력칸은
   그냥 값만 들고 있다가 "추가" 버튼을 눌러야 `api.addWatchlist(symbol)`을
@@ -655,8 +677,12 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   버튼은 `stopPropagation`으로 행 클릭과 분리). 차트는
   `components/PriceChart.tsx`(단일 시리즈 line chart, `MonthlyInvestmentChart`류와
   같은 그리기 방식이지만 비교 대상이 없어 더 단순함) — 선택된 종목이 바뀔 때마다
-  `api.getMonthlyClosePrices([symbol], 12)`(Overview.tsx가 이미 쓰는 같은
-  엔드포인트, `backend/CLAUDE.md`의 "월별 종가 조회" 절 참고)를 새로 호출한다.
+  `api.getMonthlyClosePrices([symbol], 'all')`(Overview.tsx가 이미 쓰는 같은
+  엔드포인트, `backend/CLAUDE.md`의 "월별 종가 조회" 절 참고)로 **상장 이후 전체**를
+  한 번 받아두고, 차트 위 기간 선택(최근 12개월(기본) / 전체 기간 / 받은 데이터에
+  있는 연도별)은 화면에서 거르기만 한다(기간을 바꿔도 재요청 없음). `PriceChart`는
+  36개월을 넘으면 한 달 폭을 줄이고 점·매달 라벨 대신 선 + 1월에만 연도 라벨로
+  그린다(수백 개월이 수만 px가 되지 않게).
   토스 미연동이거나 그 종목을 못 찾으면 빈 배열이 와서 차트 대신 안내 문구를
   보여준다.
 

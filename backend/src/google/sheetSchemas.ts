@@ -34,6 +34,9 @@ export const TRADES_SHEET_HEADER = [
   'executedAt',
   'commission',
   'tax',
+  // 맨 뒤에 둔다 — 가져오기는 헤더 이름으로 컬럼을 찾으므로 이 컬럼이 없는
+  // 예전 시트도 그대로 읽힌다(db/tradesStore.ts의 "중복 방지" 참고).
+  'id',
 ];
 
 export const DIVIDENDS_SHEET_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo'];

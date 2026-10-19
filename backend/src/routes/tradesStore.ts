@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   deleteTrade,
   listTrades,
+  removeImportedDuplicates,
   replaceAllTrades,
   updateTradeNames,
   upsertFromImport,
@@ -38,6 +39,12 @@ tradesStoreRouter.post('/refresh-names', async (_req, res) => {
   const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
   const updated = updateTradeNames(namesBySymbol);
   res.json({ updated, resolved: Object.keys(namesBySymbol).length, failed: Array.from(unresolved) });
+});
+
+// 예전 CSV/Sheets 가져오기가 만든 중복 매매내역을 한 번에 정리한다 —
+// db/tradesStore.ts의 removeImportedDuplicates 참고.
+tradesStoreRouter.post('/dedupe', (_req, res) => {
+  res.json(removeImportedDuplicates());
 });
 
 function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { error: string } {
@@ -95,8 +102,8 @@ function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { err
   };
 }
 
-// CSV 가져오기 — id는 브로커 고유 체결번호라 CSV 입력행엔 없고, 없으면 서버가 새로
-// 발급한다. name(종목명)은 선택 컬럼 — API 연동이 있으면(토스/KIS/KB 중 하나라도)
+// CSV 가져오기 — id는 선택 컬럼이다(내보내기엔 들어 있음). 없으면 내용이 같은
+// 기존 행의 id를 이어받고, 그것도 없으면 서버가 새로 발급한다(db/tradesStore.ts). name(종목명)은 선택 컬럼 — API 연동이 있으면(토스/KIS/KB 중 하나라도)
 // stockNameResolver.ts로 자동조회해서 채우고, CSV에 값이 있으면 그 값을 그대로
 // 쓴다(override, 연동이 전혀 없는 경우의 유일한 채움 경로). 보유종목/배당금 CSV와
 // 달리 이름 조회 실패를 행 실패로 처리하지 않는다 — 매매내역은 화면이 이미

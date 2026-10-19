@@ -46,6 +46,9 @@ const TRADES_CSV_HEADER = [
   'executedAt',
   'commission',
   'tax',
+  // 선택 컬럼(맨 뒤) — 다시 가져올 때 같은 거래로 덮어쓰게 해서 중복을 막는다
+  // (backend/src/db/tradesStore.ts의 "중복 방지" 참고).
+  'id',
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -475,6 +478,7 @@ export default function Trades() {
         t.executedAt,
         t.commission === null ? '' : String(t.commission),
         t.tax === null ? '' : String(t.tax),
+        t.id,
       ]),
     ];
     downloadCsv(`trades-${new Date().toISOString().slice(0, 10)}.csv`, rows);
@@ -513,6 +517,7 @@ export default function Trades() {
       const iExecutedAt = colIndex('executedAt');
       const iCommission = colIndex('commission');
       const iTax = colIndex('tax');
+      const iId = colIndex('id');
 
       if (
         [iBroker, iAccountId, iSymbol, iSide, iQuantity, iPrice, iAmount, iCurrency, iExecutedAt].some(
@@ -543,6 +548,7 @@ export default function Trades() {
           executedAt: (r[iExecutedAt] ?? '').trim(),
           commission: iCommission !== -1 ? num(r[iCommission]) : null,
           tax: iTax !== -1 ? num(r[iTax]) : null,
+          id: iId !== -1 && (r[iId] ?? '').trim() ? r[iId].trim() : undefined,
         }));
 
       const result = await api.importTradesStore(records);
@@ -747,6 +753,13 @@ export default function Trades() {
       setEditError('종목코드, 수량(양수), 단가(0 이상), 체결일을 입력해주세요.');
       return;
     }
+    // 종목코드를 바꿨는데 종목명 칸은 그대로(수정 시작 때 채워진 옛 이름)면
+    // 옛 이름을 직접 입력값으로 보내지 않고 비워서 백엔드가 새 코드로 다시
+    // 조회하게 한다 — 안 그러면 옛 이름이 override로 저장되고, "종목명 일괄
+    // 갱신"은 이름이 빈 행만 채우므로 영영 안 고쳐진다(실사례: 코드 오기입 수정).
+    const symbolChanged = editDraft.symbol.trim().toUpperCase() !== t.symbol.toUpperCase();
+    const nameUntouched = editDraft.name.trim() === (t.name ?? '').trim();
+    const nameToSave = symbolChanged && nameUntouched ? '' : editDraft.name.trim();
     setEditSaving(true);
     setEditError(null);
     try {
@@ -756,7 +769,7 @@ export default function Trades() {
           accountId: t.accountId,
           id: t.id,
           symbol: editDraft.symbol.trim(),
-          name: editDraft.name.trim() ? editDraft.name.trim() : null,
+          name: nameToSave ? nameToSave : null,
           side: editDraft.side,
           quantity: quantityNum,
           price: priceNum,

@@ -382,6 +382,12 @@ export default function Dividends() {
           .sort((a, b) => (a.executedAt < b.executedAt ? -1 : 1));
         let qty = 0;
         for (const t of symTrades) qty += t.side === 'BUY' ? t.quantity : -Math.min(t.quantity, qty);
+        // 과거 시점 보유수량이 오늘 실제 보유수량보다 많을 수는 있지만(그 뒤에
+        // 팔았으면), 매도 기록이 다 모여 있지 않거나 매매내역이 중복 저장되면
+        // 재구성 수량이 터무니없이 커진다(실사례: 중복으로 NVDY 448주 → 1,631주,
+        // 투자금이 2배로 부풀려짐). 매도를 거의 안 하는 배당 포트폴리오에선 오늘
+        // 수량이 사실상 상한이라 그걸로 묶는다.
+        qty = Math.min(qty, cost.quantity);
         if (qty <= 0) continue;
         const amount = qty * cost.avgCost;
         if (cost.currency === 'USD') usd += amount;

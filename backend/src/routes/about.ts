@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { APP_NAME, APP_VERSION, OSS_PACKAGES } from '../generated/appInfo';
+import { APP_AUTHOR, APP_COPYRIGHT, APP_NAME, APP_VERSION, OSS_PACKAGES } from '../generated/appInfo';
 
 export const aboutRouter = Router();
 
-// 이름/버전/OSS 패키지 목록은 빌드 시점에 generated/appInfo.ts로 구워둔 값을
+// 이름/버전/작성자/저작권/OSS 패키지 목록은 빌드 시점에 generated/appInfo.ts로 구워둔 값을
 // 그대로 내려준다(scripts/generate-app-info.cjs 참고). Electron/Chromium/Node
 // 버전만 예외적으로 요청 시점에 `process.versions`에서 읽는다 — 이건 "빌드에
 // 어떤 패키지가 들어갔는지"가 아니라 "지금 이 실행 환경이 어떤 런타임인지"라
@@ -13,6 +13,8 @@ aboutRouter.get('/', (_req, res) => {
   res.json({
     name: APP_NAME,
     version: APP_VERSION,
+    author: APP_AUTHOR,
+    copyright: APP_COPYRIGHT,
     nodeVersion: process.versions.node,
     electronVersion: process.versions.electron ?? null,
     chromeVersion: process.versions.chrome ?? null,

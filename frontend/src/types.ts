@@ -216,6 +216,8 @@ export interface OssPackageInfo {
 export interface AppInfo {
   name: string;
   version: string;
+  author: string | null;
+  copyright: string | null;
   nodeVersion: string;
   electronVersion: string | null;
   chromeVersion: string | null;

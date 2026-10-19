@@ -27,6 +27,10 @@ export default function About() {
               <td>{info?.version ?? '-'}</td>
             </tr>
             <tr>
+              <td style={{ color: 'var(--text-muted)' }}>작성자</td>
+              <td>{info?.author ?? '-'}</td>
+            </tr>
+            <tr>
               <td style={{ color: 'var(--text-muted)' }}>Electron</td>
               <td>{info?.electronVersion ?? '-'}</td>
             </tr>
@@ -40,6 +44,9 @@ export default function About() {
             </tr>
           </tbody>
         </table>
+        {info?.copyright && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 0 }}>{info.copyright}</p>
+        )}
       </div>
 
       <div className="card">

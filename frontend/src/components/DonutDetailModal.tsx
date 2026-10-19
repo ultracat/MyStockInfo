@@ -1,9 +1,25 @@
+import { useState } from 'react';
+
 export interface DonutDetailRow {
   symbol: string;
   name: string;
   valueKrw: number;
   /** 값 옆에 덧붙일 부가 정보(배당 횟수, 보유수량 등) — 호출부마다 의미가 다르다. */
   meta?: string;
+  /** 지정하면 "이름 (심볼)" 대신 이 텍스트를 제목 줄에 쓴다 — 계좌처럼 심볼이
+   *  없는 행용(심볼 자리는 React key로만 쓰인다). */
+  label?: string;
+  /** 행 아래에 작게 펼쳐 보여줄 내역(계좌별 보기의 종목별 금액 등). */
+  details?: { label: string; valueKrw: number }[];
+}
+
+/** 같은 모달 안에서 전환할 수 있는 보기 하나(예: 종목별 / 계좌별). */
+export interface DonutDetailView {
+  id: string;
+  label: string;
+  rows: DonutDetailRow[];
+  /** 요약 줄의 "N개 종목" 부분 — 보기마다 세는 대상이 달라서. */
+  countLabel: (n: number) => string;
 }
 
 /**
@@ -11,20 +27,31 @@ export interface DonutDetailRow {
  * 보유종목/배당금 비중 카드가 공유). 표(`<table>`) 대신 종목명 아래에 나머지 값을
  * 줄바꿈해 쌓는 목록으로 그려서, 종목명이 길어도 창 폭에 상관없이 가로 스크롤 없이
  * 한 번에 다 보인다.
+ *
+ * `views`를 넘기면 제목 아래에 보기 전환 버튼이 생긴다(월별 배당 내역의 종목별 /
+ * 계좌별) — 첫 번째 보기가 기본이고, `rows`는 무시된다. 안 넘기면 예전과 똑같이
+ * `rows` 하나만 보여준다.
  */
 export default function DonutDetailModal({
   title,
   totalValueKrw,
   rows,
+  views,
   formatValue,
   onClose,
 }: {
   title: string;
   totalValueKrw: number;
-  rows: DonutDetailRow[];
+  rows?: DonutDetailRow[];
+  views?: DonutDetailView[];
   formatValue: (v: number) => string;
   onClose: () => void;
 }) {
+  const [viewId, setViewId] = useState(views?.[0]?.id ?? null);
+  const activeView = views?.find((v) => v.id === viewId) ?? views?.[0];
+  const shownRows = activeView ? activeView.rows : (rows ?? []);
+  const countText = activeView ? activeView.countLabel(shownRows.length) : `${shownRows.length}개 종목`;
+
   return (
     <div className="modal-overlay" onClick={onClose} role="presentation">
       <div
@@ -40,18 +67,31 @@ export default function DonutDetailModal({
             닫기
           </button>
         </div>
+        {views && views.length > 1 && (
+          <div role="group" aria-label="보기 전환" style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+            {views.map((v) => (
+              <button
+                key={v.id}
+                className={v.id === activeView?.id ? 'primary' : 'ghost'}
+                aria-pressed={v.id === activeView?.id}
+                style={{ padding: '6px 12px', fontSize: 13 }}
+                onClick={() => setViewId(v.id)}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        )}
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-          {rows.length}개 종목 · 총 {formatValue(totalValueKrw)}
+          {countText} · 총 {formatValue(totalValueKrw)}
         </p>
-        {rows.length === 0 ? (
+        {shownRows.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>표시할 데이터가 없습니다.</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {rows.map((r) => (
+            {shownRows.map((r) => (
               <div key={r.symbol} style={{ padding: '10px 0', borderBottom: '1px solid var(--gridline)' }}>
-                <div>
-                  {r.name} ({r.symbol})
-                </div>
+                <div>{r.label ?? `${r.name} (${r.symbol})`}</div>
                 <div
                   style={{
                     display: 'flex',
@@ -74,6 +114,22 @@ export default function DonutDetailModal({
                     {totalValueKrw > 0 ? `${((r.valueKrw / totalValueKrw) * 100).toFixed(1)}%` : '-'}
                   </span>
                 </div>
+                {r.details && r.details.length > 0 && (
+                  <ul
+                    style={{
+                      margin: '6px 0 0',
+                      paddingLeft: 16,
+                      fontSize: 12,
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    {r.details.map((d) => (
+                      <li key={d.label}>
+                        {d.label} · {formatValue(d.valueKrw)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             ))}
           </div>

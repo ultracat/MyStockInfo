@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
-import { API_BROKER_IDS } from '../brokers';
+import type { AccountLabel, DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
+import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
+import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import DonutChart, { type DonutSlice } from '../components/DonutChart';
 import DonutDetailModal from '../components/DonutDetailModal';
 import DividendsChart from '../components/DividendsChart';
@@ -64,6 +65,9 @@ export default function Overview() {
   const [totalMarketKrw, setTotalMarketKrw] = useState(0);
   const [unconvertedUsdHoldings, setUnconvertedUsdHoldings] = useState(false);
   const [dividends, setDividends] = useState<DividendRecord[]>([]);
+  // 월별 배당 내역 팝업의 "계좌별" 보기에서 계좌 이름을 보여주는 데만 쓴다(관리는
+  // Settings.tsx, 여기선 읽기만).
+  const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
   const [trades, setTrades] = useState<StoredTrade[]>([]);
   const [netWorthSnapshots, setNetWorthSnapshots] = useState<SnapshotRecord[]>([]);
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
@@ -360,6 +364,10 @@ export default function Overview() {
   // ---- 2-1) 월별 배당금 막대를 눌렀을 때 보여줄 그 달의 종목별 배당 상세 ----
   // 건별로 나열하지 않고 dividendDetailRows(연간 배당금 비중 상세)와 같은 방식으로
   // 종목별로 합쳐서, 배당금이 큰 순서로 정렬해 보여준다.
+  useEffect(() => {
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+  }, []);
+
   const [selectedDividendMonth, setSelectedDividendMonth] = useState<string | null>(null);
   const selectedMonthDetailRows = useMemo(() => {
     if (!selectedDividendMonth) return [];
@@ -380,6 +388,60 @@ export default function Overview() {
       .sort((a, b) => b.valueKrw - a.valueKrw);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dividends, selectedDividendMonth, effectiveFxRate, monthlyAvgFxRates]);
+
+  // ---- 2-2) 같은 팝업의 "계좌별" 보기 — 그 달 배당을 (증권사, 계좌)로 묶고, 계좌
+  // 안에서 종목별 금액을 펼쳐 보여준다. 배당 기록의 accountId는 자유 입력이라
+  // 토스처럼 표시용 계좌번호(별칭의 accountNumber)로 적혀 있을 수도 있어서, 같은
+  // 계좌가 두 줄로 갈리지 않도록 그 경우 내부 accountId로 되돌려 묶는다.
+  const selectedMonthAccountRows = useMemo(() => {
+    if (!selectedDividendMonth) return [];
+    const byAccount = new Map<
+      string,
+      {
+        broker: DividendRecord['broker'];
+        accountId: string | null;
+        valueKrw: number;
+        count: number;
+        bySymbol: Map<string, { name: string; valueKrw: number }>;
+      }
+    >();
+    for (const d of dividends) {
+      if (!d.paidDate.startsWith(selectedDividendMonth)) continue;
+      const rate = d.currency === 'USD' ? dividendFxRateFor(selectedDividendMonth) : null;
+      const v = d.currency === 'USD' ? (rate ? d.amount * rate : null) : d.amount;
+      if (v === null) continue;
+      const byNumber = d.accountId
+        ? accountLabels.find((l) => l.broker === d.broker && l.accountNumber === d.accountId)
+        : undefined;
+      const accountId = byNumber ? byNumber.accountId : d.accountId;
+      const key = `${d.broker}:${accountId ?? ''}`;
+      const entry = byAccount.get(key) ?? { broker: d.broker, accountId, valueKrw: 0, count: 0, bySymbol: new Map() };
+      entry.valueKrw += v;
+      entry.count += 1;
+      const sym = entry.bySymbol.get(d.symbol) ?? { name: d.name, valueKrw: 0 };
+      sym.valueKrw += v;
+      entry.bySymbol.set(d.symbol, sym);
+      byAccount.set(key, entry);
+    }
+    return Array.from(byAccount.entries())
+      .map(([key, e]) => ({
+        key,
+        label: `${BROKER_LABELS[e.broker]} · ${
+          e.accountId
+            ? formatAccountOption({ id: e.accountId }, findAccountLabel(accountLabels, e.broker, e.accountId))
+            : '계좌 미지정'
+        }`,
+        valueKrw: e.valueKrw,
+        count: e.count,
+        brokerOrder: BROKER_ORDER.indexOf(e.broker),
+        details: Array.from(e.bySymbol.entries())
+          .map(([symbol, x]) => ({ label: `${x.name} (${symbol})`, valueKrw: x.valueKrw }))
+          .sort((a, b) => b.valueKrw - a.valueKrw),
+      }))
+      .filter((e) => e.valueKrw > 0)
+      .sort((a, b) => b.valueKrw - a.valueKrw || a.brokerOrder - b.brokerOrder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dividends, selectedDividendMonth, accountLabels, effectiveFxRate, monthlyAvgFxRates]);
 
   // ---- 3) 배당금 비중(도넛) — 선택한 연도, 종목별 ----
   // 배당금은 toKrw(오늘/수동 환율)가 아니라 dividendFxRateFor(그 달 평균 환율,
@@ -695,12 +757,32 @@ export default function Overview() {
         <DonutDetailModal
           title={`${selectedDividendMonth} 배당 내역`}
           totalValueKrw={selectedMonthDetailRows.reduce((sum, r) => sum + r.valueKrw, 0)}
-          rows={selectedMonthDetailRows.map((r) => ({
-            symbol: r.symbol,
-            name: r.name,
-            valueKrw: r.valueKrw,
-            meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
-          }))}
+          views={[
+            {
+              id: 'symbol',
+              label: '종목별',
+              countLabel: (n) => `${n}개 종목`,
+              rows: selectedMonthDetailRows.map((r) => ({
+                symbol: r.symbol,
+                name: r.name,
+                valueKrw: r.valueKrw,
+                meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
+              })),
+            },
+            {
+              id: 'account',
+              label: '계좌별',
+              countLabel: (n) => `${n}개 계좌`,
+              rows: selectedMonthAccountRows.map((r) => ({
+                symbol: r.key,
+                name: r.label,
+                label: r.label,
+                valueKrw: r.valueKrw,
+                meta: `배당 ${r.count}건 · ${r.details.length}개 종목`,
+                details: r.details,
+              })),
+            },
+          ]}
           formatValue={formatKrwValue}
           onClose={() => setSelectedDividendMonth(null)}
         />

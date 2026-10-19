@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, StoredTrade } from '../types';
+import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
 import { krw } from '../format';
@@ -12,6 +12,9 @@ const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 // 추정치"라는 캡션과 함께만 쓴다(공식 세무 자료 대체 아님).
 const TAX_FREE_ALLOWANCE_KRW = 2_500_000;
 const TAX_RATE = 0.22;
+// 금융소득종합과세 기준 — 이자+배당소득이 연 이 금액을 넘으면 초과분이 다른
+// 종합소득과 합산돼 누진세율로 과세된다(그 이하는 원천징수 15.4%로 끝).
+const FINANCIAL_INCOME_THRESHOLD_KRW = 20_000_000;
 
 interface RealizedSale {
   date: string;
@@ -20,6 +23,9 @@ interface RealizedSale {
   symbol: string;
   name: string | null;
   quantity: number;
+  /** 거래 통화 — 해외주식 양도소득세(22%)는 해외 상장 종목에만 해당해서, 국내
+   *  상장(KRW) 매도와 가르는 기준으로 쓴다. */
+  currency: string;
   proceedsKrw: number;
   costKrw: number;
   gainKrw: number;
@@ -49,6 +55,18 @@ function formatKrwValue(v: number): string {
  * 완전히 틀린 숫자가 나온다. 계좌별 분류는 `account-tax-types.json`
  * (`backend/CLAUDE.md`의 "계좌별 세금 유형" 절 참고)에 저장하고 기본값은
  * GENERAL(일반계좌)이다.
+ *
+ * **22% 계산은 해외 상장 종목(통화가 KRW가 아닌 거래)만 대상이다** — 국내 상장
+ * 종목은 해외주식 양도소득세 대상이 아니다: 국내 주식·국내 주식형 ETF 매매차익은
+ * (대주주가 아니면) 비과세이고, 국내 상장 해외·기타 ETF 매매차익은 매도 시
+ * 배당소득으로 15.4% 원천징수돼 이미 끝난다. 예전엔 통화 구분 없이 일반계좌
+ * 매도를 전부 합산해 22%를 매겨서, 국내 ETF 차익에 세금을 이중으로 잡거나 국내
+ * 손실로 해외 이익을 상계하는 틀린 숫자가 나왔다. 국내 상장분은 종목 정보만으로
+ * 비과세/배당소득과세를 정확히 가를 수 없어 별도 카드에 안내와 함께만 보여준다.
+ *
+ * **배당금은 양도소득과 다른 소득(배당소득)이라 22% 계산에 넣지 않는다**(서로
+ * 손익통산 불가, 250만원 공제도 없음) — 대신 "배당소득" 카드에 연간 합계와
+ * 금융소득종합과세 기준(연 2,000만원) 대비 비율을 따로 보여준다.
  */
 export default function RealizedGains() {
   const [allTrades, setAllTrades] = useState<StoredTrade[]>([]);
@@ -63,6 +81,7 @@ export default function RealizedGains() {
     Record<string, { rate: number; sampleCount: number } | null>
   >({});
 
+  const [allDividends, setAllDividends] = useState<DividendRecord[]>([]);
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
   const [taxTypes, setTaxTypes] = useState<AccountTaxTypeEntry[]>([]);
 
@@ -79,6 +98,10 @@ export default function RealizedGains() {
         setLoading(false);
       }
     })();
+    api
+      .listDividends()
+      .then(setAllDividends)
+      .catch(() => {});
     api
       .listAccountLabels()
       .then(setAccountLabels)
@@ -105,11 +128,16 @@ export default function RealizedGains() {
     };
   }, []);
 
-  // 달러 거래가 걸쳐 있는 달들의 평균 환율을 한 번에 조회한다(Dividends.tsx와
+  // 달러 거래/배당이 걸쳐 있는 달들의 평균 환율을 한 번에 조회한다(Dividends.tsx와
   // 동일한 effect 패턴) — 백엔드가 달마다 강하게 캐싱해서 반복 호출이 비싸지 않다.
   useEffect(() => {
     let cancelled = false;
-    const months = [...new Set(allTrades.filter((t) => t.currency === 'USD').map((t) => t.executedAt.slice(0, 7)))];
+    const months = [
+      ...new Set([
+        ...allTrades.filter((t) => t.currency === 'USD').map((t) => t.executedAt.slice(0, 7)),
+        ...allDividends.filter((d) => d.currency === 'USD').map((d) => d.paidDate.slice(0, 7)),
+      ]),
+    ];
     if (months.length === 0) {
       setMonthlyAvgFxRates({});
       return;
@@ -123,7 +151,7 @@ export default function RealizedGains() {
     return () => {
       cancelled = true;
     };
-  }, [allTrades]);
+  }, [allTrades, allDividends]);
 
   function monthlyRateFor(month: string): number | null {
     return monthlyAvgFxRates[month]?.rate ?? effectiveFxRate;
@@ -196,6 +224,7 @@ export default function RealizedGains() {
           symbol,
           name: t.name,
           quantity: soldQty,
+          currency: t.currency,
           proceedsKrw,
           costKrw,
           gainKrw: proceedsKrw - costKrw,
@@ -222,8 +251,59 @@ export default function RealizedGains() {
     [yearSales, taxTypeByAccount]
   );
 
-  const totalGainKrw = generalSales.reduce((sum, s) => sum + s.gainKrw, 0);
+  const overseasSales = useMemo(() => generalSales.filter((s) => s.currency !== 'KRW'), [generalSales]);
+  const domesticSales = useMemo(() => generalSales.filter((s) => s.currency === 'KRW'), [generalSales]);
+
+  const totalGainKrw = overseasSales.reduce((sum, s) => sum + s.gainKrw, 0);
   const estimatedTaxKrw = Math.max(0, totalGainKrw - TAX_FREE_ALLOWANCE_KRW) * TAX_RATE;
+  const domesticGainKrw = domesticSales.reduce((sum, s) => sum + s.gainKrw, 0);
+
+  // 배당 기록의 accountId는 사용자가 직접 적는 자유 문자열이라, 토스처럼 내부
+  // accountId("1")와 화면 표시 계좌번호가 다른 계좌는 표시 번호로 적혀 있을 수
+  // 있다 — 세금 유형(내부 accountId 기준)을 찾기 전에 표시 번호를 되돌린다.
+  function dividendTaxType(d: DividendRecord): AccountTaxType {
+    if (!d.accountId) return 'GENERAL';
+    const byNumber = accountLabels.find((l) => l.broker === d.broker && l.accountNumber === d.accountId);
+    return taxTypeFor(d.broker, byNumber ? byNumber.accountId : d.accountId);
+  }
+
+  const dividendSummary = useMemo(() => {
+    const rows = allDividends.filter(
+      (d) =>
+        d.paidDate.slice(0, 4) === String(year) &&
+        (broker === 'ALL' || d.broker === broker) &&
+        dividendTaxType(d) === 'GENERAL'
+    );
+    let krwTotal = 0;
+    let usdTotal = 0;
+    let convertedKrw = 0;
+    let unconvertedCount = 0;
+    const byBroker = new Map<BrokerId, { krw: number; usd: number; totalKrw: number; count: number }>();
+    for (const d of rows) {
+      const entry = byBroker.get(d.broker) ?? { krw: 0, usd: 0, totalKrw: 0, count: 0 };
+      entry.count += 1;
+      if (d.currency === 'USD') {
+        usdTotal += d.amount;
+        entry.usd += d.amount;
+        const rate = monthlyRateFor(d.paidDate.slice(0, 7));
+        if (rate === null) {
+          unconvertedCount += 1;
+        } else {
+          convertedKrw += d.amount * rate;
+          entry.totalKrw += d.amount * rate;
+        }
+      } else {
+        krwTotal += d.amount;
+        entry.krw += d.amount;
+        convertedKrw += d.amount;
+        entry.totalKrw += d.amount;
+      }
+      byBroker.set(d.broker, entry);
+    }
+    const brokerRows = BROKER_ORDER.filter((b) => byBroker.has(b)).map((b) => ({ broker: b, ...byBroker.get(b)! }));
+    return { count: rows.length, krwTotal, usdTotal, convertedKrw, unconvertedCount, brokerRows };
+  }, [allDividends, year, broker, taxTypeByAccount, accountLabels, monthlyAvgFxRates, effectiveFxRate]);
+  const dividendRatio = dividendSummary.convertedKrw / FINANCIAL_INCOME_THRESHOLD_KRW;
 
   function accountDisplay(b: BrokerId, accountId: string): string {
     return formatAccountOption({ id: accountId }, findAccountLabel(accountLabels, b, accountId));
@@ -346,9 +426,10 @@ export default function RealizedGains() {
           </div>
         </div>
 
+        <h3 style={{ marginTop: 0 }}>해외주식 양도소득 (22% 대상)</h3>
         <div className="summary-row">
           <div className="stat-tile">
-            <div className="label">{year}년 실현손익 합계(일반계좌)</div>
+            <div className="label">{year}년 해외 상장 종목 실현손익(일반계좌)</div>
             <div className={`value ${totalGainKrw >= 0 ? 'text-good' : 'text-critical'}`}>
               {totalGainKrw >= 0 ? '+' : ''}
               {formatKrwValue(totalGainKrw)}
@@ -358,15 +439,116 @@ export default function RealizedGains() {
             <div className="label">추정 세액(참고용)</div>
             <div className="value">{formatKrwValue(estimatedTaxKrw)}</div>
             <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-              기본공제 250만원 적용 후 22% — 참고용 추정치, 일반계좌만 포함
+              기본공제 250만원 적용 후 22% — 참고용 추정치, 일반계좌의 해외 상장 종목만 포함
             </div>
           </div>
         </div>
 
-        {generalSales.length === 0 ? (
-          <p style={{ color: 'var(--text-muted)' }}>{year}년에 일반계좌에서 실현된 매도 기록이 없습니다.</p>
+        {overseasSales.length === 0 ? (
+          <p style={{ color: 'var(--text-muted)' }}>{year}년에 일반계좌에서 실현된 해외 상장 종목 매도 기록이 없습니다.</p>
         ) : (
-          renderSalesTable(generalSales)
+          renderSalesTable(overseasSales)
+        )}
+      </div>
+
+      {domesticSales.length > 0 && (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>국내 상장 종목 매도 (22% 대상 아님)</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+            위 양도소득세 계산에 포함되지 않습니다. 국내 주식·국내 주식형 ETF(예: KODEX 코스피100)의
+            매매차익은 대주주가 아니면 <strong>비과세</strong>이고, 국내 상장 해외·기타 ETF(예: 미국 지수
+            추종 ETF, 커버드콜 ETF)의 매매차익은 매도할 때 <strong>배당소득으로 15.4% 원천징수</strong>돼
+            이미 과세가 끝납니다(아래 금융소득종합과세 기준에도 합산됨). 종목별 구분은 이 화면이 판단하지
+            못하므로 증권사 자료로 확인해주세요.
+          </p>
+          <div className="summary-row">
+            <div className="stat-tile">
+              <div className="label">{year}년 국내 상장 종목 실현손익(일반계좌)</div>
+              <div className={`value ${domesticGainKrw >= 0 ? 'text-good' : 'text-critical'}`}>
+                {domesticGainKrw >= 0 ? '+' : ''}
+                {formatKrwValue(domesticGainKrw)}
+              </div>
+            </div>
+          </div>
+          {renderSalesTable(domesticSales)}
+        </div>
+      )}
+
+      <div className="card">
+        <h3 style={{ marginTop: 0 }}>배당소득</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+          배당금은 매매차익과 다른 소득(배당소득)이라 위 양도소득세에 합산되지 않고, 지급될 때
+          원천징수(국내 15.4%, 미국 주식은 현지 15%)로 끝납니다. 다만 이자·배당소득이 연{' '}
+          {formatKrwValue(FINANCIAL_INCOME_THRESHOLD_KRW)}을 넘으면 초과분이 금융소득종합과세 대상이
+          됩니다. 배당금 화면에 입력한 금액 기준이며(세전 금액으로 입력해야 기준과 정확히 비교됨),
+          달러 배당은 지급월 평균 환율로 환산합니다. ISA/연금저축/IRP 계좌 배당과, 위 "국내 상장
+          종목 매도"의 해외·기타 ETF 매매차익(배당소득으로 과세)은 포함하지 않습니다.
+        </p>
+        <div className="summary-row">
+          <div className="stat-tile">
+            <div className="label">{year}년 배당소득 합계(일반계좌, 원화 환산)</div>
+            <div className="value">{formatKrwValue(dividendSummary.convertedKrw)}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              {dividendSummary.count}건 · 원화 {formatKrwValue(dividendSummary.krwTotal)} · 달러 $
+              {dividendSummary.usdTotal.toFixed(2)}
+              {dividendSummary.unconvertedCount > 0 && ` · 환율 미적용 ${dividendSummary.unconvertedCount}건 제외`}
+            </div>
+          </div>
+          <div className="stat-tile">
+            <div className="label">금융소득종합과세 기준 대비</div>
+            <div className={`value ${dividendRatio >= 1 ? 'text-critical' : ''}`}>
+              {(dividendRatio * 100).toFixed(1)}%
+            </div>
+            <div
+              role="meter"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(Math.min(dividendRatio, 1) * 100)}
+              aria-label="금융소득종합과세 기준 대비 배당소득"
+              style={{ height: 6, borderRadius: 3, background: 'var(--gridline)', marginTop: 8, overflow: 'hidden' }}
+            >
+              <div
+                style={{
+                  width: `${Math.min(dividendRatio, 1) * 100}%`,
+                  height: '100%',
+                  background: dividendRatio >= 1 ? 'var(--critical)' : 'var(--series-1)',
+                }}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+              {dividendRatio >= 1
+                ? `기준 초과 ${formatKrwValue(dividendSummary.convertedKrw - FINANCIAL_INCOME_THRESHOLD_KRW)} — 종합과세 대상`
+                : `기준까지 ${formatKrwValue(FINANCIAL_INCOME_THRESHOLD_KRW - dividendSummary.convertedKrw)} 남음 (이자소득 별도)`}
+            </div>
+          </div>
+        </div>
+        {dividendSummary.brokerRows.length > 0 ? (
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>증권사</th>
+                  <th>건수</th>
+                  <th>원화</th>
+                  <th>달러</th>
+                  <th>합계(환산)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dividendSummary.brokerRows.map((r) => (
+                  <tr key={r.broker}>
+                    <td>{BROKER_LABELS[r.broker]}</td>
+                    <td>{r.count}</td>
+                    <td>{formatKrwValue(r.krw)}</td>
+                    <td>${r.usd.toFixed(2)}</td>
+                    <td>{formatKrwValue(r.totalKrw)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ color: 'var(--text-muted)' }}>{year}년 일반계좌 배당 기록이 없습니다.</p>
         )}
       </div>
 
@@ -374,7 +556,7 @@ export default function RealizedGains() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>세제혜택 계좌 매도 내역(ISA/연금저축/IRP)</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
-            위 실현손익 합계·추정 세액에는 포함되지 않습니다 — 이 계좌들은 각자 다른 과세
+            위 실현손익 합계·추정 세액·배당소득에는 포함되지 않습니다 — 이 계좌들은 각자 다른 과세
             체계(ISA는 손익통산 후 비과세 한도 초과분만 9.9% 분리과세, 연금저축/IRP는 매도
             시점엔 과세되지 않고 나중에 연금·퇴직소득으로 인출할 때 과세)가 적용됩니다.
           </p>

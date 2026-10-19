@@ -726,6 +726,10 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   플랫폼 산출물이 전부 `version.json` 값 하나로 자동 일치한다 — electron-builder
   자체는 `version.json`을 모르고 항상 루트 `package.json`의 `version`만 읽지만,
   그 필드가 이 스크립트로 이미 동기화돼 있다.
+- **작성자/저작권의 단일 소스는 루트 `package.json`**이다 — `author`("이름 <이메일>"
+  npm 문자열 형식)와 `build.copyright`(electron-builder가 mac 앱 정보/Windows 파일
+  속성에도 쓰는 값)를 같은 스크립트가 `APP_AUTHOR`/`APP_COPYRIGHT`로 굽고,
+  `GET /api/about`의 `author`/`copyright`로 내려가 정보 화면에 표시된다.
 - `electron`은 devDependencies에 있지만 패키징된 앱의 실제 런타임이라 스크립트가
   별도로 목록에 끼워 넣는다. `@mystock/*`(워크스페이스 내부 참조)는 제외한다.
 - **Electron/Chromium/Node 버전은 빌드 시점이 아니라 요청 시점에 `process.versions`

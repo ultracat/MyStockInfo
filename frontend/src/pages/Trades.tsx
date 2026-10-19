@@ -6,7 +6,7 @@ import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS, BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../brokers';
-import { accountLabelKey, formatAccountOption } from '../accountLabels';
+import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import { getKbLinkStatus, type KbLinkStatus } from '../kbSync';
 
 // CSV 전용 브로커(KB/삼성/미래에셋)의 로컬 저장소 행을 화면이 이미 쓰는
@@ -1041,9 +1041,7 @@ export default function Trades() {
                 <option key={a.id} value={a.id}>
                   {formatAccountOption(
                     a,
-                    accountLabels.find(
-                      (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, a.id)
-                    )?.label
+                    findAccountLabel(accountLabels, selectedBroker, a.id)
                   )}
                 </option>
               ))}
@@ -1328,7 +1326,7 @@ export default function Trades() {
                         <td>
                           {formatAccountOption(
                             { id: t.accountId },
-                            accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label
+                            findAccountLabel(accountLabels, t.broker, t.accountId)
                           )}
                         </td>
                       )}
@@ -1447,7 +1445,7 @@ export default function Trades() {
                       <td>
                         {formatAccountOption(
                           { id: t.accountId },
-                          accountLabels.find((l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(t.broker, t.accountId))?.label
+                          findAccountLabel(accountLabels, t.broker, t.accountId)
                         )}
                       </td>
                     )}

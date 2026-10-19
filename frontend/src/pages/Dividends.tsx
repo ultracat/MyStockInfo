@@ -168,7 +168,10 @@ export default function Dividends() {
   }, []);
   const accountLabelMap = useMemo(() => {
     const m = new Map<string, string>();
-    for (const l of accountLabels) m.set(accountLabelKey(l.broker, l.accountId), l.label);
+    for (const l of accountLabels) {
+      const text = l.label || l.accountNumber;
+      if (text) m.set(accountLabelKey(l.broker, l.accountId), text);
+    }
     return m;
   }, [accountLabels]);
   function displayAccountId(recordBroker: BrokerId, accountId: string | null): string {

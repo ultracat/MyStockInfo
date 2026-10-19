@@ -5,6 +5,10 @@ import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from
 import { accountLabelKey, TAX_TYPE_LABELS, TAX_TYPE_OPTIONS } from '../accountLabels';
 import { downloadBlob } from '../csv';
 
+/** accountId가 사람이 읽는 계좌번호가 아니라서(토스 Open API의 accountSeq — "1"
+ *  같은 값) 표시용 계좌번호를 직접 입력받는 브로커. */
+const ACCOUNT_NUMBER_EDITABLE_BROKERS: BrokerId[] = ['toss'];
+
 // 복원 업로드는 zip을 base64로 감싸 보통 JSON body로 보낸다(api.ts의
 // restoreBackup 참고) — ArrayBuffer를 base64로 바꿀 때 `String.fromCharCode(...bytes)`를
 // 통째로 한 번에 spread하면 파일이 조금만 커져도(수만 바이트) 인자 개수 한도에
@@ -171,6 +175,9 @@ export default function Settings() {
   // "계좌별 세금 유형" 절 참고).
   const [knownAccounts, setKnownAccounts] = useState<{ broker: BrokerId; accountId: string }[]>([]);
   const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
+  // 표시용 계좌번호 — accountId가 사람이 읽는 번호가 아닌 브로커(토스증권의
+  // accountSeq "1")만 입력칸을 보여준다(ACCOUNT_NUMBER_EDITABLE_BROKERS).
+  const [numberDrafts, setNumberDrafts] = useState<Record<string, string>>({});
   const [taxTypes, setTaxTypes] = useState<AccountTaxTypeEntry[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [newAccountBroker, setNewAccountBroker] = useState<BrokerId>(CSV_ONLY_BROKER_IDS[0]);
@@ -227,11 +234,15 @@ export default function Settings() {
     setTaxTypes(taxTypeEntries);
 
     const drafts: Record<string, string> = {};
+    const nextNumberDrafts: Record<string, string> = {};
     for (const a of list) {
       const key = accountLabelKey(a.broker, a.accountId);
-      drafts[key] = labels.find((l) => l.broker === a.broker && l.accountId === a.accountId)?.label ?? '';
+      const entry = labels.find((l) => l.broker === a.broker && l.accountId === a.accountId);
+      drafts[key] = entry?.label ?? '';
+      nextNumberDrafts[key] = entry?.accountNumber ?? '';
     }
     setLabelDrafts(drafts);
+    setNumberDrafts(nextNumberDrafts);
     setAccountsLoading(false);
   }
 
@@ -267,14 +278,15 @@ export default function Settings() {
   async function onSaveLabel(b: BrokerId, accountId: string) {
     const key = accountLabelKey(b, accountId);
     const label = (labelDrafts[key] ?? '').trim();
-    if (!label) {
-      setError('별칭을 입력해주세요.');
+    const accountNumber = (numberDrafts[key] ?? '').trim();
+    if (!label && !accountNumber) {
+      setError(ACCOUNT_NUMBER_EDITABLE_BROKERS.includes(b) ? '별칭 또는 표시 계좌번호를 입력해주세요.' : '별칭을 입력해주세요.');
       return;
     }
     setError(null);
     setMessage(null);
     try {
-      await api.upsertAccountLabel(b, accountId, label);
+      await api.upsertAccountLabel(b, accountId, { label, accountNumber });
       setMessage('저장되었습니다.');
       await refreshAccounts();
     } catch (e) {
@@ -355,7 +367,7 @@ export default function Settings() {
       return;
     }
     try {
-      await api.upsertAccountLabel(newAccountBroker, newAccountId.trim(), newAccountLabel.trim());
+      await api.upsertAccountLabel(newAccountBroker, newAccountId.trim(), { label: newAccountLabel.trim() });
       setNewAccountId('');
       setNewAccountLabel('');
       setMessage('계좌가 등록되었습니다.');
@@ -556,7 +568,9 @@ export default function Settings() {
           화면에서 계좌를 구분해 보여줍니다. <strong>세금 유형</strong>에 ISA/연금저축/IRP를
           지정하면(토스/KIS 계좌 포함) 실현손익 화면의 양도소득세 계산에서 그 계좌의 매도
           내역이 빠지고 별도로 분리해 보여줍니다 — 이 계좌들은 일반 해외주식 양도소득세
-          (22%)와 완전히 다른 과세 체계가 적용되기 때문입니다.
+          (22%)와 완전히 다른 과세 체계가 적용되기 때문입니다. 토스증권은 Open API가 실제
+          계좌번호 대신 내부 ID(예: 1)만 알려주므로, 계좌번호 칸에 실제 계좌번호를 입력하고
+          저장하면 모든 화면에서 그 번호로 보여줍니다.
         </p>
         {accountsLoading ? (
           <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>
@@ -580,7 +594,21 @@ export default function Settings() {
                 return (
                   <tr key={key}>
                     <td>{BROKER_LABELS[a.broker]}</td>
-                    <td>{a.accountId}</td>
+                    <td>
+                      {ACCOUNT_NUMBER_EDITABLE_BROKERS.includes(a.broker) ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <input
+                            type="text"
+                            value={numberDrafts[key] ?? ''}
+                            placeholder="예: 123-45-678901"
+                            onChange={(e) => setNumberDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
+                          />
+                          <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>내부 ID: {a.accountId}</span>
+                        </div>
+                      ) : (
+                        a.accountId
+                      )}
+                    </td>
                     <td>
                       <input
                         type="text"

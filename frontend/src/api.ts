@@ -190,10 +190,10 @@ export const api = {
   // 하고, Dashboard.tsx/Trades.tsx/Dividends.tsx는 읽기만 한다.
   listAccountLabels: (broker?: BrokerId) =>
     request<AccountLabel[]>(`/account-labels${broker ? `?broker=${broker}` : ''}`),
-  upsertAccountLabel: (broker: BrokerId, accountId: string, label: string) =>
+  upsertAccountLabel: (broker: BrokerId, accountId: string, fields: { label?: string; accountNumber?: string }) =>
     request<AccountLabel>(`/account-labels/${broker}/${encodeURIComponent(accountId)}`, {
       method: 'PUT',
-      body: JSON.stringify({ label }),
+      body: JSON.stringify(fields),
     }),
   deleteAccountLabel: (broker: BrokerId, accountId: string) =>
     request<void>(`/account-labels/${broker}/${encodeURIComponent(accountId)}`, { method: 'DELETE' }),

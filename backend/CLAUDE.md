@@ -332,7 +332,14 @@ CSV 전용 브로커(KB증권/삼성증권/미래에셋증권)는 한 증권사 
 holdings-store/trades-store/dividends 세 로컬 저장소에 실제로 CSV/수동 입력으로 들어온
 문자열 그대로일 뿐 사람이 읽을 수 있는 이름이 아니다 — 이 저장소가 그 위에 별칭을
 얹는다. `GET /api/account-labels?broker=`, `PUT /api/account-labels/:broker/:accountId`
-(body `{label}`, upsert), `DELETE /api/account-labels/:broker/:accountId`.
+(body `{label?, accountNumber?}` — 둘 중 하나는 필수, upsert), `DELETE /api/account-labels/:broker/:accountId`.
+**`accountNumber`(표시용 계좌번호)**: 토스증권은 accountId가 Open API용 `accountSeq`
+("1")라 화면 곳곳에 "1"이 그대로 보였다 — accountId는 API 호출 키라 못 바꾸므로,
+사용자가 Settings.tsx에서 실제 계좌번호를 입력하면 프론트(`accountLabels.ts`의
+`displayAccountNumber`: 입력값 > API `accountNumber` > accountId)와 Google Sheets
+내보내기(`sheetsSync.ts`, API accountNo보다 우선 — 가져오기 역방향 맵은 둘 다 받음)가
+표시할 때만 대신 쓴다. 별도 저장소를 만들지 않고 이 저장소를 확장한 건, 라벨과 같은
+"표시용 메타데이터"이고 소비하는 화면도 똑같아서다(입력칸은 토스 행에만 보임).
 **관리 UI는 `Settings.tsx` 한 곳에만 있다** — Dashboard.tsx/Trades.tsx/Dividends.tsx는
 마운트 시 한 번 불러와 표시할 때 읽기만 한다(`frontend/CLAUDE.md` 참고).
 

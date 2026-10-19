@@ -5,6 +5,7 @@ import { importHoldingsRecords } from '../routes/holdingsStore';
 import { importTradesRecords } from '../routes/tradesStore';
 import { importDividendsRecords } from '../routes/dividends';
 import { getAdapter } from '../brokers/registry';
+import { listAccountLabels } from '../db/accountLabels';
 import * as store from './store';
 import * as sheetsApi from './sheetsApi';
 import {
@@ -20,7 +21,7 @@ import {
  *  삼성은 accountId 자체가 이미 실제 계좌번호다. Toss Open API 호출(getPortfolio/
  *  getTradeHistory)이 accountSeq를 그대로 요구하므로 Local DB의 accountId는
  *  건드리지 않고, 구글시트에 내보낼 때만 표시용으로 accountNo로 바꿔치기한다. */
-async function buildTossAccountNumberMap(): Promise<Map<string, string>> {
+async function fetchTossApiAccountNumbers(): Promise<Map<string, string>> {
   const map = new Map<string, string>();
   try {
     const adapter = getAdapter('toss');
@@ -35,9 +36,28 @@ async function buildTossAccountNumberMap(): Promise<Map<string, string>> {
   return map;
 }
 
-function reverseMap(m: Map<string, string>): Map<string, string> {
+/** 설정 화면 "계좌 별칭"에서 사용자가 직접 입력한 표시용 계좌번호 — API의
+ *  accountNo보다 우선한다(화면 표시와 같은 규칙, frontend `accountLabels.ts`). */
+function tossAccountNumberOverrides(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const l of listAccountLabels('toss')) {
+    if (l.accountNumber) map.set(l.accountId, l.accountNumber);
+  }
+  return map;
+}
+
+async function buildTossAccountNumberMap(): Promise<Map<string, string>> {
+  return new Map([...(await fetchTossApiAccountNumbers()), ...tossAccountNumberOverrides()]);
+}
+
+/** 가져오기용 역방향 맵 — API accountNo와 사용자 입력 번호 둘 다 accountSeq로
+ *  되돌린다(표시용 번호를 나중에 입력/변경해도 그 전에 내보낸 시트를 그대로
+ *  다시 가져올 수 있게). */
+async function buildTossReverseMap(): Promise<Map<string, string>> {
   const r = new Map<string, string>();
-  for (const [k, v] of m) r.set(v, k);
+  for (const m of [await fetchTossApiAccountNumbers(), tossAccountNumberOverrides()]) {
+    for (const [k, v] of m) r.set(v, k);
+  }
   return r;
 }
 
@@ -280,7 +300,7 @@ export async function importDataType(
   const { spreadsheetId } = await ensureSpreadsheet();
   const [rawRows, tossReverseMap] = await Promise.all([
     sheetsApi.readValues(spreadsheetId, SHEET_TAB_TITLES[dataType]),
-    buildTossAccountNumberMap().then(reverseMap),
+    buildTossReverseMap(),
   ]);
   const records = cellsToRecords(HEADERS[dataType], rawRows).map((rec) => ROW_MAPPERS[dataType](rec, tossReverseMap));
   // 시트가 비어 있으면(헤더도 없는 완전히 빈 탭 — 아직 한 번도 내보내지 않은

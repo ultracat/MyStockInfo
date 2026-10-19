@@ -249,8 +249,18 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 조회 실패를 행 실패로 처리**하지만(이름이 화면 표시에 필수), **매매내역은 CSV에 `name`
 컬럼이 있으면 그 값을 그대로 쓰고(override), 없거나 조회에 실패해도 행을 막지 않는다**
 (`routes/tradesStore.ts`) — 화면이 이미 심볼로 폴백 표시하므로, API 연동이 하나도 없는
-사용자도 이름을 직접 CSV에 적어 넣으면 되게 하려는 것. 매매내역은 `id`도 안 받는다
-(브로커 고유 체결번호라 CSV 행엔 없음 — 없으면 서버가 `randomUUID()`로 발급).
+사용자도 이름을 직접 CSV에 적어 넣으면 되게 하려는 것. 매매내역 `id`는 선택 컬럼이다
+(CSV/Sheets 내보내기 맨 뒤에 들어감). **예전엔 내보내기에 `id`가 없어서 내보냈다
+다시 가져올 때마다 같은 체결이 새 `randomUUID()`로 한 벌씩 쌓였고**, 그 뒤 실시간
+조회가 브로커 id로 또 저장해 토스/KIS 체결이 최대 4벌까지 중복된 실사례가 있다
+(배당금 화면 연도별 투자금이 2배로 부풀려져 발견, 2026-10-19 — 350행 정리).
+지금은 `db/tradesStore.ts`가 내용(broker/accountId/symbol/side/quantity/price/
+executedAt)으로도 같은 거래를 식별한다: `id` 없는 가져오기 행은 같은 내용의 기존
+행 id를 1:1로 물려받고(`createIdReuser`, Sheets 전체 교체도 동일), 실시간 조회
+(`upsertTrades`)는 같은 내용의 UUID 사본을 지운다. 이미 쌓인 중복은
+`POST /api/trades-store/dedupe`(`removeImportedDuplicates`)로 정리한다 — 브로커 id
+행이 없는 묶음(CSV 전용 브로커의 같은 날 같은 가격 반복 체결 등)은 진짜 반복
+체결과 구분할 수 없어 건드리지 않는다.
 
 **보유종목 CSV는 현재가/평가금액/손익도 자동으로 채운다** — 필수 컬럼(`broker,accountId,
 symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩용으로 사실상

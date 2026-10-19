@@ -67,6 +67,47 @@ function upsertInto(next: StoredTrade[], index: Map<string, number>, entry: Stor
   }
 }
 
+// ─── 중복 방지 ───────────────────────────────────────────────────────────────
+// CSV/Google Sheets 내보내기에 예전엔 `id` 컬럼이 없어서, 내보냈다 다시 가져올
+// 때마다 같은 체결 건이 새 randomUUID()로 한 벌씩 더 쌓였다 — 그 뒤 실시간
+// 조회(write-through)가 브로커 고유 id로 같은 건을 또 저장해서, 토스 체결 하나가
+// 최대 4벌까지 중복된 실사례가 있다(배당금 화면의 연도별 투자금이 실제의 2배로
+// 부풀려져 발견, 2026-10-19). 지금은 내보내기에 `id`가 들어가지만, `id` 없는 옛
+// 파일을 다시 가져오는 경우까지 막으려고 "같은 거래"를 내용으로도 식별한다.
+// 수수료/세금/종목명은 경로마다 채워지는 정도가 달라서 비교에서 뺐다.
+function fingerprint(t: {
+  broker: BrokerId;
+  accountId: string;
+  symbol: string;
+  side: string;
+  quantity: number;
+  price: number;
+  executedAt: string;
+}): string {
+  return [t.broker, t.accountId, t.symbol.toUpperCase(), t.side, t.quantity, t.price, t.executedAt].join('\u0000');
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** 가져오기가 발급한 id(randomUUID)인가 — 브로커 고유 체결번호(토스 orderId,
+ *  KIS odno, KB `날짜-순번`)는 이 형식이 아니다. */
+function isImportGeneratedId(id: string): boolean {
+  return UUID_RE.test(id);
+}
+
+/** id 없이 들어온 가져오기 행에 기존 저장 행의 id를 물려준다 — 내용이 같은 기존
+ *  행을 1:1로만 짝짓는다(같은 날 같은 가격·수량으로 실제로 두 번 체결된 경우,
+ *  가져온 두 행이 기존 두 행에 각각 대응되도록 한 번 쓴 id는 다시 안 씀). */
+function createIdReuser(existing: StoredTrade[]): (row: ImportTradeInput) => string | undefined {
+  const pool = new Map<string, string[]>();
+  for (const t of existing) {
+    const fp = fingerprint(t);
+    if (!pool.has(fp)) pool.set(fp, []);
+    pool.get(fp)!.push(t.id);
+  }
+  return (row) => pool.get(fingerprint(row))?.shift();
+}
+
 // 기존 저장분엔 name 필드 자체가 없던 레코드가 있다(이 필드가 생기기 전에 저장된
 // 행) — JsonStore가 그대로 읽으면 undefined가 되는데, holdings의 memo/dividends의
 // accountId와 같은 이유로 여기서 null로 정규화해 프론트가 항상 string | null만
@@ -95,7 +136,12 @@ export function listTrades(filter?: { broker?: BrokerId; accountId?: string }): 
  *  다시 온다) 전체 교체가 아니라 upsert가 맞다. */
 export function upsertTrades(broker: BrokerId, accountId: string, records: TradeRecord[]): void {
   store().update((current) => {
-    const next = [...current];
+    // 브로커가 지금 내려준 체결과 내용이 같은데 id만 가져오기가 발급한 UUID인
+    // 행은 그 체결의 사본이다 — 위 "중복 방지" 주석 참고.
+    const liveFingerprints = new Set(
+      records.map((r) => fingerprint({ broker, accountId, ...r }))
+    );
+    const next = current.filter((t) => !(isImportGeneratedId(t.id) && liveFingerprints.has(fingerprint(t))));
     const index = indexByKey(next);
     for (const r of records) {
       const entry: StoredTrade = {
@@ -119,15 +165,17 @@ export function upsertTrades(broker: BrokerId, accountId: string, records: Trade
   });
 }
 
-/** CSV 가져오기용 — `id`가 없는 행(수동/CSV로 넣는 행, 브로커 고유 체결번호가 없음)은
- *  새로 발급한다. `id`가 있으면 upsert. */
+/** CSV 가져오기용 — `id`가 있으면 그 id로 upsert. 없으면(수동 입력, `id` 컬럼이
+ *  없던 예전 CSV) 내용이 같은 기존 행의 id를 이어받아 덮어쓰고, 그런 행도
+ *  없을 때만 새로 발급한다. */
 export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
   const inserted: StoredTrade[] = [];
   store().update((current) => {
     const next = [...current];
     const index = indexByKey(next);
+    const reuseId = createIdReuser(current);
     for (const row of rows) {
-      const id = row.id || randomUUID();
+      const id = row.id || reuseId(row) || randomUUID();
       const entry: StoredTrade = {
         broker: row.broker,
         accountId: row.accountId,
@@ -155,13 +203,16 @@ export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
  *  교체한다(위 upsertFromImport는 id 기준으로 병합/누적하지만, 이건 시트에 없는
  *  기존 매매내역까지 전부 지운다). Sheets 내보내기가 매번 로컬 전체를 시트에
  *  덮어쓰는 것과 대칭을 이루도록, 가져오기도 시트 내용을 로컬의 유일한 진실로
- *  취급한다(부분 병합이 아님) — 사용자가 명시적으로 요청한 동작. 시트엔 id
- *  컬럼이 없어(TRADES_SHEET_HEADER 참고) 매번 새 id를 발급한다. */
+ *  취급한다(부분 병합이 아님) — 사용자가 명시적으로 요청한 동작. `id` 컬럼이
+ *  비어 있는 행(예전에 내보낸 시트, 시트에서 직접 추가한 행)은 upsertFromImport와
+ *  같은 방식으로 기존 행의 id를 이어받는다 — 안 그러면 다음 실시간 조회가 같은
+ *  체결을 브로커 id로 또 저장해 중복이 생긴다. */
 export function replaceAllTrades(rows: ImportTradeInput[]): StoredTrade[] {
+  const reuseId = createIdReuser(store().read());
   const fresh: StoredTrade[] = rows.map((row) => ({
     broker: row.broker,
     accountId: row.accountId,
-    id: row.id || randomUUID(),
+    id: row.id || reuseId(row) || randomUUID(),
     symbol: row.symbol,
     name: row.name ?? null,
     side: row.side,
@@ -194,6 +245,36 @@ export function updateTradeNames(namesBySymbol: Record<string, string>): number 
     })
   );
   return updated;
+}
+
+/** 이미 쌓인 중복을 한 번에 정리한다(`POST /api/trades-store/dedupe`). 내용이
+ *  같은 행 묶음 안에 브로커 고유 id 행이 있으면 가져오기가 만든 UUID 행을 전부
+ *  지운다 — 브로커 id 행이 하나도 없는 묶음(CSV 전용 브로커, 실시간 조회를 아직
+ *  안 한 연도)은 진짜 반복 체결과 구분할 수 없어 건드리지 않는다. */
+export function removeImportedDuplicates(): { removed: number; ambiguousGroups: number } {
+  let removed = 0;
+  let ambiguousGroups = 0;
+  store().update((current) => {
+    const groups = new Map<string, StoredTrade[]>();
+    for (const t of current) {
+      const fp = fingerprint(t);
+      if (!groups.has(fp)) groups.set(fp, []);
+      groups.get(fp)!.push(t);
+    }
+    const drop = new Set<StoredTrade>();
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const hasBrokerId = group.some((t) => !isImportGeneratedId(t.id));
+      if (!hasBrokerId) {
+        ambiguousGroups += 1;
+        continue;
+      }
+      for (const t of group) if (isImportGeneratedId(t.id)) drop.add(t);
+    }
+    removed = drop.size;
+    return removed === 0 ? current : current.filter((t) => !drop.has(t));
+  });
+  return { removed, ambiguousGroups };
 }
 
 export function deleteTrade(broker: BrokerId, accountId: string, id: string): boolean {

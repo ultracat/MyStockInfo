@@ -136,6 +136,7 @@ function tradesToRows(tossMap: Map<string, string>): string[][] {
     t.executedAt,
     numOrEmpty(t.commission),
     numOrEmpty(t.tax),
+    t.id,
   ]);
 }
 
@@ -251,6 +252,7 @@ function tradesRowToInput(rec: Record<string, string>, tossReverseMap: Map<strin
     executedAt: (rec.executedAt ?? '').trim(),
     commission: numOrNull(rec.commission ?? ''),
     tax: numOrNull(rec.tax ?? ''),
+    id: rec.id?.trim() || undefined,
   };
 }
 

@@ -65,6 +65,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   색은 검증된 categorical 팔레트(`--series-1`~`6`, `styles.css`), 조각마다 항상
   라벨을 보여주는 범례(호버에만 의존하지 않음 — 3~5번 슬롯이 대비 WARN이라 라벨이
   완화 조건이기도 함), 호버 시 해당 조각 강조 + 범례 항목 딤아웃.
+- `src/components/DonutDetailModal.tsx` — Overview.tsx의 상세 팝업(보유종목 상세,
+  연간 배당금 상세, 월별 배당 내역) 공용 목록 모달. 선택 prop `views`(`{id, label,
+  rows, countLabel}[]`)를 넘기면 제목 아래에 보기 전환 버튼이 생긴다 — 월별 배당
+  내역만 "종목별"(기본, 예전 화면 그대로)/"계좌별" 두 보기를 넘기고, 나머지 두
+  팝업은 `rows` 하나만 넘겨 예전과 똑같다. 행의 선택 필드 `label`(심볼 없는 행의
+  제목)·`details`(행 아래에 펼치는 하위 내역)는 계좌별 보기용이다 — 계좌 한 줄
+  아래에 그 계좌의 종목별 배당금을 펼친다. 계좌별 묶음은 `selectedMonthAccountRows`
+  (Overview.tsx)가 만들고, 배당 기록의 `accountId`가 토스처럼 표시용 계좌번호
+  (별칭의 `accountNumber`)로 적혀 있으면 내부 accountId로 되돌려 같은 계좌로 묶는다.
 - `src/components/MonthlyReturnChart.tsx` — 월별 diverging 막대(0% 기준선 위/아래로
   자람, Overview.tsx의 "매월 보유종목 투자금 대비 수익률" 카드가 씀). 카테고리 색이 아니라
   `--good`/`--critical`(status 색)을 쓴다 — 이 값 자체가 손익(좋다/나쁘다)을

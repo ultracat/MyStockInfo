@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AccountLabel, DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
+import type { AccountLabel, BrokerId, DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import DonutChart, { type DonutSlice } from '../components/DonutChart';
-import DonutDetailModal from '../components/DonutDetailModal';
+import DonutDetailModal, { type DonutDetailView } from '../components/DonutDetailModal';
 import DividendsChart from '../components/DividendsChart';
 import MonthlyReturnChart, { type MonthlyReturnRow } from '../components/MonthlyReturnChart';
 import MonthlyInvestmentChart, { type MonthlyInvestmentRow } from '../components/MonthlyInvestmentChart';
@@ -27,6 +27,9 @@ const OTHER_COLOR = 'var(--baseline)';
 const TOP_N = 5;
 
 interface FlatHolding {
+  /** 보유종목 상세 팝업의 "계좌별" 보기에서 계좌 단위로 묶는 데 쓴다. */
+  broker: BrokerId;
+  accountId: string;
   symbol: string;
   name: string;
   currency: string | null;
@@ -205,12 +208,16 @@ export default function Overview() {
                 .then((portfolios) =>
                   portfolios
                     .filter((p): p is NonNullable<typeof p> => p !== null)
-                    .flatMap((p) => p.positions)
+                    // 계좌별 보기용으로 어느 계좌의 포지션인지 남긴다(HoldingPosition
+                    // 자체엔 accountId가 없음).
+                    .flatMap((p) => p.positions.map((pos) => ({ ...pos, accountId: p.accountId })))
                 )
             : await api.listHoldingsStore({ broker: b.id });
 
           for (const r of rows) {
             flat.push({
+              broker: b.id,
+              accountId: r.accountId ?? '',
               symbol: r.symbol,
               name: r.name,
               currency: r.currency,
@@ -336,6 +343,65 @@ export default function Overview() {
       .sort((a, b) => b.valueKrw - a.valueKrw);
   }, [holdings, effectiveFxRate]);
 
+  // ---- 1-2) 같은 팝업의 "계좌별" 보기 — (증권사, 계좌)로 묶어 계좌마다 평가금액·
+  // 매입금액·손익률을 보여주고, 그 아래에 종목별 수량·평가금액을 펼친다. 평가금액은
+  // 종목별 보기와 같은 quantity*lastPrice라 두 보기의 합이 같다. IRP처럼 같은 종목이
+  // memo로 나뉜 행(회사/개인 납입분)은 계좌 안에서 한 종목으로 합친다.
+  const holdingAccountRows = useMemo(() => {
+    const byAccount = new Map<
+      string,
+      {
+        broker: BrokerId;
+        accountId: string;
+        valueKrw: number;
+        purchaseKrw: number;
+        bySymbol: Map<string, { name: string; valueKrw: number; quantity: number }>;
+      }
+    >();
+    for (const h of holdings) {
+      const v = toKrw(h.quantity * h.lastPrice, h.currency);
+      if (v === null) continue;
+      const key = `${h.broker}:${h.accountId}`;
+      const entry = byAccount.get(key) ?? {
+        broker: h.broker,
+        accountId: h.accountId,
+        valueKrw: 0,
+        purchaseKrw: 0,
+        bySymbol: new Map(),
+      };
+      entry.valueKrw += v;
+      entry.purchaseKrw += toKrw(h.purchaseAmount, h.currency) ?? 0;
+      const sym = entry.bySymbol.get(h.symbol) ?? { name: h.name, valueKrw: 0, quantity: 0 };
+      sym.valueKrw += v;
+      sym.quantity += h.quantity;
+      entry.bySymbol.set(h.symbol, sym);
+      byAccount.set(key, entry);
+    }
+    return Array.from(byAccount.entries())
+      .map(([key, e]) => {
+        const rate = e.purchaseKrw > 0 ? (e.valueKrw - e.purchaseKrw) / e.purchaseKrw : null;
+        return {
+          key,
+          label: `${BROKER_LABELS[e.broker]} · ${
+            e.accountId
+              ? formatAccountOption({ id: e.accountId }, findAccountLabel(accountLabels, e.broker, e.accountId))
+              : '계좌 미지정'
+          }`,
+          valueKrw: e.valueKrw,
+          meta: `${e.bySymbol.size}개 종목 · 매입 ${formatKrwValue(e.purchaseKrw)}${
+            rate === null ? '' : ` · 손익 ${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(2)}%`
+          }`,
+          brokerOrder: BROKER_ORDER.indexOf(e.broker),
+          details: Array.from(e.bySymbol.entries())
+            .map(([symbol, x]) => ({ label: `${x.name} (${symbol}) · ${x.quantity}주`, valueKrw: x.valueKrw }))
+            .sort((a, b) => b.valueKrw - a.valueKrw),
+        };
+      })
+      .filter((e) => e.valueKrw > 0)
+      .sort((a, b) => b.valueKrw - a.valueKrw || a.brokerOrder - b.brokerOrder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdings, effectiveFxRate, accountLabels]);
+
   // 배당내역 팝업(연간/월별 종목별 상세)에 "총 주식갯수"(오늘 기준 보유수량)도
   // 같이 보여주기 위한 조회용 맵 — holdingDetailRows가 이미 종목별로 집계해둔
   // 수량을 그대로 재사용한다.
@@ -389,12 +455,13 @@ export default function Overview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dividends, selectedDividendMonth, effectiveFxRate, monthlyAvgFxRates]);
 
-  // ---- 2-2) 같은 팝업의 "계좌별" 보기 — 그 달 배당을 (증권사, 계좌)로 묶고, 계좌
-  // 안에서 종목별 금액을 펼쳐 보여준다. 배당 기록의 accountId는 자유 입력이라
-  // 토스처럼 표시용 계좌번호(별칭의 accountNumber)로 적혀 있을 수도 있어서, 같은
-  // 계좌가 두 줄로 갈리지 않도록 그 경우 내부 accountId로 되돌려 묶는다.
-  const selectedMonthAccountRows = useMemo(() => {
-    if (!selectedDividendMonth) return [];
+  // ---- 2-2) 배당 상세 팝업의 "계좌별" 보기(월별 배당 내역 / 연간 배당금 상세 공용) —
+  // 날짜 접두어(`2026-10` 또는 `2026`)에 해당하는 배당을 (증권사, 계좌)로 묶고, 계좌
+  // 안에서 종목별 금액을 펼쳐 보여준다. 달러는 기록마다 지급월 평균 환율로 환산해
+  // 종목별 보기의 합계와 같게 맞춘다. 배당 기록의 accountId는 자유 입력이라 토스처럼
+  // 표시용 계좌번호(별칭의 accountNumber)로 적혀 있을 수도 있어서, 같은 계좌가 두
+  // 줄로 갈리지 않도록 그 경우 내부 accountId로 되돌려 묶는다.
+  function buildAccountDividendRows(datePrefix: string) {
     const byAccount = new Map<
       string,
       {
@@ -402,12 +469,12 @@ export default function Overview() {
         accountId: string | null;
         valueKrw: number;
         count: number;
-        bySymbol: Map<string, { name: string; valueKrw: number }>;
+        bySymbol: Map<string, { name: string; valueKrw: number; count: number }>;
       }
     >();
     for (const d of dividends) {
-      if (!d.paidDate.startsWith(selectedDividendMonth)) continue;
-      const rate = d.currency === 'USD' ? dividendFxRateFor(selectedDividendMonth) : null;
+      if (!d.paidDate.startsWith(datePrefix)) continue;
+      const rate = d.currency === 'USD' ? dividendFxRateFor(d.paidDate.slice(0, 7)) : null;
       const v = d.currency === 'USD' ? (rate ? d.amount * rate : null) : d.amount;
       if (v === null) continue;
       const byNumber = d.accountId
@@ -418,8 +485,9 @@ export default function Overview() {
       const entry = byAccount.get(key) ?? { broker: d.broker, accountId, valueKrw: 0, count: 0, bySymbol: new Map() };
       entry.valueKrw += v;
       entry.count += 1;
-      const sym = entry.bySymbol.get(d.symbol) ?? { name: d.name, valueKrw: 0 };
+      const sym = entry.bySymbol.get(d.symbol) ?? { name: d.name, valueKrw: 0, count: 0 };
       sym.valueKrw += v;
+      sym.count += 1;
       entry.bySymbol.set(d.symbol, sym);
       byAccount.set(key, entry);
     }
@@ -435,13 +503,38 @@ export default function Overview() {
         count: e.count,
         brokerOrder: BROKER_ORDER.indexOf(e.broker),
         details: Array.from(e.bySymbol.entries())
-          .map(([symbol, x]) => ({ label: `${x.name} (${symbol})`, valueKrw: x.valueKrw }))
+          .map(([symbol, x]) => ({
+            // 연간 보기에선 한 종목이 여러 번 배당하므로 건수를 붙인다(월별은 대개 1건).
+            label: `${x.name} (${symbol})${x.count > 1 ? ` · 배당 ${x.count}건` : ''}`,
+            valueKrw: x.valueKrw,
+          }))
           .sort((a, b) => b.valueKrw - a.valueKrw),
       }))
       .filter((e) => e.valueKrw > 0)
       .sort((a, b) => b.valueKrw - a.valueKrw || a.brokerOrder - b.brokerOrder);
+  }
+
+  function accountDividendView(rows: ReturnType<typeof buildAccountDividendRows>): DonutDetailView {
+    return {
+      id: 'account',
+      label: '계좌별',
+      countLabel: (n) => `${n}개 계좌`,
+      rows: rows.map((r) => ({
+        symbol: r.key,
+        name: r.label,
+        label: r.label,
+        valueKrw: r.valueKrw,
+        meta: `배당 ${r.count}건 · ${r.details.length}개 종목`,
+        details: r.details,
+      })),
+    };
+  }
+
+  const selectedMonthAccountRows = useMemo(
+    () => (selectedDividendMonth ? buildAccountDividendRows(selectedDividendMonth) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dividends, selectedDividendMonth, accountLabels, effectiveFxRate, monthlyAvgFxRates]);
+    [dividends, selectedDividendMonth, accountLabels, effectiveFxRate, monthlyAvgFxRates]
+  );
 
   // ---- 3) 배당금 비중(도넛) — 선택한 연도, 종목별 ----
   // 배당금은 toKrw(오늘/수동 환율)가 아니라 dividendFxRateFor(그 달 평균 환율,
@@ -483,6 +576,11 @@ export default function Overview() {
       .sort((a, b) => b.valueKrw - a.valueKrw);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dividends, year, effectiveFxRate, monthlyAvgFxRates]);
+  const yearAccountDividendRows = useMemo(
+    () => (showDividendDetail ? buildAccountDividendRows(String(year)) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dividends, year, showDividendDetail, accountLabels, effectiveFxRate, monthlyAvgFxRates]
+  );
 
   function topNSlices(bySymbol: Map<string, { name: string; valueKrw: number }>): DonutSlice[] {
     const entries = Array.from(bySymbol.entries())
@@ -715,12 +813,32 @@ export default function Overview() {
         <DonutDetailModal
           title="전체 계좌 보유종목 상세"
           totalValueKrw={totalMarketKrw}
-          rows={holdingDetailRows.map((r) => ({
-            symbol: r.symbol,
-            name: r.name,
-            valueKrw: r.valueKrw,
-            meta: `${r.quantity}주`,
-          }))}
+          views={[
+            {
+              id: 'symbol',
+              label: '종목별',
+              countLabel: (n) => `${n}개 종목`,
+              rows: holdingDetailRows.map((r) => ({
+                symbol: r.symbol,
+                name: r.name,
+                valueKrw: r.valueKrw,
+                meta: `${r.quantity}주`,
+              })),
+            },
+            {
+              id: 'account',
+              label: '계좌별',
+              countLabel: (n) => `${n}개 계좌`,
+              rows: holdingAccountRows.map((r) => ({
+                symbol: r.key,
+                name: r.label,
+                label: r.label,
+                valueKrw: r.valueKrw,
+                meta: r.meta,
+                details: r.details,
+              })),
+            },
+          ]}
           formatValue={formatKrwValue}
           onClose={() => setShowHoldingDetail(false)}
         />
@@ -769,19 +887,7 @@ export default function Overview() {
                 meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
               })),
             },
-            {
-              id: 'account',
-              label: '계좌별',
-              countLabel: (n) => `${n}개 계좌`,
-              rows: selectedMonthAccountRows.map((r) => ({
-                symbol: r.key,
-                name: r.label,
-                label: r.label,
-                valueKrw: r.valueKrw,
-                meta: `배당 ${r.count}건 · ${r.details.length}개 종목`,
-                details: r.details,
-              })),
-            },
+            accountDividendView(selectedMonthAccountRows),
           ]}
           formatValue={formatKrwValue}
           onClose={() => setSelectedDividendMonth(null)}
@@ -803,12 +909,20 @@ export default function Overview() {
         <DonutDetailModal
           title={`${year}년 배당금 상세`}
           totalValueKrw={totalDividendKrwThisYear}
-          rows={dividendDetailRows.map((r) => ({
-            symbol: r.symbol,
-            name: r.name,
-            valueKrw: r.valueKrw,
-            meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
-          }))}
+          views={[
+            {
+              id: 'symbol',
+              label: '종목별',
+              countLabel: (n) => `${n}개 종목`,
+              rows: dividendDetailRows.map((r) => ({
+                symbol: r.symbol,
+                name: r.name,
+                valueKrw: r.valueKrw,
+                meta: formatDividendMeta(r.count, qtyBySymbol.get(r.symbol)),
+              })),
+            },
+            accountDividendView(yearAccountDividendRows),
+          ]}
           formatValue={formatKrwValue}
           onClose={() => setShowDividendDetail(false)}
         />

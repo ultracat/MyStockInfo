@@ -17,6 +17,7 @@ import { watchlistRouter } from './routes/watchlist';
 import { portfolioSnapshotsRouter } from './routes/portfolioSnapshots';
 import { backupRouter } from './routes/backup';
 import { accountTaxTypesRouter } from './routes/accountTaxTypes';
+import { stockLinksRouter } from './routes/stockLinks';
 
 export function createApp() {
   const app = express();
@@ -47,6 +48,7 @@ export function createApp() {
   app.use('/api/portfolio-snapshots', portfolioSnapshotsRouter);
   app.use('/api/backup', backupRouter);
   app.use('/api/account-tax-types', accountTaxTypesRouter);
+  app.use('/api/stock-links', stockLinksRouter);
 
   // Last-resort safety net: any route that throws without its own
   // try/catch would otherwise fall through to Express's default HTML error

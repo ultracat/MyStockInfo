@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { WatchlistEntry } from '../types';
 import { krw2dp, usdFmt } from '../format';
 import PriceChart, { type PricePoint } from '../components/PriceChart';
+import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
 
 function formatPrice(entry: WatchlistEntry): string {
   if (entry.lastPrice === null) return '-';
@@ -11,6 +12,8 @@ function formatPrice(entry: WatchlistEntry): string {
 
 export default function Watchlist() {
   const [entries, setEntries] = useState<WatchlistEntry[]>([]);
+  // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
+  const stockLinkFor = useStockLinkResolver();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,6 +25,9 @@ export default function Watchlist() {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [pricePoints, setPricePoints] = useState<PricePoint[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  // 차트 기간 — 'RECENT'(최근 12개월, 기본) / 'ALL'(받은 전체) / 'YYYY'(그 해만).
+  // 데이터는 종목을 고를 때 전체 기간을 한 번 받아두고 여기선 화면에서만 거른다.
+  const [period, setPeriod] = useState<string>('RECENT');
 
   async function refresh() {
     setLoading(true);
@@ -39,11 +45,13 @@ export default function Watchlist() {
     refresh();
   }, []);
 
-  // 선택된 종목이 바뀔 때마다 월별 종가(최근 12개월)를 받아온다 — 보유 종목이
-  // 아니라 자체 API 호출이 필요하다(Overview.tsx가 이미 쓰는 것과 같은
-  // 엔드포인트, backend/CLAUDE.md의 "월별 종가 조회" 절 참고). 새로고침을
-  // 연타해도 오래된 응답이 최신 선택을 덮어쓰지 않도록 선택이 바뀌면 그 즉시
-  // 이전 데이터를 비운다.
+  // 선택된 종목이 바뀔 때마다 월별 종가를 **상장 초기까지 전체** 받아온다
+  // (months='all') — 기간 선택(최근 12개월/연도/전체)은 이 데이터를 화면에서
+  // 거르기만 해서, 기간을 바꿀 때마다 다시 요청하지 않는다. 처음 보는 종목은
+  // 일봉 수십 페이지를 받아 몇 초 걸릴 수 있지만, 백엔드가 확정된 달을 디스크에
+  // 캐시해 두 번째부터는 최신 1페이지만 받는다(backend/CLAUDE.md의 "월별 종가
+  // 조회" 절 참고). 새로고침을 연타해도 오래된 응답이 최신 선택을 덮어쓰지
+  // 않도록 선택이 바뀌면 그 즉시 이전 데이터를 비운다.
   useEffect(() => {
     if (!selectedSymbol) {
       setPricePoints([]);
@@ -52,8 +60,9 @@ export default function Watchlist() {
     let cancelled = false;
     setDetailLoading(true);
     setPricePoints([]);
+    setPeriod('RECENT');
     api
-      .getMonthlyClosePrices([selectedSymbol], 12)
+      .getMonthlyClosePrices([selectedSymbol], 'all')
       .then((result) => {
         if (!cancelled) setPricePoints(result[selectedSymbol] ?? []);
       })
@@ -96,6 +105,24 @@ export default function Watchlist() {
   }
 
   const selectedEntry = entries.find((e) => e.symbol === selectedSymbol) ?? null;
+
+  const yearOptions = useMemo(
+    () => [...new Set(pricePoints.map((p) => p.month.slice(0, 4)))].sort().reverse(),
+    [pricePoints]
+  );
+  const shownPoints = useMemo(() => {
+    if (period === 'ALL') return pricePoints;
+    if (period === 'RECENT') return pricePoints.slice(-12);
+    return pricePoints.filter((p) => p.month.startsWith(period));
+  }, [pricePoints, period]);
+  const periodTitle =
+    period === 'RECENT'
+      ? '최근 12개월'
+      : period === 'ALL'
+        ? pricePoints.length > 0
+          ? `전체 기간 · ${pricePoints[0].month} ~ ${pricePoints[pricePoints.length - 1].month}`
+          : '전체 기간'
+        : `${period}년`;
 
   return (
     <div>
@@ -146,9 +173,7 @@ export default function Watchlist() {
                     }}
                   >
                     <td>
-                      <span className="cell-name-truncate" title={e.name}>
-                        {e.name}
-                      </span>{' '}
+                      <StockNameLink name={e.name} url={stockLinkFor(e.symbol, e.currency)} />{' '}
                       <span style={{ color: 'var(--text-muted)' }}>({e.symbol})</span>
                     </td>
                     <td>{e.market ?? '-'}</td>
@@ -191,11 +216,33 @@ export default function Watchlist() {
               <div className="value">{selectedEntry.currency ?? '-'}</div>
             </div>
           </div>
-          <h4 style={{ marginBottom: 8 }}>월별 종가(최근 12개월)</h4>
+          <div
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
+          >
+            <h4 style={{ margin: '8px 0' }}>월별 종가({periodTitle})</h4>
+            <div className="form-row" style={{ margin: 0 }}>
+              <select
+                value={period}
+                aria-label="차트 기간"
+                disabled={detailLoading || pricePoints.length === 0}
+                onChange={(e) => setPeriod(e.target.value)}
+              >
+                <option value="RECENT">최근 12개월</option>
+                <option value="ALL">전체 기간</option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}년
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
           {detailLoading ? (
-            <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>
+            <p style={{ color: 'var(--text-muted)' }}>
+              불러오는 중... (처음 보는 종목은 상장 이후 전체 시세를 받느라 몇 초 걸릴 수 있습니다)
+            </p>
           ) : (
-            <PriceChart points={pricePoints} />
+            <PriceChart points={shownPoints} />
           )}
         </div>
       )}

@@ -340,6 +340,22 @@ button.ghost {
   cursor: pointer;
 }
 
+/* button.ghost와 같은 모양의 링크(종목 링크 화면의 "열기") */
+a.ghost-link {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+button.ghost:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .notice {
   background: var(--surface-2);
   border: 1px solid var(--border);

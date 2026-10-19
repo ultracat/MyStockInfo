@@ -12,6 +12,7 @@ import type {
   ExchangeRate,
   PortfolioOverview,
   StockInfo,
+  StockLinkEntry,
   SnapshotRecord,
   StoredHolding,
   StoredTrade,
@@ -79,7 +80,8 @@ export const api = {
   // 그 심볼의 배열이 비어있거나 일부 달만 채워진다(backend/CLAUDE.md의
   // "월별 종가 조회" 절 참고). 호출부가 오늘 현재가로 대체하는 fallback을 갖고
   // 있어서 이 호출 자체는 절대 던지지 않는다.
-  getMonthlyClosePrices: (symbols: string[], months = 12) =>
+  // months: 'all'이면 상장 초기까지(백엔드 최대 50년) — 관심종목 "전체 기간" 보기.
+  getMonthlyClosePrices: (symbols: string[], months: number | 'all' = 12) =>
     request<Record<string, { month: string; closePrice: number; currency: string }[]>>(
       `/market-info/monthly-close-prices?symbols=${encodeURIComponent(symbols.join(','))}&months=${months}`
     ),
@@ -244,6 +246,17 @@ export const api = {
 
   // 보유하지 않은 종목을 가격만 추적하는 관심종목 — lastPrice는 조회할 때마다
   // 서버가 라이브로 채워서 내려준다(저장 안 함).
+  // 종목별 외부 링크 — 사용자가 직접 입력한 값만 서버에 있다(자동 링크는
+  // stockLinks.ts가 계산). url ''은 "링크 없음", 삭제하면 자동 링크로 돌아간다.
+  listStockLinks: () => request<StockLinkEntry[]>('/stock-links'),
+  saveStockLink: (symbol: string, url: string) =>
+    request<StockLinkEntry>(`/stock-links/${encodeURIComponent(symbol)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ url }),
+    }),
+  deleteStockLink: (symbol: string) =>
+    request<void>(`/stock-links/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
+
   listWatchlist: () => request<WatchlistEntry[]>('/watchlist'),
   addWatchlist: (symbol: string) =>
     request<WatchlistEntry>('/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }),

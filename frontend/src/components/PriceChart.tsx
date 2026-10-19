@@ -36,7 +36,11 @@ export default function PriceChart({ points }: { points: PricePoint[] }) {
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const range = max - min || 1;
-  const colWidth = Math.max(30, Math.min(60, 480 / points.length));
+  // 관심종목의 "전체 기간" 보기는 수백 개월이라 12개월용 폭(30~60px/월)을 그대로
+  // 쓰면 수만 px가 된다 — 개월 수가 많으면(dense) 한 달 폭을 줄이고, 점과 매달
+  // 라벨 대신 선 + 1월에만 연도 라벨로 그린다(가로 스크롤은 그대로 허용).
+  const dense = points.length > 36;
+  const colWidth = dense ? Math.max(3, Math.min(20, 720 / points.length)) : Math.max(30, Math.min(60, 480 / points.length));
   const width = points.length * colWidth;
   const y = (v: number) => TOP_MARGIN + HEIGHT - ((v - min) / range) * HEIGHT;
   const x = (i: number) => i * colWidth + colWidth / 2;
@@ -49,7 +53,9 @@ export default function PriceChart({ points }: { points: PricePoint[] }) {
           <path d={path} fill="none" stroke="var(--series-1)" strokeWidth={2} />
           {points.map((p, i) => (
             <g key={p.month}>
-              <circle cx={x(i)} cy={y(p.closePrice)} r={3} fill="var(--series-1)" />
+              {(!dense || hoverIndex === i) && (
+                <circle cx={x(i)} cy={y(p.closePrice)} r={3} fill="var(--series-1)" />
+              )}
               <rect
                 x={i * colWidth}
                 y={0}
@@ -66,7 +72,7 @@ export default function PriceChart({ points }: { points: PricePoint[] }) {
                 fontSize={10}
                 fill="var(--text-muted)"
               >
-                {p.month.slice(5)}
+                {p.month.slice(5) === '01' ? p.month.slice(0, 4) : dense ? '' : p.month.slice(5)}
               </text>
             </g>
           ))}

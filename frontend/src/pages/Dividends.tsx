@@ -8,6 +8,7 @@ import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
+import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
 
 // export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
 // 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
@@ -160,6 +161,9 @@ export default function Dividends() {
       cancelled = true;
     };
   }, [records]);
+
+  // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
+  const stockLinkFor = useStockLinkResolver();
 
   // 계좌 별칭 — 관리는 Settings.tsx에서만 하고 여기선 읽기만 한다(마운트 시 한 번).
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
@@ -1405,9 +1409,7 @@ export default function Dividends() {
                   <td>{displayAccountId(r.broker, r.accountId)}</td>
                   <td>{r.symbol}</td>
                   <td>
-                    <span className="cell-name-truncate" title={r.name}>
-                      {r.name}
-                    </span>
+                    <StockNameLink name={r.name} url={stockLinkFor(r.symbol, r.currency)} />
                   </td>
                   <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>
                   <td>{r.memo ?? '-'}</td>

@@ -1,5 +1,6 @@
 import type { HoldingPosition } from '../types';
 import { krw2dp } from '../format';
+import StockNameLink from './StockNameLink';
 
 function formatMoney(value: number, currency: string | null) {
   const formatted = krw2dp.format(value);
@@ -17,6 +18,8 @@ interface Row extends HoldingPosition {
   /** Dashboard.tsx의 "전체 계좌" 모드에서만 채워진다 — 계좌 라벨(또는 계좌번호)
    *  표시용 텍스트. 채워진 행이 하나라도 있으면 "계좌" 열을 보여준다. */
   accountLabel?: string;
+  /** 종목명을 눌렀을 때 열 외부 링크(stockLinks.ts의 resolveStockLink) — 없으면 텍스트. */
+  externalUrl?: string;
 }
 
 export default function HoldingsTable({ rows }: { rows: Row[] }) {
@@ -44,9 +47,7 @@ export default function HoldingsTable({ rows }: { rows: Row[] }) {
             <tr key={`${r.accountId ?? ''}:${r.symbol}:${r.memo ?? ''}:${idx}`}>
               {showAccount && <td>{r.accountLabel ?? '-'}</td>}
               <td>
-                <span className="cell-name-truncate" title={r.name}>
-                  {r.name}
-                </span>{' '}
+                <StockNameLink name={r.name} url={r.externalUrl} />{' '}
                 <span style={{ color: 'var(--text-muted)' }}>({r.symbol})</span>
                 {r.memo && <span style={{ color: 'var(--text-muted)' }}> · {r.memo}</span>}
               </td>

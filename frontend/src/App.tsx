@@ -5,10 +5,20 @@ import Dividends from './pages/Dividends';
 import Trades from './pages/Trades';
 import RealizedGains from './pages/RealizedGains';
 import Watchlist from './pages/Watchlist';
+import StockLinks from './pages/StockLinks';
 import Settings from './pages/Settings';
 import About from './pages/About';
 
-type Page = 'overview' | 'dashboard' | 'dividends' | 'trades' | 'realizedGains' | 'watchlist' | 'settings' | 'about';
+type Page =
+  | 'overview'
+  | 'dashboard'
+  | 'dividends'
+  | 'trades'
+  | 'realizedGains'
+  | 'watchlist'
+  | 'stockLinks'
+  | 'settings'
+  | 'about';
 
 // 사이드바가 접혔을 때 라벨 대신 보여줄 아이콘 — 외부 아이콘 라이브러리를 새로
 // 추가하지 않으려고 최소한의 인라인 SVG로 직접 그린다(Feather 아이콘 스타일).
@@ -99,6 +109,15 @@ function FileTextIcon() {
   );
 }
 
+function LinkIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  );
+}
+
 function InfoIcon() {
   return (
     <svg {...ICON_PROPS}>
@@ -124,6 +143,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] =
   { id: 'trades', label: '매매내역', icon: RepeatIcon },
   { id: 'realizedGains', label: '실현손익', icon: FileTextIcon },
   { id: 'watchlist', label: '관심종목', icon: StarIcon },
+  { id: 'stockLinks', label: '종목 링크', icon: LinkIcon },
   { id: 'settings', label: '설정', icon: SlidersIcon },
   { id: 'about', label: '정보', icon: InfoIcon },
 ];
@@ -167,6 +187,7 @@ export default function App() {
         {page === 'trades' && <Trades />}
         {page === 'realizedGains' && <RealizedGains />}
         {page === 'watchlist' && <Watchlist />}
+        {page === 'stockLinks' && <StockLinks />}
         {page === 'settings' && <Settings />}
         {page === 'about' && <About />}
       </main>

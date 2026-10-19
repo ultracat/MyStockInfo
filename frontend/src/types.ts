@@ -17,7 +17,9 @@ export interface BrokerAccount {
 export interface AccountLabel {
   broker: BrokerId;
   accountId: string;
-  label: string;
+  label?: string;
+  /** 표시용 계좌번호 — accountId가 사람이 읽는 번호가 아닌 토스증권(accountSeq)용. */
+  accountNumber?: string;
 }
 
 export interface HoldingPosition {

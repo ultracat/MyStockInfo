@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { AccountTaxType, AccountTaxTypeEntry, BrokerId, StoredTrade } from '../types';
+import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
-import { accountLabelKey } from '../accountLabels';
+import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
 import { krw } from '../format';
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -63,7 +63,7 @@ export default function RealizedGains() {
     Record<string, { rate: number; sampleCount: number } | null>
   >({});
 
-  const [accountLabels, setAccountLabels] = useState<Record<string, string>>({});
+  const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
   const [taxTypes, setTaxTypes] = useState<AccountTaxTypeEntry[]>([]);
 
   const [year, setYear] = useState(CURRENT_YEAR);
@@ -81,11 +81,7 @@ export default function RealizedGains() {
     })();
     api
       .listAccountLabels()
-      .then((labels) => {
-        const map: Record<string, string> = {};
-        for (const l of labels) map[accountLabelKey(l.broker, l.accountId)] = l.label;
-        setAccountLabels(map);
-      })
+      .then(setAccountLabels)
       .catch(() => {});
     api
       .listAccountTaxTypes()
@@ -230,8 +226,7 @@ export default function RealizedGains() {
   const estimatedTaxKrw = Math.max(0, totalGainKrw - TAX_FREE_ALLOWANCE_KRW) * TAX_RATE;
 
   function accountDisplay(b: BrokerId, accountId: string): string {
-    const label = accountLabels[accountLabelKey(b, accountId)];
-    return label ? `${label} · ${accountId}` : accountId;
+    return formatAccountOption({ id: accountId }, findAccountLabel(accountLabels, b, accountId));
   }
 
   // 특정 증권사를 골랐으면 모든 행이 같은 값이라 증권사/계좌 컬럼 자체가

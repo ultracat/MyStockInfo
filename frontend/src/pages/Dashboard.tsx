@@ -13,7 +13,7 @@ import HoldingsTable from '../components/HoldingsTable';
 import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { API_BROKER_IDS } from '../brokers';
-import { accountLabelKey, formatAccountOption } from '../accountLabels';
+import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import { getKbLinkStatus, type KbLinkStatus } from '../kbSync';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
@@ -838,9 +838,7 @@ export default function Dashboard() {
         ? formatAccountOption(
             { id: p.accountId },
             selectedBroker
-              ? accountLabels.find(
-                  (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, p.accountId!)
-                )?.label
+              ? findAccountLabel(accountLabels, selectedBroker, p.accountId)
               : undefined
           )
         : undefined,
@@ -985,9 +983,7 @@ export default function Dashboard() {
                 {formatAccountOption(
                   a,
                   selectedBroker
-                    ? accountLabels.find(
-                        (l) => accountLabelKey(l.broker, l.accountId) === accountLabelKey(selectedBroker, a.id)
-                      )?.label
+                    ? findAccountLabel(accountLabels, selectedBroker, a.id)
                     : undefined
                 )}
               </option>

@@ -135,7 +135,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   (계좌 select 옵션 텍스트 — `accountType`이 있을 때만 괄호를 붙인다: CSV 전용 브로커의
   로컬 저장소 계좌는 `accountType`이 없어서, 예전엔 여기서 무조건 괄호를 붙이다가
   "123-45-678901 (undefined)"가 그대로 찍히는 버그가 있었다). Dashboard.tsx/Trades.tsx/
-  Dividends.tsx가 전부 여기서 가져다 쓴다.
+  Dividends.tsx/RealizedGains.tsx가 전부 여기서 가져다 쓴다. `formatAccountOption`은
+  라벨 문자열이 아니라 라벨 엔트리 전체(`findAccountLabel`)를 받는다 — 엔트리의
+  `accountNumber`(표시용 계좌번호, 토스 accountSeq "1" 대신 보여줄 실제 번호)를
+  `displayAccountNumber`로 같이 반영하기 위함(`backend/CLAUDE.md`의 "계좌 별칭" 절).
 - `src/kbSync.ts` — `getKbLinkStatus()`: `api.getCredentialStatus()`(KB 자격증명
   저장 여부) + `api.getCredentialInfo()`(KB `accountId` 필드, `kind:'account'`로
   이미 노출됨)를 합쳐 `{configured, linkedAccountId}`를 돌려준다. KB Open API는

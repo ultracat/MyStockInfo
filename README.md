@@ -17,6 +17,18 @@ API 연동 없이 CSV로 보유종목·매매내역을 직접 관리합니다(�
 > 일반 웹 서버(개인/가족용, PWA)로 띄울 수 있게 만드는 작업 중입니다. `main`에는 아직
 > 머지되지 않았고, 상세는 그 브랜치의 `backend/CLAUDE.md`를 참고하세요.
 
+## 릴리스
+
+세 OS 설치 파일(`.dmg` / `.AppImage` / `.exe`)은 GitHub Actions가 각 OS 러너에서
+만듭니다 — Apple Silicon 맥에서는 Windows/Linux 산출물을 만들 수 없기 때문입니다.
+
+1. 루트 `version.json`의 버전을 올립니다(여기가 단일 원천입니다).
+2. 커밋 후 `git tag -a v0.3.0 -m "..." && git push origin v0.3.0`
+3. Actions가 세 산출물을 만들고 **초안** 릴리스를 올립니다. 내용을 확인하고 직접 공개하세요.
+
+필요한 OS만 빌드하려면 Actions 탭에서 수동 실행 후 플랫폼을 고르면 됩니다(릴리스는 안 만듭니다).
+세 산출물 모두 코드 서명이 안 돼 있어 macOS는 Gatekeeper, Windows는 SmartScreen 경고가 뜹니다.
+
 ## 로고
 
 파란 스퀘어클 위의 흰 **M**은 앱 이름(**My** Stock)이자, 왼쪽보다 오른쪽 봉우리가

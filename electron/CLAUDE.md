@@ -219,6 +219,48 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   다만 인스톨러를 실제로 실행해 설치 마법사 플로우까지 검증하지는 않았다(시스템에 설치되는
   동작이라 보류) — unpacked 실행 파일 검증으로 앱 코드 자체의 동작은 확인된 상태다.
 
+## GitHub Actions 릴리스 (`.github/workflows/release.yml`)
+
+**로컬 크로스 빌드는 Apple Silicon 맥에서 불가능하다** — Windows는 `rcedit`가
+Wine(x86_64)을 타고, Linux AppImage는 `mksquashfs`가 x86_64 바이너리라 둘 다
+`bad CPU type in executable`로 죽는다(실측). Rosetta를 까는 것보다 **그 OS의
+러너에서 빌드**하는 쪽이 재현성이 좋아서 CI로 옮겼다.
+
+```
+plan (ubuntu)   고른 플랫폼만 담은 matrix JSON 출력
+  └ package     각 OS 러너에서 npm ci → 패키징 → upload-artifact
+      └ release 태그 push일 때만. 산출물을 모아 **초안** 릴리스 생성
+```
+
+- **릴리스 주체는 release 잡 하나뿐**이다. electron-builder가 `GH_TOKEN`을 보면
+  스스로 릴리스를 만들어 세 잡이 경쟁하므로 `-- --publish never`로 막는다.
+  `--` 뒤 인자는 스크립트 문자열 맨 끝에 붙어서(`npm run build && electron-builder
+  --mac --publish never`) electron-builder가 받는다.
+- **`plan` 잡이 따로 있는 이유**: 잡 단위 `if`는 matrix가 펼쳐지기 전에 평가돼서
+  `matrix`를 읽을 수 없다. "어떤 OS를 돌릴지"를 앞 잡에서 JSON으로 만들어 넘긴다.
+- 태그 push로 깨어나면 `inputs`가 비어 있어 `inputs.platforms || 'all'`이 `all`이 된다
+  — 같은 워크플로를 수동 실행과 태그 양쪽에서 쓴다.
+- 기본 권한은 `contents: read`, 릴리스 잡만 `write`. `if-no-files-found: error`로
+  산출물 없이 "성공"하는 것을 막고, `fail-fast: false`로 한 OS가 실패해도 나머지는 받는다.
+- 릴리스는 **초안(draft)**이다 — 되돌리기 어려운 공개 배포만 사람이 눌러서 확정한다.
+
+### 커밋되지 않는 자격증명 두 개를 CI에서 되살린다
+`backend/src/google/clientConfig.ts`와 `backend/src/fx/eximbankConfig.ts`는
+빌드에 값을 박아 넣는 파일이라 `.gitignore`에 있다 — **러너엔 없으므로 빌드가
+`Cannot find module`로 죽는다.** 워크플로가 Secrets(`GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, `EXIMBANK_AUTH_KEY`)에서 두 파일을 만들고, Secrets가
+없으면 `.example.ts` 템플릿으로 폴백해 빌드 자체는 통과시킨다(그 경우 Google
+Sheets 연동과 실시간 환율 조회만 동작하지 않고 `::warning::`을 남긴다).
+
+### 릴리스 절차
+1. 루트 `version.json`의 `version`을 올린다(**단일 원천** — `generate-app-info.cjs`가
+   루트 `package.json`을 자동으로 맞춘다. `package-lock.json`은 안 맞춰주므로 같이 고친다).
+2. 커밋 → push → `git tag -a vX.Y.Z` → **태그 push가 빌드를 깨운다.**
+3. Actions가 세 산출물을 만들고 초안 릴리스를 올리면, 내용을 확인하고 사람이 공개한다.
+
+필요한 OS만 돌리려면 Actions 탭에서 수동 실행(`workflow_dispatch`)하고 플랫폼을
+고른다 — 이때는 빌드만 하고 릴리스는 만들지 않는다.
+
 ## 앱 아이콘
 
 **원본은 `build/icon.svg` 하나다.** 나머지는 전부 거기서 생성되는 산출물이라 직접

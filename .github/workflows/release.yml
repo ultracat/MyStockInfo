@@ -1,0 +1,151 @@
+#  세 OS 배포용 산출물(dmg / AppImage / exe)을 각 OS의 러너에서 만든다.
+#
+#  왜 OS별 러너인가: Apple Silicon 맥에서 로컬 크로스 빌드는 도구 아키텍처 때문에
+#  막힌다 — Windows는 rcedit가 Wine(x86_64)을 타고, Linux AppImage는 mksquashfs가
+#  x86_64 바이너리라 둘 다 `bad CPU type in executable`로 죽는다. Rosetta를 까는
+#  것(시스템 변경)보다 그 OS의 러너에서 빌드하는 쪽이 재현성이 좋다.
+#
+#  구조
+#    plan (ubuntu)  고른 플랫폼만 담은 matrix JSON을 출력
+#      └ package    각 OS 러너에서 npm ci → 패키징 → 아티팩트 업로드
+#          └ release  태그 push일 때만. 산출물을 모아 **초안** 릴리스를 만든다
+#
+#  릴리스를 만드는 주체는 release 잡 하나뿐이다 — electron-builder가 GH_TOKEN을
+#  보고 스스로 릴리스를 만들면 세 잡이 서로 경쟁하므로 `--publish never`로 막는다.
+name: release
+
+on:
+  # 태그를 밀면 빌드 + 초안 릴리스까지 간다.
+  push:
+    tags: ['v*']
+  # 평소엔 필요한 OS만 골라 수동으로 돌린다(비용·시간 절약). 이때는 릴리스를 안 만든다.
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 빌드할 플랫폼
+        type: choice
+        options: [all, linux, mac, windows]
+        default: all
+
+# 기본은 읽기만. 릴리스를 만드는 잡에서만 쓰기 권한을 준다.
+permissions:
+  contents: read
+
+jobs:
+  # 잡 단위 `if`는 matrix가 펼쳐지기 전에 평가돼서 `matrix`를 읽을 수 없다.
+  # 그래서 "어떤 OS를 돌릴지"를 앞 잡에서 JSON으로 만들어 넘긴다.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        shell: bash
+        # 태그 push로 깨어났을 때는 inputs가 비어 있으므로 'all'로 떨어진다.
+        run: |
+          selected="${{ inputs.platforms || 'all' }}"
+          all='[
+            {"name":"linux","runner":"ubuntu-latest","script":"package:linux","glob":"release/*.AppImage"},
+            {"name":"mac","runner":"macos-latest","script":"package:mac","glob":"release/*.dmg"},
+            {"name":"windows","runner":"windows-latest","script":"package:win","glob":"release/*.exe"}
+          ]'
+          if [ "$selected" = "all" ]; then
+            matrix=$(jq -c '.' <<<"$all")
+          else
+            matrix=$(jq -c --arg s "$selected" '[.[] | select(.name == $s)]' <<<"$all")
+          fi
+          echo "선택: $selected → $matrix"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  package:
+    needs: plan
+    strategy:
+      # 한 OS가 실패해도 나머지 OS의 산출물은 받는다.
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 이 두 파일은 앱 빌드에 값을 박아 넣는 자격증명이라 저장소에 커밋되지 않는다
+      # (.gitignore, backend/CLAUDE.md의 "Google Sheets 연동"·"환율 조회" 절 참고).
+      # 러너엔 없으므로 Secrets에서 되살린다 — Secrets가 설정돼 있지 않아도 빌드
+      # 자체는 통과해야 하므로(아이콘·UI 확인용 빌드 등) .example 템플릿으로 폴백한다.
+      # 그 경우 Google Sheets 연동과 실시간 환율 조회만 동작하지 않는다.
+      - name: 빌드 전용 자격증명 파일 생성
+        shell: bash
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          EXIMBANK_AUTH_KEY: ${{ secrets.EXIMBANK_AUTH_KEY }}
+        run: |
+          if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ]; then
+            {
+              printf "export const GOOGLE_CLIENT_ID = '%s';\n" "$GOOGLE_CLIENT_ID"
+              printf "export const GOOGLE_CLIENT_SECRET = '%s';\n" "$GOOGLE_CLIENT_SECRET"
+            } > backend/src/google/clientConfig.ts
+            echo "google/clientConfig.ts: Secrets에서 생성"
+          else
+            cp backend/src/google/clientConfig.example.ts backend/src/google/clientConfig.ts
+            echo "::warning::GOOGLE_CLIENT_ID/SECRET이 없어 템플릿으로 빌드합니다 — Google Sheets 연동이 동작하지 않습니다."
+          fi
+
+          if [ -n "$EXIMBANK_AUTH_KEY" ]; then
+            printf "export const EXIMBANK_AUTH_KEY = '%s';\n" "$EXIMBANK_AUTH_KEY" \
+              > backend/src/fx/eximbankConfig.ts
+            echo "fx/eximbankConfig.ts: Secrets에서 생성"
+          else
+            cp backend/src/fx/eximbankConfig.example.ts backend/src/fx/eximbankConfig.ts
+            echo "::warning::EXIMBANK_AUTH_KEY가 없어 템플릿으로 빌드합니다 — 실시간 환율 조회가 동작하지 않습니다(수동 환율은 동작)."
+          fi
+
+      # `--` 뒤의 인자는 스크립트 문자열 맨 끝에 붙는다. package:* 스크립트는
+      # `npm run build && electron-builder --<os>`로 끝나므로 electron-builder가 받는다.
+      - name: 패키징
+        shell: bash
+        run: npm run ${{ matrix.script }} -- --publish never
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mystock-${{ matrix.name }}
+          path: ${{ matrix.glob }}
+          # 산출물이 하나도 없는데 "성공"으로 끝나는 것을 막는다.
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    # 태그로 깨어났을 때만. 수동 실행은 빌드만 하고 끝난다.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: 받은 산출물
+        run: ls -lh artifacts
+
+      # 초안(draft)으로 만든다 — 되돌리기 어려운 공개 배포만 사람이 확인하고 누른다.
+      - name: 초안 릴리스 생성
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --draft \
+            --generate-notes \
+            --title "${{ github.ref_name }}" \
+            artifacts/*

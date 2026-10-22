@@ -15,6 +15,7 @@
     "dev:backend": "npm run dev --workspace backend",
     "dev:electron": "npm run dev --workspace electron",
     "generate:app-info": "node scripts/generate-app-info.cjs",
+    "generate:icons": "electron scripts/generate-icons.cjs",
     "build:backend": "npm run generate:app-info && npm run build --workspace backend",
     "build:frontend": "npm run build --workspace frontend",
     "build:electron": "npm run build --workspace electron",
@@ -39,10 +40,12 @@
     "productName": "MyStock",
     "copyright": "Copyright © 2026 ChangWoo Lee",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "electron/dist/**/*",
+      "electron/assets/**/*",
       "electron/package.json",
       "frontend/dist/**/*",
       "node_modules/**/*",
@@ -84,6 +87,7 @@
     ],
     "afterPack": "scripts/afterPack-mac-finalize.cjs",
     "mac": {
+      "icon": "build/icon.icns",
       "category": "public.app-category.finance",
       "target": [
         "dmg"
@@ -91,12 +95,14 @@
       "identity": null
     },
     "linux": {
+      "icon": "build/icons",
       "category": "Office",
       "target": [
         "AppImage"
       ]
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ]

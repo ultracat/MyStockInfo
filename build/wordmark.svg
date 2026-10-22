@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="600" viewBox="0 0 1800 600">
+  <!--
+    README/문서용 가로 워드마크. 아이콘 마크(build/icon.svg와 **같은 도형**을 축소해
+    인라인)는 왼쪽, 이름은 오른쪽. 아이콘을 고치면 이 파일의 <g> 안쪽도 같이 고쳐야
+    한다(`scripts/generate-icons.cjs`가 아니라 수동 — 로고는 자주 바뀌지 않는다).
+    글자 색은 밝은/어두운 배경 양쪽에서 읽히는 중간 톤으로 골랐다(GitHub README가
+    다크 테마로도 보이므로).
+  -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#3b8be9"/>
+      <stop offset="0.55" stop-color="#2470cf"/>
+      <stop offset="1" stop-color="#14509f"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="squircle">
+      <rect x="100" y="100" width="824" height="824" rx="184" ry="184"/>
+    </clipPath>
+  </defs>
+
+  <!-- 1024 캔버스의 아이콘 도형을 0.5583배로 축소 → 스퀘어클이 70..530에 놓인다 -->
+  <g transform="translate(14.2 14.2) scale(0.5583)">
+    <rect x="100" y="100" width="824" height="824" rx="184" ry="184" fill="url(#bg)"/>
+      <g clip-path="url(#squircle)">
+        <rect x="100" y="100" width="824" height="824" fill="url(#sheen)"/>
+        <!-- 정보의 바탕: 그리드 -->
+        <g stroke="#ffffff" stroke-opacity="0.15" stroke-width="8" stroke-linecap="round">
+          <line x1="228" y1="430" x2="796" y2="430"/>
+          <line x1="228" y1="545" x2="796" y2="545"/>
+          <line x1="228" y1="660" x2="796" y2="660"/>
+        </g>
+      </g>
+
+      <!-- 기준선(축) -->
+      <line x1="228" y1="748" x2="796" y2="748" stroke="#ffffff" stroke-opacity="0.5"
+            stroke-width="16" stroke-linecap="round"/>
+
+      <!-- M = My Stock, 동시에 상승–조정–더 큰 상승의 주가 선 -->
+      <path d="M248 668 L248 432 L512 592 L776 350 L776 668"
+            fill="none" stroke="#ffffff" stroke-width="96"
+            stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- i의 점 = 정보(information) / 현재가 데이터 포인트 -->
+      <circle cx="776" cy="212" r="48" fill="#35d49b"/>
+  </g>
+
+  <text x="640" y="300" dominant-baseline="central" font-size="250"
+        font-family="'Helvetica Neue', Helvetica, Arial, 'Segoe UI', sans-serif"
+        letter-spacing="-6">
+    <tspan fill="#8a8884" font-weight="400">My</tspan><tspan fill="#2470cf" font-weight="700">Stock</tspan>
+  </text>
+</svg>

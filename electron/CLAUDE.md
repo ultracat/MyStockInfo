@@ -159,8 +159,10 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   열기 필요, Gatekeeper 경고), 다른 사람에게 배포하면 "손상되었거나 확인할 수 없는
   개발자입니다" 경고가 뜬다. 실제로 여러 사람에게 배포하려면 유료 Apple Developer
   Program 인증서로 서명 + 공증(`mac.notarize`)이 필요하다.
-- **아이콘 미설정** — 기본 Electron 아이콘이 붙는다. `.icns` 파일을 만들어
-  `build.mac.icon`에 지정하면 바뀐다.
+- **아이콘**: `build/icon.icns`(`build.mac.icon`). 패키징 후
+  `Contents/Info.plist`의 `CFBundleIconFile`이 `icon.icns`이고
+  `Contents/Resources/icon.icns`가 원본과 바이트 동일한지까지 확인했다 —
+  아래 "앱 아이콘" 절 참고.
 - `main.ts`가 `app.setName('@mystock/electron')`으로 이름을 고정하므로, 패키징된 앱도
   dev와 똑같이 `~/Library/Application Support/@mystock/electron/`을 쓴다 — 기존에 dev에서
   입력해둔 자격증명/배당 기록을 그대로 이어서 쓸 수 있다(별도 마이그레이션 불필요).
@@ -178,7 +180,10 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   `author`에 이메일이 있어야 빌드되므로(현재 루트 `package.json`의 `author`는 이름
   문자열만 있음), 개인정보를 커밋된 `package.json`에 넣지 않기 위해 보류했다. 필요해지면
   `build.linux.target`에 `"deb"`를 추가하고 `author`를 `{name, email}` 객체로 바꾸면 된다.
-- **아이콘 미설정** — 기본 Electron 아이콘이 붙는다(Mac과 동일한 이유로 아직 안 함).
+- **아이콘**: `build/icons/`(`build.linux.icon`) — **단일 PNG가 아니라 디렉터리**를
+  준다. 단일 PNG를 주면 electron-builder가 그 크기 하나만 hicolor에 설치해서(실측:
+  `1024x1024/apps/` 하나뿐) 데스크톱 메뉴/작업표시줄이 매번 축소해 쓴다. 디렉터리를
+  주면 `16~1024` 8개가 전부 설치된다(`usr/share/icons/hicolor/<N>x<N>/apps/`에서 확인).
 - `category: "Office"` — `.desktop` 항목의 프리데스크톱 분류. 앱 성격상 "Finance"도
   가능하지만(Mac의 `public.app-category.finance`와 대응) 리눅스 데스크톱 환경에서
   메뉴 노출이 더 안정적인 표준 카테고리인 `Office`를 우선 썼다.
@@ -199,8 +204,13 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   코드 서명 인증서(EV 인증서면 SmartScreen 평판이 즉시 쌓임)가 필요하다.
   `build.win.certificateFile`/`certificatePassword` 또는 `signtoolOptions`로 나중에
   추가할 수 있다.
-  아이콘도 미설정 — 기본 Electron 아이콘이 붙는다. `.ico` 파일을 만들어
-  `build.win.icon`에 지정하면 바뀐다.
+- **아이콘**: `build/icon.ico`(`build.win.icon`). **이 단계는 Apple Silicon 맥에서
+  실행되지 않는다** — electron-builder가 exe에 아이콘을 박을 때 쓰는 `rcedit`는
+  Windows 바이너리라 Wine(x86_64)을 타는데, Rosetta가 없으면
+  `bad CPU type in executable`로 죽는다(아이콘과 무관하게 `package:win` 자체가
+  원래부터 Windows 머신에서만 돌았다). 맥에서 확인할 수 있는 건 electron-builder가
+  `rcedit ... --set-icon <repo>/build/icon.ico`를 올바른 경로로 호출한다는 것까지다 —
+  실제 exe 아이콘은 Windows에서 빌드해 확인해야 한다(미검증).
 - 실제로 Windows 11 머신에서 `npm run package:win` 전체 빌드 →
   `release/win-unpacked/MyStock.exe` 직접 실행(NSIS 인스톨러를 거치지 않고 unpacked
   산출물로 검증) → 창이 정상적으로 뜨고 백엔드가 4317 포트에 바인딩 → `/api/accounts`가
@@ -208,6 +218,44 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   확인했다. NSIS 인스톨러(`MyStock Setup 0.1.0.exe`) 자체도 산출물로 정상 생성된다.
   다만 인스톨러를 실제로 실행해 설치 마법사 플로우까지 검증하지는 않았다(시스템에 설치되는
   동작이라 보류) — unpacked 실행 파일 검증으로 앱 코드 자체의 동작은 확인된 상태다.
+
+## 앱 아이콘
+
+**원본은 `build/icon.svg` 하나다.** 나머지는 전부 거기서 생성되는 산출물이라 직접
+고치지 않는다 — 로고를 바꾸려면 SVG를 고치고 루트에서 `npm run generate:icons`
+(`scripts/generate-icons.cjs`)를 돌린다.
+
+| 산출물 | 쓰이는 곳 |
+|---|---|
+| `build/icon.png` (1024) | 마스터 PNG — 아래 전부의 원본 |
+| `build/icon.icns` | mac 실행 파일/DMG 아이콘 (`build.mac.icon`) |
+| `build/icon.ico` | Windows 실행 파일/NSIS 아이콘 (`build.win.icon`) |
+| `build/icons/<N>x<N>.png` | Linux hicolor 아이콘 세트 (`build.linux.icon`) |
+| `electron/assets/icon.png` (512) | **런타임** 아이콘 — 아래 참고 |
+| `frontend/public/icon.svg` | 브라우저 탭 파비콘(Vite dev) |
+| `build/wordmark.svg` / `.png` | README/문서용 가로 워드마크 |
+
+**아이콘을 정하는 곳이 두 군데다.** 실행 파일·설치 파일 아이콘(Finder/탐색기에서
+보이는 것)은 빌드 때 electron-builder가 박고, **Linux 창/작업표시줄 아이콘과 mac dev
+실행의 Dock 아이콘은 런타임에 지정해야 한다** — `main.ts`의 `APP_ICON_PATH`
+(`BrowserWindow({icon})` + `app.dock.setIcon()`). 둘 중 하나만 하면 나머지 자리에
+Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `package.json`의
+`build.files`에 `electron/assets/**/*`가 있어야 asar에 들어간다.
+
+생성 방식(이 머신엔 ImageMagick/rsvg/inkscape가 없어서 고른 경로):
+- **SVG → PNG**: 이미 의존성으로 있는 Electron의 Chromium으로 렌더한다. SVG 마크업을
+  HTML에 **인라인**해야 한다 — `<img src="...svg">`로 참조하면 Chromium이 `file://`
+  페이지의 `file://` 하위 리소스를 막아서 깨진 이미지가 캡처된다(조용히 성공한 것처럼
+  보이고, 파일 크기로만 티가 난다).
+- **창은 하나를 재사용한다** — 투명·프레임 없는 `BrowserWindow`를 `destroy()`한 뒤
+  같은 프로세스에서 또 만들면 그 창의 첫 로드가 `ERR_FAILED`로 거부됐다.
+- 크기별 리샘플링은 `sips`, icns 패키징은 `iconutil`(둘 다 macOS 기본). ICO는 PNG를
+  그대로 품을 수 있는 포맷이라 헤더만 직접 쓴다(`writeIco`, 256은 폭·높이 칸에 0).
+
+**`.gitignore`에 `build/`를 넣지 말 것** — electron-builder의 `buildResources` 폴더와
+이름이 같아서, 그 줄이 있으면 아이콘이 커밋에서 조용히 빠진다(실제로 이 저장소에
+그 줄이 있어서 `git check-ignore`로 확인하고 지웠다). 빌드 산출물은 전부 `dist/`·
+`release/`로 나가므로 `build/`는 소스로만 쓰인다.
 
 ## 자격증명 암호화와의 관계
 

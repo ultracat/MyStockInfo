@@ -1,7 +1,11 @@
 node_modules/
 dist/
-build/
 release/
+
+# `build/`는 여기서 무시하지 않는다 — electron-builder의 buildResources 폴더와
+# 이름이 같아서, 그 줄이 있으면 build/icon.icns|ico|png|svg(세 OS 앱 아이콘)가
+# 커밋에서 조용히 빠진다. 빌드 산출물은 전부 dist/ · release/로 나가므로
+# build/는 소스로만 쓰인다.
 *.log
 .DS_Store
 

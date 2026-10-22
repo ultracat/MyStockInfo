@@ -37,6 +37,18 @@ npm run build:backend   # electron이 dist/index.js를 require하므로 최초 1
 npm run dev              # frontend(Vite) + electron을 동시에 실행
 ```
 
+위 과정을 한 번에 해 주는 실행 파일도 저장소 루트에 있습니다 — 처음 실행이면 `npm install`까지
+하고, 이미 실행 중(포트 4317/5173 사용 중)이면 중복 실행하지 않습니다.
+
+| 플랫폼 | 실행 방법 |
+|---|---|
+| macOS | Finder에서 `start-mac.command` 더블클릭 (또는 터미널에서 `./start.sh`) |
+| Linux | 터미널에서 `./start.sh` |
+| Windows | 탐색기에서 `start-windows.bat` 더블클릭 |
+
+nvm/Homebrew로 설치한 node는 셸 설정을 읽지 않는 더블클릭 실행에서도 찾도록 했습니다.
+macOS에서 처음 더블클릭할 때 "확인되지 않은 개발자" 경고가 뜨면 우클릭 → 열기로 한 번 허용하세요.
+
 Electron 창이 뜨면 좌측 **설정** 메뉴에서 증권사별 API 키를 입력하세요.
 저장된 키는 OS 키체인 기반으로 암호화되어 로컬에만 저장되고, `backend/data/`(gitignore됨)
 아래 파일로 유지됩니다.

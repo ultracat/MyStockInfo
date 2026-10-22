@@ -1,9 +1,17 @@
-import { app, BrowserWindow, dialog, Menu, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, shell } from 'electron';
 import path from 'node:path';
 import { startServer } from '@mystock/backend';
 
 const BACKEND_PORT = 4317;
 const FRONTEND_DEV_URL = 'http://localhost:5173';
+
+// 런타임 아이콘. 실행 파일/설치본 아이콘(Finder·탐색기에서 보이는 것)은 빌드 때
+// electron-builder가 박는 별개의 파일(build/icon.icns|ico|png)이고, 이 PNG는
+// Linux의 **창/작업표시줄 아이콘**과 mac dev 실행의 **Dock 아이콘**용이다 —
+// 둘 다 런타임에 지정하지 않으면 Electron 기본 아이콘이 그대로 보인다.
+// `electron/assets/**`가 루트 package.json의 build.files에 있어야 asar에 들어간다.
+// dev(electron/src)와 패키징(electron/dist) 둘 다 ../assets로 풀린다.
+const APP_ICON_PATH = path.join(__dirname, '../assets/icon.png');
 
 // Electron derives the default app name (and therefore
 // `app.getPath('userData')`, where credentials.json/dividends.json/
@@ -34,6 +42,8 @@ function createWindow() {
     width: 1280,
     height: 800,
     title: 'MyStock',
+    // Windows/Linux에서만 쓰인다(mac은 창 아이콘 개념이 없고 Dock 아이콘을 따로 지정).
+    icon: APP_ICON_PATH,
     // 처음부터 보여주면 로드가 끝나기 전의 흰 화면이 그대로 노출된다 —
     // 렌더러가 첫 페인트를 마친 뒤('ready-to-show') 보여줘서 그 틈을 없앤다.
     show: false,
@@ -66,6 +76,13 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // 패키징된 mac 앱은 번들의 .icns를 쓰므로 건드리지 않는다 — dev 실행만
+  // Electron 기본 아이콘으로 뜨기 때문에 여기서 Dock 아이콘을 채워준다.
+  if (process.platform === 'darwin' && !app.isPackaged) {
+    const dockIcon = nativeImage.createFromPath(APP_ICON_PATH);
+    if (!dockIcon.isEmpty()) app.dock?.setIcon(dockIcon);
+  }
+
   // Runs in Electron's main process, so backend/src/credentials.ts can
   // reach `electron.safeStorage` and `electron.app.getPath('userData')`.
   const server = startServer(BACKEND_PORT);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Overview from './pages/Overview';
 import Dashboard from './pages/Dashboard';
+import StockReturns from './pages/StockReturns';
 import Dividends from './pages/Dividends';
 import Trades from './pages/Trades';
 import RealizedGains from './pages/RealizedGains';
@@ -12,6 +13,7 @@ import About from './pages/About';
 type Page =
   | 'overview'
   | 'dashboard'
+  | 'stockReturns'
   | 'dividends'
   | 'trades'
   | 'realizedGains'
@@ -49,6 +51,15 @@ function GridIcon() {
       <rect x="14" y="3" width="7" height="7" />
       <rect x="14" y="14" width="7" height="7" />
       <rect x="3" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+
+function TrendingUpIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <polyline points="3 17 9 11 13 15 21 7" />
+      <polyline points="15 7 21 7 21 13" />
     </svg>
   );
 }
@@ -139,6 +150,7 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] = [
   { id: 'overview', label: '대시보드', icon: PieIcon },
   { id: 'dashboard', label: '보유 종목', icon: GridIcon },
+  { id: 'stockReturns', label: '종목별 수익', icon: TrendingUpIcon },
   { id: 'dividends', label: '배당금', icon: PercentIcon },
   { id: 'trades', label: '매매내역', icon: RepeatIcon },
   { id: 'realizedGains', label: '실현손익', icon: FileTextIcon },
@@ -183,6 +195,7 @@ export default function App() {
       <main className="main">
         {page === 'overview' && <Overview />}
         {page === 'dashboard' && <Dashboard />}
+        {page === 'stockReturns' && <StockReturns />}
         {page === 'dividends' && <Dividends />}
         {page === 'trades' && <Trades />}
         {page === 'realizedGains' && <RealizedGains />}

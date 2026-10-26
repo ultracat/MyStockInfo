@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface DonutDetailRow {
   symbol: string;
@@ -52,7 +53,13 @@ export default function DonutDetailModal({
   const shownRows = activeView ? activeView.rows : (rows ?? []);
   const countText = activeView ? activeView.countLabel(shownRows.length) : `${shownRows.length}개 종목`;
 
-  return (
+  // ⚠ `document.body`로 portal한다 — `.modal-overlay`는 `position: fixed`인데,
+  // 이 모달을 여는 화면(Overview.tsx 등)은 화면 줌의 `transform: scale`이 걸린
+  // `.main` 안에 있다. **`transform`이 걸린 요소는 그 안의 `position: fixed`의
+  // 기준(containing block)이 된다** — 그대로 두면 `inset: 0` 배경이 화면이 아니라
+  // `.main` 기준이 되어 위치가 어긋나고, 배율만큼 같이 확대된다.
+  // (styles.css의 "화면 줌" 절 참고.)
+  return createPortal(
     <div className="modal-overlay" onClick={onClose} role="presentation">
       <div
         className="modal-content"
@@ -135,6 +142,7 @@ export default function DonutDetailModal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -230,6 +230,77 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   없고(`backend/CLAUDE.md`의 "백업/복원" 절 참고), 어차피 백엔드 캐시 전체가
   무효화돼야 하므로 "앱을 재시작해주세요" 안내 문구로 끝낸다.
 
+## 화면 줌 (돋보기 줌)
+
+트랙패드 핀치·⌘휠·⌘`+`/`-`/`0`으로 화면을 확대/축소한다. **`src/useZoom.ts`의 state
+하나가 배율의 단일 원천**이고, `App.tsx`가 그걸 `.app-shell`에 CSS 변수 `--z`로
+내려보낸다 — "실제 적용된 값"을 DOM에서 역산해 읽는 경로를 만들지 말 것(두 곳에서
+읽으면 반드시 어긋난다).
+
+**레이아웃 줌이 아니라 돋보기 줌이다.** 둘은 다른 기법이고, 사용자가 명시적으로
+후자를 골랐다(2026-10-27):
+
+| | 레이아웃 줌 (`setZoomFactor`) | **돋보기 줌 (이 앱)** |
+|---|---|---|
+| 글자가 커지면 | 한 줄 글자 수가 줄고 다시 흐른다 | 그대로, 전체가 비례해서 커진다 |
+| 사이드바 | 같이 커진다(일부만 제외 **불가능**) | 그대로 — 배율 밖에 있다 |
+| 확대하면 | 창 안에 다 들어감 | 넘치고 **스크롤** |
+
+### 래퍼 3겹
+```
+.app-shell (style={{ '--z': zoom }})
+  .sidebar         ← 배율 밖. 항상 같은 크기
+  .zoom-viewport   ← overflow: auto (스크롤 담당 — 예전엔 .main이 했다)
+    .zoom-sizer    ← 레이아웃에서 "확대된 크기"를 차지
+      .main        ← 뷰포트 크기로 배치된 뒤 scale
+  .zoom-indicator  ← 배율 밖. 100%일 때는 아예 안 뜬다
+```
+
+- ⚠ **`.zoom-sizer`가 필요한 이유**: CSS `transform`은 **레이아웃 공간을 차지하지
+  않는다.** `.main`에 `scale(2)`만 걸면 부모가 보기엔 여전히 원래 크기라 **스크롤이
+  안 생기고** 넘친 부분에 영원히 닿을 수 없다.
+- ⚠ **sizer의 높이만 JS로 잰다**(`ResizeObserver` → `mainHeight * zoom`). 폭은
+  뷰포트에서 바로 나오지만(`calc(100% * max(1, var(--z)))`), 이 앱의 `.main`은
+  뷰포트에 맞춰진 작업영역이 아니라 **내용만큼 늘어나는 문서**라 높이를 CSS만으로는
+  알 수 없다. `offsetHeight`는 `transform`에 영향받지 않는 레이아웃 높이라 배율로
+  나눌 필요가 없다(`getBoundingClientRect()`는 반대로 배율이 곱해진 값을 준다).
+- ⚠ **확대와 축소는 비대칭이다**(`max(1, var(--z))`). sizer 폭을
+  `calc(100% * var(--z))`로만 쓰면 축소할 때 화면 절반만 쓰고 나머지가 빈 공간이
+  된다 — **축소는 "더 많이 보려고" 하는 것**이다. 실측(뷰포트 1330×987):
+
+  | 배율 | sizer | .main 레이아웃 | 화면에 보이는 크기 | 결과 |
+  |---|---|---|---|---|
+  | 100% | 1330×2202 | 1330×2202 | 1330×2202 | 그대로 |
+  | 140% | 1862×3083 | **1330**×2202 | 1862×3083 | 리플로우 없이 넘침+스크롤 |
+  | 50% | 1330×1085 | **2660**×2169 | 1330×1085 | 여백 없이 더 많이 보임 |
+
+### ⚠ `position: fixed`는 줌 밖으로 빼야 한다
+`transform`이 걸린 요소는 그 안의 `position: fixed`의 **기준(containing block)이
+된다.** `DonutDetailModal.tsx`가 `createPortal(…, document.body)`을 쓰는 이유가
+이것 — 그냥 두면 `.modal-overlay`의 `inset: 0` 배경이 화면이 아니라 `.main` 기준이
+되고 배율만큼 같이 확대된다. **새로 `position: fixed` 요소를 만들면 똑같이
+포털하거나 `.app-shell` 직속에 둘 것.** (`.tooltip`은 `position: absolute`라
+내용과 같이 커지는 게 맞으므로 그대로 둔다.)
+
+### 이 앱에서 안 깨진 것
+`getBoundingClientRect()`는 scale된 **화면 좌표**를 주므로 절대 픽셀로 쓰면
+배율만큼 틀어지는데, **이 프로젝트엔 그런 코드가 한 군데도 없다**(`clientX`/
+`getBoundingClientRect` 사용처 0건 — 차트가 전부 선언형 SVG 호버라 포인터 좌표를
+직접 계산하지 않는다). 나중에 드래그 선택·히트 테스트를 손으로 구현하게 되면
+`new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse())`로
+역변환해야 한다. 비율로 쓰는 값(`(x - left) / width`)과 `scrollTop`/`clientHeight`
+(레이아웃 좌표)는 배율과 무관하므로 안전하다.
+
+### 입력 처리
+- 트랙패드 핀치는 **`ctrlKey`가 붙은 `wheel` 이벤트**로 온다(실제 Ctrl은 안 눌려
+  있다). `{ capture: true, passive: false }`로 등록해야 `preventDefault()`가 먹는다.
+- **키보드 단축키(⌘/Ctrl + `+` `-` `0`)는 필수다** — 핀치가 ctrl+wheel로 오는 것은
+  Chromium의 변환이라 OS·트랙패드 드라이버에 의존한다(리눅스 터치패드는 보장 못 함).
+- 수식어 없는 휠은 **가로채지 않는다** — 평범한 스크롤이 그대로 동작해야 한다.
+- Electron 쪽에도 짝이 있다(`electron/CLAUDE.md`의 "화면 줌" 절): 메뉴의 줌 항목
+  제거 + `setVisualZoomLevelLimits(1,1)` + `did-finish-load`의 `setZoomFactor(1)`.
+  **이 셋이 없으면 한 제스처에 두 줌이 곱해진다.**
+
 ## 공용 패턴 (여러 페이지가 공유)
 
 이 프로젝트 화면 대부분(Dashboard/Dividends/Trades)이 아래 패턴을 반복해서 쓴다 —

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { MAX_ZOOM, MIN_ZOOM, useZoom } from './useZoom';
 import Overview from './pages/Overview';
 import Dashboard from './pages/Dashboard';
 import StockReturns from './pages/StockReturns';
@@ -147,6 +148,76 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
   );
 }
 
+function ZoomInIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <line x1="12" y1="5" x2="12" y2="19" />
+    </svg>
+  );
+}
+
+function ZoomOutIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+/**
+ * 배율이 100%가 아닐 때만 뜨는 줌 표시기.
+ *
+ * 100%일 때 숨기는 것이 핵심이다 — 평소엔 화면을 차지하지 않고, 핀치로 배율이
+ * 틀어졌을 때는 "지금 몇 %인지"와 "되돌리는 방법"이 항상 눈에 보인다. 단축키
+ * (⌘0)만 두면 그걸 모르는 사람은 틀어진 배율에서 빠져나올 방법이 없다.
+ *
+ * 줌 배율 밖(.app-shell 직속)에 둔다 — 안에 두면 확대할수록 표시기도 같이
+ * 커지고, 스크롤에 따라 화면 밖으로 밀려난다.
+ */
+function ZoomIndicator({
+  zoom,
+  onZoomIn,
+  onZoomOut,
+  onReset,
+}: {
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onReset: () => void;
+}) {
+  if (zoom === 1) return null;
+
+  return (
+    <div className="zoom-indicator" role="group" aria-label="화면 배율">
+      <button
+        className="zoom-indicator-btn"
+        onClick={onZoomOut}
+        disabled={zoom <= MIN_ZOOM}
+        title="축소 (⌘-)"
+        aria-label="축소"
+      >
+        <ZoomOutIcon />
+      </button>
+      <span className="zoom-indicator-value" aria-live="polite">
+        {Math.round(zoom * 100)}%
+      </span>
+      <button
+        className="zoom-indicator-btn"
+        onClick={onZoomIn}
+        disabled={zoom >= MAX_ZOOM}
+        title="확대 (⌘+)"
+        aria-label="확대"
+      >
+        <ZoomInIcon />
+      </button>
+      <button className="zoom-indicator-reset" onClick={onReset} title="원래 크기로 (⌘0)">
+        100%
+      </button>
+    </div>
+  );
+}
+
 const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] = [
   { id: 'overview', label: '대시보드', icon: PieIcon },
   { id: 'dashboard', label: '보유 종목', icon: GridIcon },
@@ -163,9 +234,39 @@ const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] =
 export default function App() {
   const [page, setPage] = useState<Page>('overview');
   const [collapsed, setCollapsed] = useState(false);
+  const { zoom, zoomIn, zoomOut, resetZoom } = useZoom();
+
+  // CSS `transform`은 **레이아웃 공간을 차지하지 않는다** — `scale(2)`를 걸어도
+  // 부모가 보기엔 여전히 원래 크기라서 스크롤이 생기지 않고, 넘친 부분에 영원히
+  // 닿을 수 없다. 그래서 `.zoom-sizer`가 "확대된 크기"를 대신 차지한다.
+  //
+  // 가로는 CSS calc만으로 되지만(뷰포트 폭에서 바로 나온다) 세로는 안 된다 —
+  // 이 앱의 `.main`은 뷰포트 높이에 맞춰진 작업영역이 아니라 **내용만큼 늘어나는
+  // 문서**라서, 확대 후 높이를 알려면 지금 내용이 몇 px인지 실제로 재야 한다.
+  const mainRef = useRef<HTMLElement | null>(null);
+  const [mainHeight, setMainHeight] = useState(0);
+
+  useLayoutEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    // offsetHeight는 `transform`에 영향받지 않는 **레이아웃 높이**라 배율로 나눌
+    // 필요가 없다(getBoundingClientRect()는 반대로 배율이 곱해진 값을 준다).
+    const measure = () => setMainHeight(el.offsetHeight);
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    measure();
+    return () => observer.disconnect();
+  }, []);
+
+  // 페이지를 옮기면 스크롤이 전 페이지의 위치에 남아 있다 — 스크롤 주체가
+  // `.main`에서 `.zoom-viewport`로 옮겨갔으므로 여기서 맨 위로 되돌린다.
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    viewportRef.current?.scrollTo(0, 0);
+  }, [page]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" style={{ '--z': zoom } as React.CSSProperties}>
       <nav className={`sidebar${collapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-header">
           {!collapsed && <h1>MyStock</h1>}
@@ -192,18 +293,28 @@ export default function App() {
           );
         })}
       </nav>
-      <main className="main">
-        {page === 'overview' && <Overview />}
-        {page === 'dashboard' && <Dashboard />}
-        {page === 'stockReturns' && <StockReturns />}
-        {page === 'dividends' && <Dividends />}
-        {page === 'trades' && <Trades />}
-        {page === 'realizedGains' && <RealizedGains />}
-        {page === 'watchlist' && <Watchlist />}
-        {page === 'stockLinks' && <StockLinks />}
-        {page === 'settings' && <Settings />}
-        {page === 'about' && <About />}
-      </main>
+      {/* 래퍼 3겹: viewport(스크롤) → sizer(확대된 크기를 레이아웃에 알림) →
+          main(뷰포트 크기로 배치된 뒤 scale). 상세는 frontend/CLAUDE.md의 "화면 줌" 절. */}
+      <div className="zoom-viewport" ref={viewportRef}>
+        <div
+          className="zoom-sizer"
+          style={{ height: mainHeight > 0 ? mainHeight * zoom : undefined }}
+        >
+          <main className="main" ref={mainRef}>
+            {page === 'overview' && <Overview />}
+            {page === 'dashboard' && <Dashboard />}
+            {page === 'stockReturns' && <StockReturns />}
+            {page === 'dividends' && <Dividends />}
+            {page === 'trades' && <Trades />}
+            {page === 'realizedGains' && <RealizedGains />}
+            {page === 'watchlist' && <Watchlist />}
+            {page === 'stockLinks' && <StockLinks />}
+            {page === 'settings' && <Settings />}
+            {page === 'about' && <About />}
+          </main>
+        </div>
+      </div>
+      <ZoomIndicator zoom={zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={resetZoom} />
     </div>
   );
 }

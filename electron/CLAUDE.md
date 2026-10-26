@@ -299,6 +299,27 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 그 줄이 있어서 `git check-ignore`로 확인하고 지웠다). 빌드 산출물은 전부 `dist/`·
 `release/`로 나가므로 `build/`는 소스로만 쓰인다.
 
+## 화면 줌 — 메인 프로세스가 맡는 세 가지
+
+**확대/축소 자체는 렌더러가 CSS `transform: scale`로 한다**(`frontend/CLAUDE.md`의
+"화면 줌" 절 — 사이드바를 제외해야 해서 페이지 줌으로는 불가능하다). 메인
+프로세스는 **Chromium이 같은 제스처에 자기 줌을 겹쳐 걸지 않게 막는 역할**만
+한다. 셋 다 없으면 한 번의 ⌘+ 또는 핀치에 두 줌이 **곱해진다**.
+
+1. **Mac 메뉴에서 줌 항목 제거.** Electron 기본 메뉴의 View에는
+   `zoomIn`/`zoomOut`/`resetZoom`(= **페이지 줌**)이 ⌘+ · ⌘- · ⌘0으로 들어 있다
+   (실측 확인: `View > Actual Size [resetzoom]`, `Zoom In [zoomin]`,
+   `Zoom Out [zoomout]`). **메뉴 accelerator는 네이티브 쪽에서 먼저 잡아가므로
+   렌더러의 `preventDefault()`로는 막을 수 없다** — 항목 자체를 빼야 그 조합이
+   렌더러까지 내려간다. 기본 메뉴를 통째로 없애지는 않는다(⌘Q·복사/붙여넣기가
+   전부 거기 얹혀 있다): `appMenu`/`editMenu`/`windowMenu`는 그대로 두고 View만
+   직접 만든다. Windows/Linux는 원래 `setApplicationMenu(null)`이라 해당 없음.
+2. **`setVisualZoomLevelLimits(1, 1)`** — 터치스크린/트랙패드 핀치로 페이지를
+   통째로 확대하는 Chromium 자체 기능을 1배로 고정한다.
+3. **`did-finish-load`에서 `setZoomFactor(1)`** — ⚠ 페이지 줌은 **origin별로 디스크에
+   기억된다.** 과거에 ⌘+를 눌러 페이지 줌이 남아 있으면 CSS 배율과 이중으로 곱해져
+   "똑같은 100%인데 화면이 크다"가 된다. 매 로드마다 되돌린다.
+
 ## 자격증명 암호화와의 관계
 
 `backend/src/credentials.ts`가 `electron.safeStorage`와 `electron.app.getPath('userData')`를

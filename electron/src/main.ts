@@ -33,6 +33,35 @@ app.setName('@mystock/electron');
 // 그냥 불필요한 줄로 보인다 — 그 두 플랫폼에서만 완전히 없앤다.
 if (process.platform !== 'darwin') {
   Menu.setApplicationMenu(null);
+} else {
+  // ⚠ Mac에서 기본 메뉴를 **그대로** 두면 안 된다. Electron 기본 메뉴의 View에는
+  // `zoomIn`/`zoomOut`/`resetZoom` 역할이 ⌘+ · ⌘- · ⌘0으로 들어 있는데, 이건
+  // **페이지 줌**(`webContents.zoomLevel`)이다 — 렌더러가 CSS `transform: scale`로
+  // 하는 화면 줌과 별개라서, 그대로 두면 ⌘+ 한 번에 두 줌이 **곱해진다**.
+  // 메뉴 accelerator는 네이티브 쪽에서 먼저 잡아가므로 렌더러의 `preventDefault()`로는
+  // 막을 수 없다 — 항목 자체를 빼서 그 조합이 렌더러까지 내려가게 한다.
+  //
+  // 기본 메뉴를 통째로 없애지는 않는다(⌘Q·⌘W·복사/붙여넣기가 전부 여기 얹혀 있다).
+  // 나머지 표준 역할은 그대로 두고 줌 세 항목만 뺀 View를 직접 만든다.
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: 'appMenu' },
+      { role: 'editMenu' },
+      {
+        label: '보기',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+          // 화면 확대/축소(⌘+ · ⌘- · ⌘0)는 렌더러가 직접 처리한다 —
+          // frontend/src/useZoom.ts 참고.
+        ],
+      },
+      { role: 'windowMenu' },
+    ]),
+  );
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -56,6 +85,22 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  // 화면 줌은 렌더러가 CSS `transform: scale`로 직접 한다(frontend/CLAUDE.md의
+  // "화면 줌" 절). 여기선 **Chromium이 같은 제스처에 자기 줌을 겹쳐 걸지 않도록**
+  // 두 경로를 막는다 — 이게 없으면 핀치 한 번에 두 줌이 곱해진다.
+  //
+  // 1) 비주얼 줌(터치스크린/트랙패드 핀치로 페이지를 통째로 확대하는 것)을 1배로 고정.
+  mainWindow.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {
+    // 창이 이미 닫혔으면 실패할 수 있다 — 줌은 부가 기능이라 조용히 넘긴다.
+  });
+
+  // 2) ⚠ 페이지 줌은 **origin별로 디스크에 기억된다.** 사용자가 이 앱(또는 같은
+  //    localhost origin)에서 과거에 ⌘+를 눌러 페이지 줌이 남아 있으면, CSS 배율과
+  //    **이중으로 곱해져** 똑같은 100%인데 화면이 커 보인다. 매 로드마다 1로 되돌린다.
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow?.webContents.setZoomFactor(1);
   });
 
   if (app.isPackaged) {

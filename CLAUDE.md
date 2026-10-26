@@ -53,6 +53,11 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   `npm run generate:icons`로 세 OS용 파일(`icon.icns`/`icon.ico`/`icons/`)과 런타임
   아이콘·파비콘·워드마크를 다시 만든다 — 생성물은 직접 고치지 않는다. 상세와 함정은
   `electron/CLAUDE.md`의 "앱 아이콘" 절 참고.
+- **화면 줌은 CSS `transform: scale`(돋보기 줌)이다** — 페이지 줌(`setZoomFactor`)이
+  아니다. 사이드바는 배율 밖이라 항상 같은 크기고, 확대하면 내용이 리플로우 없이
+  넘치며 스크롤된다. 배율의 단일 원천은 `frontend/src/useZoom.ts`의 state 하나다 —
+  `frontend/CLAUDE.md`의 "화면 줌" 절(래퍼 3겹, `position: fixed` 함정)과
+  `electron/CLAUDE.md`의 "화면 줌" 절(메뉴/페이지 줌이 겹치지 않게 막는 셋) 참고.
 - **배포용 릴리스는 GitHub Actions로 한다** — 로컬 크로스 빌드는 Apple Silicon
   맥에서 `rcedit`(Windows)·`mksquashfs`(Linux AppImage)가 x86_64 바이너리라
   실행되지 않는다. 버전은 루트 `version.json` 하나만 올리고, `vX.Y.Z` 태그를

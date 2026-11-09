@@ -1,7 +1,7 @@
 # MyStock
 
 여러 증권사 Open API를 연동해 보유 종목, 매입가, 손익, 비중, 배당금을 한 화면에서 보는
-Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS)**이 API로 연동되어 있고,
+Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS, 국내 + 미국 주식)**이 API로 연동되어 있고,
 **삼성증권/미래에셋증권**은 API 연동 없이 CSV로 보유종목·매매내역을 직접 관리한다
 (어댑터를 만들 계획 없음 — CSV 전용으로 확정된 결정, `backend/CLAUDE.md`의
 `knownBrokers.ts` 참고). **KB증권**은 둘의 중간 형태다 — Open API를 연동했지만
@@ -21,7 +21,7 @@ npm workspaces 모노레포이며, 각 폴더에 더 상세한 `CLAUDE.md`가 �
 `CLAUDE.md`를 가리키는 심볼릭 링크다(다른 코딩 에이전트도 같은 지침을 읽게) — **`CLAUDE.md`만 고친다.**
 
 ```
-backend/    Express 서버 — 증권사 API 호출, 자격증명 암호화 저장, 배당 기록 로컬 저장
+backend/    Express 서버 — 증권사 API 호출, 자격증명 암호화 저장, 로컬 저장소(보유종목·매매·배당 등)
 frontend/   React + Vite 렌더러 UI
 electron/   Electron 메인 프로세스 — backend를 같은 프로세스에서 구동하고 창을 띄움
 doc/        사용자 매뉴얼(user-manual.md) + 스크린샷(images/)
@@ -30,7 +30,7 @@ doc/        사용자 매뉴얼(user-manual.md) + 스크린샷(images/)
 - **사용자가 보는 동작을 바꾸면 `doc/user-manual.md`와 `README.md`도 같은 커밋에서 고친다** — 둘 다 공개
   저장소의 사용자 문서다. 매뉴얼 스크린샷은 **금액·종목·계좌·이메일을 찍기 전에 DOM 텍스트를 가짜 문자로 바꾸고
   블러를 겹친 뒤, OCR로 실데이터가 안 읽히는지 확인**해서 넣는다(사용자 데이터 사본으로 따로 띄운 인스턴스에서,
-  `--user-data-dir` + `--remote-debugging-port`). 원본 화면 캡처를 저장소에 두지 않는다.
+  `--user-data-dir` + `--remote-debugging-port`, 토스 토큰이 계정당 1개라 메인 앱은 닫고). 원본 캡처는 저장소에 두지 않는다.
 
 ## 왜 백엔드가 Electron 메인 프로세스 안에서 도는가
 
@@ -47,8 +47,7 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 ```
 
 - **백엔드(`backend/src/**`)를 수정하면 `npm run build:backend`로 재빌드 후 Electron을
-  재시작해야 반영된다.** Vite처럼 자동 반영되지 않는다.
-- 프론트엔드(`frontend/src/**`)는 Vite HMR로 자동 반영된다.
+  재시작해야 반영된다.** 프론트엔드(`frontend/src/**`)는 Vite HMR로 자동 반영된다.
 - 백엔드는 `127.0.0.1`에서만 리슨한다 (외부 노출 없음). 포트는 4317이 기본이고, 사용 중이면
   빈 포트로 옮긴다(dev Vite 5173도 마찬가지) — `electron/CLAUDE.md`의 "포트는 고정이 아니다" 참고.
 - `npm run build` (backend → frontend → electron 순서)로 전체 빌드 검증 가능.
@@ -108,14 +107,14 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - **실제 계좌번호·금액·보유 종목 같은 개인 데이터를 코드·문서·예시값에 쓰지 않는다** — 예시는
   `123-45-678901`처럼 가짜 값으로(2026-11 공개 준비 때 이력에서 실제 계좌번호를 지웠다).
 - 배당금은 **토스증권·한국투자증권은 API가 원천**이다 — 배당금 화면 진입 시 그 계좌 배당 기록을 API 내용으로
-  통째로 교체하고(직접 수정·가져오기 불가), 다른 증권사는 직접 입력한다. 배당 기록의 `amount`는 **세후**,
-  `tax`는 원천징수 세금(세전 = 합). `backend/CLAUDE.md`의 "배당 동기화(토스·한국투자증권)" 절.
-- 브로커별 상세(인증 방식, Rate Limit, 알려진 제약)는 `README.md`와
-  `backend/CLAUDE.md`를 참고.
+  통째로 교체하고(직접 수정·가져오기 불가, **KIS 달러 배당만 예외로 수동**), 다른 증권사는 직접 입력한다. `amount`는
+  **세후**, `tax`는 원천징수 세금(세전 = 합). `backend/CLAUDE.md`의 "배당 동기화(토스·한국투자증권)" 절.
+- 계좌와 무관한 **API 부가 기능**(장 상태·매수 유의사항·지수·섹터(ETF 포함), 다가오는 배당, KIS 공식 실현손익,
+  종목 정보·ETF 구성, 토스 투자원금)과 **KIS 해외주식(실데이터 미검증)**은 `backend/CLAUDE.md`의 해당 절.
+- 브로커별 상세(인증 방식, Rate Limit, 알려진 제약)는 `README.md`와 `backend/CLAUDE.md`를 참고.
 
 ## 다음 단계 (미구현)
 
-- KIS 모의투자(paper trading) 지원
-- 배포용 빌드 코드 서명/공증 (Mac은 Apple Developer ID, Windows는 코드 서명 인증서
-  필요 — 현재는 서명 없이 본인 머신 실행 전용)
+- KIS 모의투자(paper trading) 지원, KIS 해외주식 실데이터 검증(해외 거래가 생기면 숫자 대조)
+- 배포용 빌드 코드 서명/공증 (Mac Apple Developer ID, Windows 코드 서명 인증서 — 현재는 서명 없이 배포)
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

@@ -19,6 +19,7 @@ import type {
   SnapshotRecord,
   StoredHolding,
   StoredTrade,
+  DividendSyncResult,
   TradeRecord,
   WatchlistEntry,
 } from './types';
@@ -116,6 +117,11 @@ export const api = {
   deleteDividend: (id: string) => request<void>(`/dividends/${id}`, { method: 'DELETE' }),
   refreshDividendNames: () =>
     request<{ updated: number; resolved: number; failed: string[] }>('/dividends/refresh-names', {
+      method: 'POST',
+    }),
+  // 배당 동기화 — 토스·한국투자증권(키가 있을 때)의 계좌 배당 기록을 API 내용으로 통째로 교체한다.
+  syncDividends: () =>
+    request<{ results: DividendSyncResult[]; errors: Array<{ broker: BrokerId; error: string }> }>('/dividends/sync', {
       method: 'POST',
     }),
   importDividends: (records: Omit<DividendRecord, 'id' | 'name'>[]) =>

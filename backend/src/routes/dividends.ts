@@ -13,8 +13,13 @@ import { cacheStockName } from '../db/stockNames';
 import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
 import { resolveStockNames } from '../stockNameResolver';
+import { syncTossDividends } from '../brokers/toss/tossDividendSync';
+import { syncKisDividends } from '../brokers/kis/kisDividendSync';
+import { isKisConfigured } from '../brokers/kis/kisClient';
+import type { DividendSyncResult } from '../brokers/dividendSyncTypes';
 import type { ImportResult } from './importResult';
 import { BROKER_IDS } from '../brokers/knownBrokers';
+import { isDividendSyncOwned } from '../brokers/rowOwnership';
 import type { BrokerId } from '../brokers/types';
 
 export const dividendsRouter = Router();
@@ -22,8 +27,15 @@ export const dividendsRouter = Router();
 // 단건 추가(POST /)용 검증 — 종목명 자동조회는 프론트가 이미 하고 그 결과를 같이
 // 보내므로 name을 그대로 요구한다. CSV 가져오기(POST /import)는 name 없이 심볼만
 // 받고 서버가 자동조회한다 — 아래 `parseImportRowShape` 참고.
+
+/** 세금(선택) — 0 이상의 숫자만 받고, 빈 값·잘못된 값은 "모름"(null). CSV에서는 문자열로 온다. */
+function parseTax(tax: unknown): number | null {
+  const n = typeof tax === 'number' ? tax : typeof tax === 'string' && tax.trim() ? Number(tax) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 function parseDividendInput(body: unknown): { input: NewDividendInput } | { error: string } {
-  const { broker, accountId, symbol, name, currency, amount, paidDate, memo } = (body ?? {}) as Record<
+  const { broker, accountId, symbol, name, currency, amount, paidDate, memo, tax } = (body ?? {}) as Record<
     string,
     unknown
   >;
@@ -57,6 +69,7 @@ function parseDividendInput(body: unknown): { input: NewDividendInput } | { erro
       amount,
       paidDate,
       memo: typeof memo === 'string' && memo ? memo : null,
+      tax: parseTax(tax),
     },
   };
 }
@@ -64,7 +77,7 @@ function parseDividendInput(body: unknown): { input: NewDividendInput } | { erro
 type ImportRowShape = Omit<NewDividendInput, 'name'>;
 
 function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error: string } {
-  const { broker, accountId, symbol, currency, amount, paidDate, memo } = (body ?? {}) as Record<string, unknown>;
+  const { broker, accountId, symbol, currency, amount, paidDate, memo, tax } = (body ?? {}) as Record<string, unknown>;
 
   if (
     typeof broker !== 'string' ||
@@ -92,6 +105,7 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
       amount,
       paidDate,
       memo: typeof memo === 'string' && memo ? memo : null,
+      tax: parseTax(tax),
     },
   };
 }
@@ -144,9 +158,12 @@ dividendsRouter.post('/refresh-names', async (_req, res) => {
   }
 });
 
+const SYNC_OWNED_ERROR = '토스증권·한국투자증권 배당은 API 동기화로만 관리됩니다(직접 추가·수정·삭제 불가).';
+
 dividendsRouter.post('/', (req, res) => {
   const parsed = parseDividendInput(req.body);
   if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+  if (isDividendSyncOwned(parsed.input.broker)) return res.status(409).json({ error: SYNC_OWNED_ERROR });
 
   const record = addDividend(parsed.input);
   res.status(201).json(record);
@@ -157,6 +174,10 @@ dividendsRouter.post('/', (req, res) => {
 dividendsRouter.put('/:id', (req, res) => {
   const parsed = parseDividendInput(req.body);
   if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+  const existing = listDividends().find((d) => d.id === req.params.id);
+  if (isDividendSyncOwned(parsed.input.broker) || (existing && isDividendSyncOwned(existing.broker))) {
+    return res.status(409).json({ error: SYNC_OWNED_ERROR });
+  }
 
   const record = updateDividend(req.params.id, parsed.input);
   if (!record) return res.status(404).json({ error: '해당 배당 기록을 찾을 수 없습니다.' });
@@ -175,8 +196,9 @@ dividendsRouter.put('/:id', (req, res) => {
 // (검증/자동조회 로직을 두 곳에 중복시키지 않기 위해 라우트 핸들러에서 분리) —
 // options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 배당 기록까지
 // 포함해 저장소 전체를 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
-// 동작인 순수 추가 — false). 배당 기록은 어느 브로커든 수동 입력뿐이라(입금
-// 배당 조회 API가 없음) 행 소유권(brokers/rowOwnership.ts)으로 거르지 않는다.
+// 동작인 순수 추가 — false). API 동기화 계좌(토스·한국투자증권, rowOwnership.ts의
+// `isDividendSyncOwned`)의 행은 건너뛰고(`skipped`), 전체 교체에서도 그 기록은 남긴다 — 그 계좌 배당은
+// 동기화(brokers/*/…DividendSync.ts)가 API 내용으로 통째로 교체한다.
 export async function importDividendsRecords(
   records: unknown[],
   options?: { fullReplace?: boolean }
@@ -189,11 +211,15 @@ export async function importDividendsRecords(
     .filter((r): r is { row: number; error: string } => 'error' in r)
     .map(({ row, error }) => ({ row, error }));
 
-  const uniqueSymbols = Array.from(new Set(validRows.map((r) => r.input.symbol)));
+  // API 동기화 계좌(토스·한국투자증권)의 배당은 API가 원천이라 가져오기가 쓰지 않는다(이름 조회 전에 거름).
+  const importable = validRows.filter((r) => !isDividendSyncOwned(r.input.broker));
+  const skipped = validRows.length - importable.length;
+
+  const uniqueSymbols = Array.from(new Set(importable.map((r) => r.input.symbol)));
   const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
 
   const resolved: NewDividendInput[] = [];
-  for (const { row, input } of validRows) {
+  for (const { row, input } of importable) {
     const key = input.symbol.toUpperCase();
     const name = namesBySymbol[key];
     if (!name) {
@@ -213,14 +239,31 @@ export async function importDividendsRecords(
   if (options?.fullReplace) {
     // 전체 교체라 한 행이라도 실패하면(예: 종목명 조회 일부 실패) 아무것도 안
     // 바꾼다 — 일부만 반영하면 실패한 기록이 경고 없이 로컬에서 지워진다.
-    if (failed.length > 0) return { added: 0, failed, skipped: 0, aborted: true };
-    const replaced = replaceAllDividends(resolved);
-    return { added: replaced.length, failed, skipped: 0 };
+    if (failed.length > 0) return { added: 0, failed, skipped, aborted: true };
+    const replaced = replaceAllDividends(resolved, (r) => isDividendSyncOwned(r.broker));
+    return { added: replaced.length, failed, skipped };
   }
 
   addDividends(resolved);
-  return { added: resolved.length, failed, skipped: 0 };
+  return { added: resolved.length, failed, skipped };
 }
+
+// 배당 동기화 — API로 배당을 받을 수 있는 증권사(토스·한국투자증권, 키가 있을 때만)마다 그 계좌의 배당 기록을
+// **API 내용으로 통째로 교체**한다(brokers/toss/tossDividendSync.ts, brokers/kis/kisDividendSync.ts).
+// 증권사별로 따로 돌아서 한쪽이 실패해도 다른 쪽은 반영된다. 배당금 화면이 열릴 때 프론트가 자동으로 부른다.
+dividendsRouter.post('/sync', async (_req, res) => {
+  const jobs: Array<{ broker: BrokerId; run: () => Promise<DividendSyncResult> }> = [];
+  if (isTossConfigured()) jobs.push({ broker: 'toss', run: syncTossDividends });
+  if (isKisConfigured()) jobs.push({ broker: 'kis', run: syncKisDividends });
+  const settled = await Promise.allSettled(jobs.map((j) => j.run()));
+  const results: DividendSyncResult[] = [];
+  const errors: Array<{ broker: BrokerId; error: string }> = [];
+  settled.forEach((s, i) => {
+    if (s.status === 'fulfilled') results.push(s.value);
+    else errors.push({ broker: jobs[i].broker, error: (s.reason as Error)?.message ?? String(s.reason) });
+  });
+  res.json({ results, errors });
+});
 
 dividendsRouter.post('/import', async (req, res) => {
   const records = (req.body as { records?: unknown })?.records;
@@ -231,6 +274,8 @@ dividendsRouter.post('/import', async (req, res) => {
 });
 
 dividendsRouter.delete('/:id', (req, res) => {
+  const existing = listDividends().find((d) => d.id === req.params.id);
+  if (existing && isDividendSyncOwned(existing.broker)) return res.status(409).json({ error: SYNC_OWNED_ERROR });
   const removed = deleteDividend(req.params.id);
   if (!removed) return res.status(404).json({ error: '해당 배당 기록을 찾을 수 없습니다.' });
   res.status(204).end();

@@ -90,6 +90,10 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   (`.github/CODEOWNERS`가 리뷰어를 자동 지정). `main`/`v*` 태그 보호 규칙은
   `.github/rulesets/*.json`에 있고, 무료 계정 비공개 저장소에선 켤 수 없어 **공개 직후**
   `gh api -X POST repos/ultracat/MyStockInfo/rulesets --input <json>`으로 적용한다.
+- **라이선스는 AGPL-3.0 + 상업 라이선스(이중 라이선스)**다 — `LICENSE`(GNU 공식 원문 그대로, 고치지 않는다),
+  `package.json`의 `"license": "AGPL-3.0-only"`, README "라이선스" 절. 외부 PR은 `CLA.md` 동의(PR 템플릿 체크박스)가
+  있어야 반영한다 — 기여 코드도 상업 라이선스로 재허락하려면 그 권리가 필요해서다. 새 의존성은 AGPL-3.0과 호환되는
+  라이선스만 들인다.
 - **실제 계좌번호·금액·보유 종목 같은 개인 데이터를 코드·문서·예시값에 쓰지 않는다** — 예시는
   `123-45-678901`처럼 가짜 값으로(2026-11 공개 준비 때 이력에서 실제 계좌번호를 지웠다).
 - 배당금은 두 증권사 모두 "계좌에 실제 입금된 배당금" 조회 API가 없어 수동 입력 방식이다.

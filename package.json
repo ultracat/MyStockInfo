@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "여러 증권사 Open API를 연동해 보유 종목, 손익, 비중, 배당금을 보여주는 데스크톱 앱",
   "author": "ChangWoo Lee <ultracat.lcw@gmail.com>",
+  "license": "AGPL-3.0-only",
   "main": "electron/dist/main.js",
   "workspaces": [
     "backend",

@@ -964,3 +964,16 @@ github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포
   실패 행을 만든다.
 - `tsconfig.json`의 `include`가 `src`뿐이라 테스트는 `dist`로 빌드되지 않는다(타입
   검사도 안 한다 — `tsx`는 타입을 지우기만 한다).
+- **증권사 클라이언트 HTTP 흐름**(`tossClient.test.ts`·`kisClient.test.ts`·`nhClient.test.ts`): `globalThis.fetch`를
+  가짜 서버로 바꿔 실키 없이 돈다 — 요청 모양(경로·헤더·쿼리/Input_0), 토큰 재사용(KIS 하루 1회·NH 보안 알림 때문에
+  파일 캐시, 동시 호출은 발급 1회), 401 재발급, 429/EGW00201/IGW429 재시도, 연속조회(토스 커서·KIS tr_cont+ctx_area·
+  NH 헤더 cts와 같은 cts 종료), 해외 조회 실패 격리, 응답→화면 모양 매핑, NH 모의투자 moapi 라우팅.
+  - 모듈 전역 상태가 테스트 사이에 남는다(메모리 토큰, `responseCache`) — 테스트마다 앱키를 바꾸고(NH·KIS는 키 해시/
+    파일로 갈림) `forceRefresh: true`로 부른다. 리미터 간격(초당 1~5건) 때문에 이 세 파일이 전체 시간의 대부분이다.
+- **실서버 점검(자동 테스트 아님)** — `npm run check:nh` / `check:kis` / `check:toss`(`scripts/*-live-check.cjs`,
+  공용 `scripts/lib/live-check.cjs`). 설정에 저장한 키로 **조회 API만** 불러 기대 필드·숫자 변환·요약 합계와 종목 합
+  대조·적요 해석·배당 세전/세후를 PASS/WARN/FAIL/SKIP으로 찍는다. 계좌번호·금액·종목은 출력하지 않는다(건수·필드명·적요만).
+  - Electron으로 돈다(자격증명이 safeStorage 암호화) — `app.setName('@mystock/electron')`으로 앱과 같은 userData·키체인.
+  - 토큰: NH·KIS는 앱과 같은 파일 토큰을 재사용(새 발급 없음). **토스는 메모리 토큰이라 매번 새로 받아 켜진 앱의 토큰을
+    끊는다** → 앱이 떠 있으면 `check:toss`는 시작하지 않는다(`-- --force`로 무시).
+  - 자료가 없는 계좌는 SKIP이 정상이다(NH는 2026-11-09 기준 보유·거래 0건 — 거래가 생기면 다시 돌려 행 해석을 확인).

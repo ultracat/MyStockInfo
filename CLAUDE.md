@@ -88,9 +88,13 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   단독 실행할 때(dev/테스트)만 쓰는 로컬 폴백 경로다 — `.gitignore`에서 제외됨.
 - **커밋 작성자는 저장소 소유자 한 사람**(`ultracat <ultracat.lcw@gmail.com>`)이다 — Claude 공동작성자
   트레일러를 넣지 않는다. 쓰기 권한도 소유자만 있고 외부 변경은 fork → PR로 받는다
-  (`.github/CODEOWNERS`가 리뷰어를 자동 지정). `main`/`v*` 태그 보호 규칙은
-  `.github/rulesets/*.json`에 있고, 무료 계정 비공개 저장소에선 켤 수 없어 **공개 직후**
-  `gh api -X POST repos/ultracat/MyStockInfo/rulesets --input <json>`으로 적용한다.
+  (`.github/CODEOWNERS`가 리뷰어를 자동 지정). **저장소는 공개(public)다**(2026-11-09 전환). 적용된 설정:
+  - `main`/`v*` 태그 보호 규칙(GitHub rulesets) — 정의는 `.github/rulesets/*.json`. `main`은 PR·리뷰 필수,
+    강제 push·삭제 금지, 태그는 생성·수정·삭제 금지. **관리자 역할은 항상 우회**라 소유자는 `main`에 직접
+    push하고 태그를 만들 수 있다. JSON을 고치면 GitHub 쪽 규칙도
+    `gh api -X PUT repos/ultracat/MyStockInfo/rulesets/<id> --input <json>`으로 같이 갱신한다(파일만 고치면 반영 안 됨).
+  - 외부 기여자 PR은 Actions 실행 전 소유자 승인 필요, 비밀값 스캔 + push 차단, 비공개 취약점 신고,
+    Actions 기본 토큰은 읽기 전용(릴리스 잡만 `contents: write`).
 - **라이선스는 AGPL-3.0 + 상업 라이선스(이중 라이선스)**다 — `LICENSE`(GNU 공식 원문 그대로, 고치지 않는다),
   `package.json`의 `"license": "AGPL-3.0-only"`, README "라이선스" 절. 외부 PR은 `CLA.md` 동의(PR 템플릿 체크박스)가
   있어야 반영한다 — 기여 코드도 상업 라이선스로 재허락하려면 그 권리가 필요해서다. 새 의존성은 AGPL-3.0과 호환되는

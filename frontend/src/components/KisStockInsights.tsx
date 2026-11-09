@@ -62,7 +62,13 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
 
   if (hidden) return null;
   return (
-    <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+    <div
+      style={{
+        marginTop: 16,
+        borderTop: '1px solid var(--border)',
+        paddingTop: 12,
+      }}
+    >
       <h3 style={{ marginTop: 0 }}>종목 정보 (한국투자증권)</h3>
       {error ? (
         <p className="text-critical">{error}</p>
@@ -118,11 +124,17 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
                   <tbody>
                     {detail.etf.components.map((c) => (
                       <tr key={c.symbol || c.name}>
-                        <td className="cell-name-truncate">
-                          {c.name} <span style={{ color: 'var(--text-muted)' }}>{c.symbol}</span>
+                        <td style={{ textAlign: 'left' }}>
+                          <span className="cell-name-truncate">
+                            {c.name} <span style={{ color: 'var(--text-muted)' }}>{c.symbol}</span>
+                          </span>
                         </td>
                         <td>{pct(c.weight)}</td>
-                        <td className={c.changeRate === null ? undefined : c.changeRate >= 0 ? 'text-good' : 'text-critical'}>
+                        <td
+                          className={
+                            c.changeRate === null ? undefined : c.changeRate >= 0 ? 'text-good' : 'text-critical'
+                          }
+                        >
                           {pct(c.changeRate)}
                         </td>
                       </tr>
@@ -132,7 +144,11 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
               </div>
               <p style={muted}>
                 한국투자증권은 상위 {detail.etf.components.length}개 종목만 줍니다(합계 비중{' '}
-                {pct(detail.etf.components.reduce((s, c) => s + (c.weight ?? 0), 0), 1)}).
+                {pct(
+                  detail.etf.components.reduce((s, c) => s + (c.weight ?? 0), 0),
+                  1,
+                )}
+                ).
               </p>
             </>
           )}
@@ -192,7 +208,7 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
                   <tr>
                     <th>날짜</th>
                     <th>증권사</th>
-                    <th>의견</th>
+                    <th style={{ textAlign: 'left' }}>의견</th>
                     <th>목표가</th>
                   </tr>
                 </thead>
@@ -201,7 +217,7 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
                     <tr key={`${o.date}:${o.firm}:${i}`}>
                       <td>{o.date}</td>
                       <td>{o.firm}</td>
-                      <td>
+                      <td style={{ textAlign: 'left' }}>
                         {o.opinion}
                         {o.previousOpinion && o.previousOpinion !== o.opinion && (
                           <span style={muted}> (이전 {o.previousOpinion})</span>

@@ -35,16 +35,23 @@ export default function UpcomingDividends({ accountLabels }: { accountLabels: Ac
 
   return (
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
         <h3 style={{ margin: 0 }}>다가오는 배당 (국내, 120일)</h3>
         <CollapseToggle collapsed={collapsed} onClick={() => setCollapsed((c) => !c)} />
       </div>
       {!collapsed && (
         <>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-            <strong>확정</strong>은 한국투자증권 계좌에 배정된 지급 예정 배당이고, <strong>예상</strong>은
-            예탁결제원 배당 일정의 주당 배당금 × 지금 보유 수량입니다(모든 증권사의 국내 보유 종목, 기준일까지
-            보유해야 받음). 금액은 세전이며 해외 종목은 일정을 주는 API가 없어 빠집니다.
+            <strong>확정</strong>은 한국투자증권 계좌에 배정된 지급 예정 배당이고, <strong>예상</strong>은 예탁결제원
+            배당 일정의 주당 배당금 × 지금 보유 수량입니다(모든 증권사의 국내 보유 종목, 기준일까지 보유해야 받음).
+            금액은 세전이며 해외 종목은 일정을 주는 API가 없어 빠집니다.
           </p>
           {error ? (
             <p className="text-critical">{error}</p>
@@ -59,9 +66,9 @@ export default function UpcomingDividends({ accountLabels }: { accountLabels: Ac
                   <tr>
                     <th>지급일</th>
                     <th>기준일</th>
-                    <th>구분</th>
-                    <th>증권사 · 계좌</th>
-                    <th>종목</th>
+                    <th style={{ textAlign: 'left' }}>구분</th>
+                    <th style={{ textAlign: 'left' }}>증권사 · 계좌</th>
+                    <th style={{ textAlign: 'left' }}>종목</th>
                     <th>수량 × 주당</th>
                     <th>세전 금액</th>
                   </tr>
@@ -71,17 +78,24 @@ export default function UpcomingDividends({ accountLabels }: { accountLabels: Ac
                     <tr key={`${i.broker}:${i.accountId}:${i.symbol}:${i.recordDate}:${idx}`}>
                       <td>{i.payDate ?? '미정'}</td>
                       <td>{i.recordDate ?? '-'}</td>
-                      <td>
+                      <td style={{ textAlign: 'left' }}>
                         <span className={i.status === 'confirmed' ? 'text-good' : undefined}>
                           {i.status === 'confirmed' ? '확정' : '예상'}
                         </span>
                       </td>
-                      <td className="cell-name-truncate">
-                        {BROKER_LABELS[i.broker]} ·{' '}
-                        {formatAccountOption({ id: i.accountId }, findAccountLabel(accountLabels, i.broker, i.accountId))}
+                      <td style={{ textAlign: 'left' }}>
+                        <span className="cell-name-truncate">
+                          {BROKER_LABELS[i.broker]} ·{' '}
+                          {formatAccountOption(
+                            { id: i.accountId },
+                            findAccountLabel(accountLabels, i.broker, i.accountId),
+                          )}
+                        </span>
                       </td>
-                      <td className="cell-name-truncate">
-                        {i.name} <span style={{ color: 'var(--text-muted)' }}>{i.symbol}</span>
+                      <td style={{ textAlign: 'left' }}>
+                        <span className="cell-name-truncate">
+                          {i.name} <span style={{ color: 'var(--text-muted)' }}>{i.symbol}</span>
+                        </span>
                       </td>
                       <td>{i.perShare !== null ? `${krw.format(i.quantity)}주 × ${krw.format(i.perShare)}원` : '-'}</td>
                       <td>

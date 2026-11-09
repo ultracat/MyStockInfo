@@ -466,7 +466,7 @@ export async function fetchKisPeriodTradeProfit(from: string, to: string): Promi
 }
 
 /** 예탁원정보 배당일정(`HHKDB669102C0`, `ksdinfo/dividend`) — **시장 전체**(계좌 무관) 국내 배당 일정.
- *  `per_sto_divi_amt`=주당 배당금(원, 미정이면 0), `record_date`=기준일, `divi_pay_dt`=지급일(미정이면 빈 값). */
+ *  `per_sto_divi_amt`=주당 배당금(원, 미정이면 0), `record_date`=기준일(YYYYMMDD), `divi_pay_dt`=지급일(YYYY/MM/DD, 미정이면 빈 값). */
 export interface KisDividendScheduleRow {
   record_date: string;
   sht_cd: string;
@@ -476,17 +476,25 @@ export interface KisDividendScheduleRow {
   divi_pay_dt: string;
 }
 
-export async function fetchKisDividendSchedule(from: string, to: string): Promise<KisDividendScheduleRow[]> {
-  const res = await kisGet('/uapi/domestic-stock/v1/ksdinfo/dividend', 'HHKDB669102C0', {
-    CTS: '',
-    GB1: '0',
-    F_DT: from.replace(/-/g, ''),
-    T_DT: to.replace(/-/g, ''),
-    SHT_CD: '',
-    HIGH_GB: '',
-  });
-  const out = res.output1 ?? res.output;
-  return (Array.isArray(out) ? out : out ? [out] : []) as KisDividendScheduleRow[];
+/** `from`~`to`는 **기준일(record_date)** 범위다(2026-11-10 실측 — 오늘부터 조회하면 가장 이른 기준일이 오늘).
+ *  `symbol`을 주면 그 종목만(시장 전체는 앞으로 일정이 듬성듬성 등록돼 있어 보유 종목별 조회가 정확하다).
+ *  `divi_pay_dt`는 `YYYY/MM/DD`(빗금)로 온다(실측) — `record_date`는 `YYYYMMDD`. 연속조회는 공식 예제처럼 `tr_cont` M → N. */
+export async function fetchKisDividendSchedule(from: string, to: string, symbol = ''): Promise<KisDividendScheduleRow[]> {
+  const rows: KisDividendScheduleRow[] = [];
+  let trCont = '';
+  for (let page = 0; page < 10; page++) {
+    const res = await kisGet(
+      '/uapi/domestic-stock/v1/ksdinfo/dividend',
+      'HHKDB669102C0',
+      { CTS: '', GB1: '0', F_DT: from.replace(/-/g, ''), T_DT: to.replace(/-/g, ''), SHT_CD: symbol, HIGH_GB: '' },
+      trCont
+    );
+    const out = res.output1 ?? res.output;
+    rows.push(...((Array.isArray(out) ? out : out ? [out] : []) as KisDividendScheduleRow[]));
+    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    trCont = 'N';
+  }
+  return rows;
 }
 
 /** Fetches every page of one 주식일별주문체결조회 query (single TR/date range), following `ctx_area_fk100`/`nk100` until `tr_cont` stops being 'M'/'F'. */

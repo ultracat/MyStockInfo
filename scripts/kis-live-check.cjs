@@ -105,7 +105,14 @@ runLiveCheck('한국투자증권 Open API 실서버 점검 (조회 TR만, 개인
   const sched = await check.step('예탁원 배당일정 HHKDB669102C0(앞으로 30일)', () =>
     kis.fetchKisDividendSchedule(todayKst(), new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10))
   );
-  if (sched) check.rows('배당일정 필드', sched, ['per_sto_divi_amt'], ['record_date', 'sht_cd']);
+  if (sched) {
+    check.rows('배당일정 필드', sched, ['per_sto_divi_amt'], ['record_date', 'sht_cd']);
+    // 지급일은 YYYY/MM/DD로 온다(2026-11-10 실측) — 형식이 바뀌면 예상 지급일이 다시 비게 된다.
+    const { parseKsdDate } = ctx.require('upcomingDividends.js');
+    const pays = sched.map((r) => r.divi_pay_dt).filter((d) => d && d.trim());
+    const bad = pays.filter((d) => !parseKsdDate(d));
+    log(bad.length ? 'FAIL' : pays.length ? 'PASS' : 'SKIP', '배당일정 지급일 형식', bad.length ? `읽지 못한 형식 ${bad.length}건(예: ${bad[0]})` : `${pays.length}건 모두 읽음`);
+  }
   const price = await check.step('국내 현재가 FHKST01010100(삼성전자 시세 — 공개 정보)', () => kis.fetchKisDomesticPrice('005930', { forceRefresh: true }));
   if (price !== undefined) log(price && price > 0 ? 'PASS' : 'FAIL', '국내 현재가', price && price > 0 ? '양수' : '값 없음');
   const etf = await check.step('ETF 현재가 FHPST02400000(KODEX 200 — 공개 정보)', () => kis.fetchKisEtfPrice('069500'));

@@ -21,7 +21,7 @@
 - **설치 파일**: [GitHub Releases](https://github.com/ultracat/MyStockInfo/releases)에서 OS에 맞는 파일을 받습니다.
   - macOS(Apple 칩) `.dmg`, Windows `.exe`, Linux `.AppImage`
 - **사용자 매뉴얼**: [`doc/user-manual.md`](doc/user-manual.md) — 화면별 사용법, 증권사 API 키 발급 안내, 백업/복원, 문제 해결.
-- **변경 내역**: [`CHANGELOG.md`](CHANGELOG.md) — 버전별 새 기능과 수정(최신 v1.1.0). 새 버전으로 바꿔 설치해도 데이터와 API 키는 그대로 남습니다
+- **변경 내역**: [`CHANGELOG.md`](CHANGELOG.md) — 버전별 새 기능과 수정(최신 v1.2.0). 새 버전으로 바꿔 설치해도 데이터와 API 키는 그대로 남습니다
   ([매뉴얼의 "새 버전으로 업데이트"](doc/user-manual.md#새-버전으로-업데이트)).
 - ⚠ 설치 파일은 **OS별 코드 서명 인증서로 서명되어 있지 않아** 처음 실행할 때 macOS·Windows가 막습니다.
   OS별 허용 방법(macOS 15부터는 우클릭 → 열기가 통하지 않음)은

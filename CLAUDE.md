@@ -24,7 +24,13 @@ npm workspaces 모노레포이며, 각 폴더에 더 상세한 `CLAUDE.md`가 �
 backend/    Express 서버 — 증권사 API 호출, 자격증명 암호화 저장, 배당 기록 로컬 저장
 frontend/   React + Vite 렌더러 UI
 electron/   Electron 메인 프로세스 — backend를 같은 프로세스에서 구동하고 창을 띄움
+doc/        사용자 매뉴얼(user-manual.md) + 스크린샷(images/)
 ```
+
+- **사용자가 보는 동작을 바꾸면 `doc/user-manual.md`와 `README.md`도 같은 커밋에서 고친다** — 둘 다 공개
+  저장소의 사용자 문서다. 매뉴얼 스크린샷은 **금액·종목·계좌·이메일을 찍기 전에 DOM 텍스트를 가짜 문자로 바꾸고
+  블러를 겹친 뒤, OCR로 실데이터가 안 읽히는지 확인**해서 넣는다(사용자 데이터 사본으로 따로 띄운 인스턴스에서,
+  `--user-data-dir` + `--remote-debugging-port`). 원본 화면 캡처를 저장소에 두지 않는다.
 
 ## 왜 백엔드가 Electron 메인 프로세스 안에서 도는가
 
@@ -46,7 +52,7 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - 백엔드는 `127.0.0.1`에서만 리슨한다 (외부 노출 없음). 포트는 4317이 기본이고, 사용 중이면
   빈 포트로 옮긴다(dev Vite 5173도 마찬가지) — `electron/CLAUDE.md`의 "포트는 고정이 아니다" 참고.
 - `npm run build` (backend → frontend → electron 순서)로 전체 빌드 검증 가능.
-- `npm test`로 백엔드 자동 테스트(가져오기 소유권·전부 취소·중복 제거 등)를 돌린다 —
+- `npm test`로 백엔드 자동 테스트(가져오기 소유권·전부 취소·중복 제거·배당 동기화 등)를 돌린다 —
   `backend/CLAUDE.md`의 "자동 테스트" 절 참고.
 - **앱 아이콘/로고의 원본은 `build/icon.svg` 하나다.** 바꾸려면 그 SVG를 고치고
   `npm run generate:icons`로 세 OS용 파일(`icon.icns`/`icon.ico`/`icons/`)과 런타임

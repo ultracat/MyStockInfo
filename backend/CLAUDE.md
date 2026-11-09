@@ -400,6 +400,13 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 - `GET /kis/realized?from&to` — 기간별매매손익현황조회(`TTTC8715R`, `fetchKisPeriodTradeProfit`, 국내만, `CTX_AREA_FK100/NK100`
   연속조회, 1tps 리미터) 중 `sll_qty > 0`인 매도 줄. `rlzt_pfls`는 수수료·세금 차감 손익. KIS 키 없으면 409.
   해외(`TTTS3039R`)는 사용자 계좌에 자료가 없어(실측) 붙이지 않았다.
+- `GET /kis/stock-detail/:symbol` — 국내 6자리(`[0-9A-Z]{6}`)만. 먼저 ETF 현재가(`FHPST02400000`)를 불러
+  **`etf_cnfg_issu_cnt > 0`이면 ETF**(주식이면 NAV 등이 전부 0으로 온다, 실측). ETF → NAV·괴리율(`dprt`)·추적오차
+  (`trc_errt`)·순자산(`etf_ntas_ttam`, 억원)·분배주기(`etf_dvdn_cycl`, 코드표 없음 — KODEX 200이 `3`=분기)·구성종목
+  (`FHKST121600C0` output2 — **상위 30개만**, 비중 합 ~83%). 주식 → 연간 재무비율(`FHKST66430300`, 최신 줄은 결산 전
+  누적일 수 있음, 예 `202606`)·최근 6개월 투자의견(`FHKST663300C0`, 날짜는 `00YYYYMMDD`). 둘 다 뉴스 제목
+  (`FHKST01011800`) — **`FID_INPUT_ISCD`를 줘도 다른 종목 뉴스가 섞여 온다**(40건 중 ~25건만 해당 종목) →
+  `iscd1~10`에 그 코드가 있는 것만 남긴다. 칸별 실패는 null(나머지는 보여줌). 캐시: 재무 1일·의견/구성 6시간·뉴스 10분·ETF 시세 1분.
 
 ## 토스 시장 정보 보조 기능 (`src/marketInsights.ts`, `routes/marketInfo.ts`)
 

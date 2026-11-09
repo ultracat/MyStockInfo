@@ -167,6 +167,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/components/UpcomingDividends.tsx`(배당금 화면, 월별 카드 아래) / `src/components/KisRealizedCompare.tsx`(실현손익
   화면, 증권사 필터가 전체·한국투자증권일 때) — 한국투자증권 키가 없으면 카드 자체를 안 그린다(`available:false` / 409).
   비교 카드는 응답의 `accountId`(`CANO-상품코드`)와 같은 계좌의 **KRW 매도 전부**(세금 유형 무관)를 앱 쪽 값으로 쓴다.
+- `src/components/KisStockInsights.tsx` — 관심종목 상세(통화 KRW일 때) 아래 "종목 정보 (한국투자증권)". `kind`로
+  ETF(NAV·괴리율·구성 종목 상위 30)와 주식(재무비율·투자의견)을 가르고 뉴스 제목은 둘 다. 키 없음(409)·해외(400)면 안 그린다.
 - `src/kbSync.ts` — `getKbLinkStatus()`: `api.getCredentialStatus()`(KB 자격증명
   저장 여부) + `api.getCredentialInfo()`(KB `accountId` 필드, `kind:'account'`로
   이미 노출됨)를 합쳐 `{configured, linkedAccountId}`를 돌려준다. KB Open API는

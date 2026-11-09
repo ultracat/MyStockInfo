@@ -169,6 +169,9 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   비교 카드는 응답의 `accountId`(`CANO-상품코드`)와 같은 계좌의 **KRW 매도 전부**(세금 유형 무관)를 앱 쪽 값으로 쓴다.
 - `src/components/KisStockInsights.tsx` — 관심종목 상세(통화 KRW일 때) 아래 "종목 정보 (한국투자증권)". `kind`로
   ETF(NAV·괴리율·구성 종목 상위 30)와 주식(재무비율·투자의견)을 가르고 뉴스 제목은 둘 다. 키 없음(409)·해외(400)면 안 그린다.
+- `src/components/TossPrincipalCard.tsx` — 보유 종목 화면(토스, API 계좌)의 "입금 기준 투자원금과 수익". 자산 =
+  평가금액 + 예수금(달러는 `effectiveFxRate`), 원금 = 백엔드 순입금(달러 입출금은 그때 환율). "전체 계좌"면 계좌 목록 전부를 합친다.
+  타사 입고 건수가 있으면 수익이 부풀 수 있다고 굵게 알린다. 연도별 표는 기본 접힘.
 - `src/kbSync.ts` — `getKbLinkStatus()`: `api.getCredentialStatus()`(KB 자격증명
   저장 여부) + `api.getCredentialInfo()`(KB `accountId` 필드, `kind:'account'`로
   이미 노출됨)를 합쳐 `{configured, linkedAccountId}`를 돌려준다. KB Open API는

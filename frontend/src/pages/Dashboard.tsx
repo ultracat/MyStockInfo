@@ -12,6 +12,7 @@ import type {
 } from '../types';
 import HoldingsTable from '../components/HoldingsTable';
 import PurchaseMarketTile from '../components/PurchaseMarketTile';
+import TossPrincipalCard from '../components/TossPrincipalCard';
 import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { formatImportResult } from '../importResult';
@@ -1173,6 +1174,14 @@ export default function Dashboard() {
               fallbackRate={portfolio.profitLossRate}
             />
           </div>
+
+          {isCurrentBrokerApi && selectedBroker === 'toss' && accountId && (
+            <TossPrincipalCard
+              portfolio={portfolio}
+              accountSeqs={accountId === ALL_ACCOUNTS ? accounts.map((a) => a.id) : [accountId]}
+              fxRate={effectiveFxRate}
+            />
+          )}
 
           <div className="card">
             <HoldingsTable rows={rows} />

@@ -7,17 +7,18 @@ import type { BrokerId } from './types';
 export const BROKER_LABELS: Record<BrokerId, string> = {
   toss: '토스증권',
   kis: '한국투자증권',
+  nh: 'NH투자증권',
   kb: 'KB증권',
   samsung: '삼성증권',
   mirae: '미래에셋증권',
 };
 
-export const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'kb', 'samsung', 'mirae'];
+export const BROKER_ORDER: BrokerId[] = ['toss', 'kis', 'nh', 'kb', 'samsung', 'mirae'];
 
 /** API 연동이 있는 브로커 — 나머지(KB/삼성/미래에셋)는 CSV로만 데이터를 관리한다
  *  (사용자 요청으로 API 연동을 하지 않기로 함). Dashboard.tsx/Trades.tsx가 이걸로
  *  실시간 조회 vs 로컬 저장소 조회를 분기한다. */
-export const API_BROKER_IDS: BrokerId[] = ['toss', 'kis'];
+export const API_BROKER_IDS: BrokerId[] = ['toss', 'kis', 'nh'];
 
 /** API_BROKER_IDS의 여집합 — CSV(또는 수동 입력)로만 데이터를 관리하는 브로커.
  *  Settings.tsx(계좌 별칭 등록 대상)/Trades.tsx(매매내역 수동 입력 대상)가 이걸

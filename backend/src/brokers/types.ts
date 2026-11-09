@@ -1,4 +1,4 @@
-export type BrokerId = 'toss' | 'kis' | 'kb' | 'samsung' | 'mirae';
+export type BrokerId = 'toss' | 'kis' | 'nh' | 'kb' | 'samsung' | 'mirae';
 
 export interface BrokerAccount {
   /** Adapter-specific identifier to pass into getPortfolio(). */

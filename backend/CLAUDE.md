@@ -217,7 +217,8 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
   통화를 `Promise.allSettled`로 독립 조회하므로 한쪽이 실패해도 나머지와 보유종목
   조회 자체는 안 막힌다.
 - **KIS**: 이미 호출 중인 `inquire-balance`의 `output2.dnca_tot_amt`(예수금총금액)를
-  그대로 씀 — 추가 API 호출 없음.
+  그대로 씀 — 추가 API 호출 없음. 달러 예수금은 해외 체결기준현재잔고(`CTRP6504R`) output2의 USD 줄
+  `frcr_dncl_amt_2`(아래 "KIS 해외주식(미국)" 절).
 
 `PortfolioOverview.cashBalanceKrw`/`cashBalanceUsd`(브로커 API가 못 주거나 조회
 실패 시 null)에 실려서 프론트로 그대로 전달된다 — 별도 저장소 없이 매 조회마다
@@ -276,7 +277,7 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 나머지 계좌만 가져오기가 쓴다. 이 구분이 없던 때 같은 체결이 import UUID와 브로커 id로
 두 번 저장되거나(2026-10-19), Sheets 가져오기가 API 계좌 행까지 지웠다. **내보내기는
 이 구분 없이 모든 계좌를 쓴다.** 배당금은 기준이 다르다 — 토스·한국투자증권(키가 있을 때)의 배당이 동기화
-소유(`isDividendSyncOwned`, 계좌가 아니라 증권사 단위)라 그 행을 건너뛰고, Sheets 전체 교체에서도 그 기록은
+소유(`isDividendSyncOwned`, 계좌가 아니라 증권사 단위 — KIS는 원화 기록만)라 그 행을 건너뛰고, Sheets 전체 교체에서도 그 기록은
 남긴다(아래 "배당 동기화(토스·한국투자증권)"). 단점: API 계좌의 과거 매매내역을 다른 머신에서 복구하려면
 가져오기가 아니라 zip 백업/복원을 써야 한다. CSV 파싱/직렬화 자체는
 프론트(`frontend/src/csv.ts`)가 하고 백엔드는 파싱된 배열만 받는다. 세 라우트 다
@@ -357,7 +358,7 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 **토스·한국투자증권 계좌의 배당은 API가 유일한 원천이다**(2026-11-09 사용자 결정: "항상 API 우선으로 로컬을
 덮어쓴다"). 동기화할 때마다 그 계좌의 배당 기록을 API 결과로 **통째로 교체**한다(`db/dividends.ts`의
 `replaceSyncedDividends` — 같은 내용의 기존 기록은 id를 이어받는다). 그래서 이 두 증권사(키가 있을 때)의 배당
-행은 직접 추가·수정·삭제(409)와 CSV·Sheets 가져오기(건너뜀, `skipped`)의 대상이 아니다
+행은(**KIS의 달러 기록 제외** — 아래 한국투자증권 항목) 직접 추가·수정·삭제(409)와 CSV·Sheets 가져오기(건너뜀, `skipped`)의 대상이 아니다
 (`brokers/rowOwnership.ts`의 `isDividendSyncOwned`). 라우트는 키가 있는 증권사마다 따로 돌려(`Promise.allSettled`)
 `{results, errors}`를 준다. 프론트 배당금 화면이 진입 시 자동으로 부른다.
 
@@ -953,7 +954,8 @@ github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포
 (토스·KIS 분류, 우선주 코드, API 우선 교체·id 이어받기·멱등), 매매내역 중복
 제거(`removeImportedDuplicates`, 가져오기 id 이어받기, 실시간 조회의 UUID 사본 제거),
 `normalizeSymbol`, `SAFE_FILENAME_RE`, 백업 비밀번호 암호화·복원(비밀번호가 틀리면 아무것도
-안 바뀜, 접속 토큰은 zip에 안 들어감).
+안 바뀜, 접속 토큰은 zip에 안 들어감), KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tossCashFlows.test.ts`),
+장 상태·활성 경고·월말 종가·ETF 구성종목 섹터 쪼개기(`marketInsights.test.ts`).
 - **`test/setup.ts`를 각 테스트 파일에서 가장 먼저 import한다** — 임시 폴더를 만들어
   `MYSTOCK_DATA_DIR`로 넘긴다. `getDataDir()`는 처음 불린 값을 고정하므로 다른 모듈이
   먼저 데이터 폴더를 건드리면 `backend/data/`의 실제 데이터에 쓴다.

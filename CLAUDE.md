@@ -47,8 +47,11 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - **백엔드(`backend/src/**`)를 수정하면 `npm run build:backend`로 재빌드 후 Electron을
   재시작해야 반영된다.** Vite처럼 자동 반영되지 않는다.
 - 프론트엔드(`frontend/src/**`)는 Vite HMR로 자동 반영된다.
-- 백엔드는 `127.0.0.1:4317`에서만 리슨한다 (외부 노출 없음).
+- 백엔드는 `127.0.0.1`에서만 리슨한다 (외부 노출 없음). 포트는 4317이 기본이고, 사용 중이면
+  빈 포트로 옮긴다(dev Vite 5173도 마찬가지) — `electron/CLAUDE.md`의 "포트는 고정이 아니다" 참고.
 - `npm run build` (backend → frontend → electron 순서)로 전체 빌드 검증 가능.
+- `npm test`로 백엔드 자동 테스트(가져오기 소유권·전부 취소·중복 제거 등)를 돌린다 —
+  `backend/CLAUDE.md`의 "자동 테스트" 절 참고.
 - **앱 아이콘/로고의 원본은 `build/icon.svg` 하나다.** 바꾸려면 그 SVG를 고치고
   `npm run generate:icons`로 세 OS용 파일(`icon.icns`/`icon.ico`/`icons/`)과 런타임
   아이콘·파비콘·워드마크를 다시 만든다 — 생성물은 직접 고치지 않는다. 상세와 함정은

@@ -5,6 +5,7 @@ import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart'
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
+import { formatImportResult, singleRowImportError } from '../importResult';
 import { API_BROKER_IDS, BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
@@ -555,13 +556,7 @@ export default function Trades() {
         }));
 
       const result = await api.importTradesStore(records);
-      setImportResult(
-        result.failed.length > 0
-          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
-              .map((f) => `${f.row}행 - ${f.error}`)
-              .join('; ')})`
-          : `${result.added}건 추가됨`
-      );
+      setImportResult(formatImportResult(result));
       await refreshAfterStoreImport();
     } catch (e) {
       setImportResult((e as Error).message);
@@ -623,20 +618,14 @@ export default function Trades() {
   }
 
   async function onImportFromGoogleSheet() {
-    if (!window.confirm('Google Sheets의 Trades 탭 내용으로 로컬 데이터 전체를 교체합니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
+    if (!window.confirm('Google Sheets의 Trades 탭 내용으로 수동 입력 계좌의 로컬 데이터를 전부 교체합니다(API·동기화 계좌는 실시간 조회/동기화 값을 그대로 둡니다). 시트에 실패하는 행이 하나라도 있으면 아무것도 바꾸지 않습니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
       return;
     }
     setGoogleSyncing(true);
     setGoogleSyncResult(null);
     try {
       const result = await api.importFromGoogleSheet('trades');
-      setGoogleSyncResult(
-        result.failed.length > 0
-          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
-              .map((f) => `${f.row}행 - ${f.error}`)
-              .join('; ')})`
-          : `${result.added}건 추가됨`
-      );
+      setGoogleSyncResult(formatImportResult(result));
       await refreshAfterStoreImport();
     } catch (e) {
       setGoogleSyncResult((e as Error).message);
@@ -686,8 +675,9 @@ export default function Trades() {
           tax: addTax.trim() ? Number(addTax) : null,
         },
       ]);
-      if (result.failed.length > 0) {
-        setAddError(result.failed[0].error);
+      const addFailure = singleRowImportError(result);
+      if (addFailure) {
+        setAddError(addFailure);
         return;
       }
 
@@ -783,8 +773,9 @@ export default function Trades() {
           tax: editDraft.tax.trim() ? Number(editDraft.tax) : null,
         },
       ]);
-      if (result.failed.length > 0) {
-        setEditError(result.failed[0].error);
+      const editFailure = singleRowImportError(result);
+      if (editFailure) {
+        setEditError(editFailure);
         return;
       }
 
@@ -1325,7 +1316,11 @@ export default function Trades() {
               </tr>
             ) : (
               pagedTrades.map((t) => {
-                const editable = CSV_ONLY_BROKER_IDS.includes(t.broker);
+                // KB 연동 계좌는 CSV 전용 브로커여도 동기화가 주인이다(backend
+                // brokers/rowOwnership.ts) — 고쳐도 백엔드가 건너뛴다.
+                const editable =
+                  CSV_ONLY_BROKER_IDS.includes(t.broker) &&
+                  !(t.broker === 'kb' && kbLink.configured && t.accountId === kbLink.linkedAccountId);
                 const key = tradeKey(t);
                 if (editingKey === key && editDraft) {
                   return (

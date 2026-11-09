@@ -95,6 +95,16 @@ export interface StoredHolding {
 }
 
 /** 로컬 저장소(backend/src/db/tradesStore.ts)에 저장된 매매내역 한 줄. */
+/** CSV/Sheets 가져오기 응답 — backend `routes/importResult.ts`와 같은 모양. */
+export interface ImportResult {
+  added: number;
+  failed: { row: number; error: string }[];
+  /** API·동기화 계좌 행이라 건너뛴 수(실패 아님). */
+  skipped: number;
+  /** Sheets 가져오기에서 실패 행이 있어 아무것도 바꾸지 않았음. */
+  aborted?: boolean;
+}
+
 export interface StoredTrade {
   broker: BrokerId;
   accountId: string;
@@ -142,6 +152,17 @@ export interface MonthlySummaryRow {
 // CSV 전용 브로커(KB/삼성/미래에셋)는 자격증명이 없어 이 응답에 값이 없을 수
 // 있다 — Partial. 고정 필드 대신 BrokerId로 인덱싱할 수 있어야 해서 Record로 바꿈.
 export type CredentialStatus = Partial<Record<BrokerId, boolean>>;
+
+/** `GET /settings/secure-storage` — backend `secureStorage.ts`. `available`이 false면
+ *  (키링 없는 Linux 등) 자격증명 저장과 Google 연결을 서버가 409로 거부한다. */
+export interface SecureStorageStatus {
+  available: boolean;
+  message: string | null;
+  linuxBackend: string | null;
+  /** 평문이거나 약한 키로 저장돼 있을 수 있는 자격증명 — 해제 후 다시 입력해야 안전. */
+  insecureBrokers: BrokerId[];
+  insecureGoogle: boolean;
+}
 
 export interface ExchangeRate {
   baseCurrency: string;
@@ -230,4 +251,13 @@ export interface AppInfo {
   electronVersion: string | null;
   chromeVersion: string | null;
   packages: OssPackageInfo[];
+}
+
+/** POST /api/backup/restore 응답 — secrets는 API 키·Google 연결을 어떻게 했는지
+ *  (backend/src/backup.ts의 RestoreResult), restarting은 앱이 곧 스스로 다시 시작하는지. */
+export interface RestoreBackupResult {
+  restored: string[];
+  skipped: string[];
+  secrets: 'restored' | 'not-in-backup' | 'keyring-unavailable';
+  restarting: boolean;
 }

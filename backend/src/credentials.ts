@@ -1,30 +1,10 @@
 import { getDataDir } from './paths';
 import { JsonStore } from './jsonStore';
 import type { BrokerId } from './brokers/types';
+import { getDecryptor, getSecureStorageState, sealJson, shouldReseal, type StoredEnvelope } from './secureStorage';
 
-interface StoredCredential {
-  // Base64 of the encrypted JSON.stringify(fields) buffer (Electron
-  // safeStorage), or, only when safeStorage is unavailable (plain `node`,
-  // non-Electron dev runs), base64 of the raw JSON with `encrypted: false`.
-  data: string;
-  encrypted: boolean;
-}
-
-type CredentialsFile = Partial<Record<BrokerId, StoredCredential>>;
-
-function getSafeStorage(): typeof import('electron').safeStorage | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const electron = require('electron') as typeof import('electron');
-    if (electron?.safeStorage?.isEncryptionAvailable?.()) {
-      return electron.safeStorage;
-    }
-  } catch {
-    // Not running inside Electron's main process — expected for
-    // standalone backend dev/test runs.
-  }
-  return null;
-}
+// 봉투 형식·암호화 가능 여부 판단은 secureStorage.ts가 한다(google/store.ts와 공용).
+type CredentialsFile = Partial<Record<BrokerId, StoredEnvelope>>;
 
 function store() {
   return new JsonStore<CredentialsFile>('credentials.json', getDataDir(), {});
@@ -37,22 +17,19 @@ function store() {
  * broker rather than a fixed shape.
  */
 export function setCredentialFields(broker: BrokerId, fields: Record<string, string>): void {
-  const json = JSON.stringify(fields);
-  const safeStorage = getSafeStorage();
-  let stored: StoredCredential;
-
-  if (safeStorage) {
-    stored = { data: safeStorage.encryptString(json).toString('base64'), encrypted: true };
-  } else {
-    console.warn(
-      '[credentials] Electron safeStorage unavailable — storing credentials WITHOUT encryption. ' +
-        'This path is only expected when running the backend standalone (outside Electron) for dev/testing. ' +
-        'Run the packaged app via Electron for real use.'
-    );
-    stored = { data: Buffer.from(json, 'utf-8').toString('base64'), encrypted: false };
-  }
-
+  // 키링 없는 Linux 등 안전하게 암호화할 수 없으면 여기서 던진다
+  // (SecureStorageUnavailableError — routes/settings.ts가 409로 바꾼다).
+  const stored = sealJson(JSON.stringify(fields));
   store().update((current) => ({ ...current, [broker]: stored }));
+}
+
+/** 안전하지 않게 저장돼 있을 수 있는 브로커 — 설정 화면 경고용(routes/settings.ts).
+ *  평문 봉투는 항상 포함하고, 지금 암호화가 안전하지 않으면(Linux `basic_text` 등)
+ *  "암호화됨" 표시 항목도 그 약한 키로 쓰였을 수 있어 전부 포함한다. */
+export function listInsecureBrokers(): BrokerId[] {
+  const file = store().read();
+  const weak = getSecureStorageState().kind === 'unavailable';
+  return (Object.keys(file) as BrokerId[]).filter((b) => file[b] && (weak || !file[b]!.encrypted));
 }
 
 // 복호화 결과 캐시 — KIS/KB는 API 요청 하나마다 requireCredentials()로 이
@@ -67,7 +44,7 @@ export function getCredentialFields(broker: BrokerId): Record<string, string> | 
   if (!stored) return null;
 
   const cached = decryptedCache.get(broker);
-  if (cached && cached.data === stored.data) return { ...cached.fields };
+  if (cached && cached.data === stored.data && !shouldReseal(stored)) return { ...cached.fields };
 
   let json: string;
   if (stored.encrypted) {
@@ -81,7 +58,7 @@ export function getCredentialFields(broker: BrokerId): Record<string, string> | 
         `[credentials] "${broker}" 자격증명 데이터가 손상되었습니다. 설정 화면에서 자격증명을 다시 입력해주세요.`
       );
     }
-    const safeStorage = getSafeStorage();
+    const safeStorage = getDecryptor();
     if (!safeStorage) {
       throw new Error(
         `[credentials] Stored credentials for "${broker}" are encrypted but Electron safeStorage is not ` +
@@ -94,6 +71,12 @@ export function getCredentialFields(broker: BrokerId): Record<string, string> | 
   }
 
   const fields = JSON.parse(json) as Record<string, string>;
+  // 키링이 없던 때(또는 이 차단이 생기기 전) 평문으로 저장된 항목은, 지금 암호화할
+  // 수 있게 됐으면 그 자리에서 암호화해 다시 쓴다 — 평문이 디스크에 계속 남지 않게.
+  if (shouldReseal(stored)) {
+    store().update((current) => ({ ...current, [broker]: sealJson(json) }));
+    return { ...fields };
+  }
   decryptedCache.set(broker, { data: stored.data, fields });
   return { ...fields };
 }

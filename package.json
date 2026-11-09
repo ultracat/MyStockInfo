@@ -20,7 +20,8 @@
     "build:frontend": "npm run build --workspace frontend",
     "build:electron": "npm run build --workspace electron",
     "build": "npm run build:backend && npm run build:frontend && npm run build:electron",
-    "dev": "npm run build:backend && concurrently -k -n frontend,electron \"npm:dev:frontend\" \"npm:dev:electron\"",
+    "test": "npm run test --workspace backend",
+    "dev": "npm run build:backend && node scripts/dev.cjs",
     "package:mac": "npm run build && electron-builder --mac",
     "package:linux": "npm run build && electron-builder --linux",
     "package:win": "npm run build && electron-builder --win"

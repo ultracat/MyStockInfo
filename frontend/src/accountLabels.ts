@@ -26,7 +26,21 @@ export function findAccountLabel(
   return labels.find((l) => l.broker === broker && l.accountId === accountId);
 }
 
-/** 화면에 보여줄 계좌번호 — 설정에서 직접 입력한 표시용 번호 > API가 준
+/** 배당 기록의 `accountId`를 보유종목/매매내역과 같은 내부 accountId로 되돌린다 —
+ *  배당 기록의 계좌는 자유 입력이라 토스처럼 표시용 계좌번호(별칭의 `accountNumber`,
+ *  예: "123-45-678901")로 적혀 있을 수 있는데, 토스 포지션의 accountId는 Open API용
+ *  accountSeq("1")라 그대로 비교하면 같은 계좌가 매칭되지 않는다. */
+export function resolveDividendAccountId(
+  labels: AccountLabel[],
+  broker: BrokerId,
+  accountId: string | null
+): string | null {
+  if (!accountId) return null;
+  const byNumber = labels.find((l) => l.broker === broker && l.accountNumber === accountId);
+  return byNumber ? byNumber.accountId : accountId;
+}
+
+/** 화면에 보여줄 계좌번호 —설정에서 직접 입력한 표시용 번호 > API가 준
  *  accountNumber > accountId 순. 토스증권은 accountId가 Open API용 accountSeq
  *  ("1")라 사용자가 표시용 번호를 입력하지 않으면 "1"이 그대로 보인다. */
 export function displayAccountNumber(account: BrokerAccount, entry?: AccountLabel): string {

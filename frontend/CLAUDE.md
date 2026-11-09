@@ -225,10 +225,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   수정 저장/취소와 같은 패턴). 업로드는 `File.arrayBuffer()` → 로컬
   `arrayBufferToBase64`(32KB씩 청크 처리 — `String.fromCharCode(...bytes)`를
   통째로 spread하면 파일이 커질 때 "Maximum call stack size exceeded"가 날 수
-  있어서) → `api.restoreBackup(base64)`. 복원 성공 후 화면을 자동으로 새로고침하지
-  않는다 — 이 프로젝트에 IPC가 없어 렌더러가 Electron 프로세스를 재시작시킬 방법이
-  없고(`backend/CLAUDE.md`의 "백업/복원" 절 참고), 어차피 백엔드 캐시 전체가
-  무효화돼야 하므로 "앱을 재시작해주세요" 안내 문구로 끝낸다.
+  있어서) → `api.restoreBackup(base64, password)`. **백업 비밀번호**(선택, 8자 이상 +
+  확인 입력)를 정하면 API 키·Google 연결도 그 비밀번호로 암호화해 zip에 들어가고,
+  비워 두면 빠진다 — 복원 확인 상자에도 비밀번호 칸이 있다(`backend/CLAUDE.md`의
+  "백업/복원" 절). 복원 뒤 재시작은 렌더러가 하지 않는다(IPC 없음) — 패키징된 앱은
+  백엔드가 Electron 메인이 넘긴 콜백으로 직접 재시작하고(응답 `restarting: true`면
+  "잠시 후 다시 시작됩니다"), dev 실행은 "앱을 다시 시작해주세요" 안내로 끝낸다
+  (`restoreMessage`가 `secrets`/`restarting`에 맞춰 문구를 만든다).
 
 ## 화면 줌 (돋보기 줌)
 
@@ -385,8 +388,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   (`dataType`: `'holdings'|'trades'|'dividends'`)를 그대로 부르기만 하면 되고,
   대상 선택 UI가 없다 — CSV와 같은 범위(전체 브로커/계좌)를 그대로 시트 탭
   하나에 매핑한다. **CSV 가져오기와 의미가 다르다** — CSV는 부분 병합/업서트/
-  추가(페이지별로 다름, 위 참고)지만 Google Sheets 가져오기는 로컬 저장소 전체를
-  시트 내용으로 **완전 교체**한다(`backend/CLAUDE.md`의 "Google Sheets 연동" 절
+  추가(페이지별로 다름, 위 참고)지만 Google Sheets 가져오기는 수동 입력 계좌의 로컬
+  저장소 전체를 시트 내용으로 **완전 교체**하고, 실패 행이 하나라도 있으면 전부
+  취소한다(API·동기화 계좌 행은 CSV·Sheets 둘 다 건너뜀 — 결과 문구는
+  `src/importResult.ts`의 `formatImportResult` 하나로 만든다)(`backend/CLAUDE.md`의 "Google Sheets 연동" 절
   참고, 사용자가 명시적으로 요청한 동작). 연결 안 돼 있으면(`api.getGoogleStatus()`의
   `connected`가 `false`) 버튼이 비활성화되고 "설정에서 Google 계정을 먼저
   연결해주세요" 툴팁을 보여준다 — 각 페이지가 마운트 시 한 번 상태를 읽어둔다.
@@ -426,6 +431,12 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   그대로 적어뒀다. 매매내역이 로컬 저장소(`trades-store`) 기준이라 한 번도
   조회/동기화/가져오기를 안 한 계좌의 과거 매수는 안 잡힐 수 있다(다른 화면의
   "전체" 모드와 같은 한계).
+  **상단 카드**: 총 매입/평가는 `PurchaseMarketTile` 한 카드, 손익은 "배당 제외"/"배당
+  포함" 두 카드. 배당 포함 값(`heldDividends`)은 **지금 보유 중인 (증권사, 계좌, 종목)**에
+  그 계좌의 그 종목 배당만 더한다 — 보유 종목 화면과 같은 `dividendMatch.ts` 규칙이라
+  증권사별 보유 종목 화면의 "배당 포함" 값을 다 더하면 이 값이 된다(달러 배당 환산만
+  다름: 여기는 지급월 평균 환율, 보유 종목 화면은 포지션 통화 그대로). 전량 매도한
+  종목의 배당은 빠진다(그건 "종목별 수익" 화면 몫).
   **환율 처리**는 다른 화면들과 같은 패턴(`toKrw(amount, currency)` — KRW 1:1,
   USD는 `effectiveFxRate` 있을 때만 곱하고 없으면 `null` 반환해 그 항목을 집계에서
   뺀 뒤 배너로 안내).
@@ -483,6 +494,23 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   하나라도 있으면 "계좌" 열을 보여준다(개별 계좌 모드에선 이 필드가 없어서 열 자체가
   안 생김 — Trades.tsx의 `isAllMode` 전용 컬럼과 같은 패턴이지만 여긴 별도 상태
   플래그 없이 데이터 유무로 판단).
+  **"배당 포함 손익금액" 열**(손익률 뒤): 손익금액 + **이 계좌의 이 종목**에서 받은
+  배당 합계(`rows` useMemo의 `dividendFor`) — "종목별 수익" 화면과 달리 다른 계좌의
+  같은 종목 배당은 섞지 않는다(사용자 명시 요청, 2026-11-04). 배당 기록의 계좌는
+  `accountLabels.ts`의 `resolveDividendAccountId`로 내부 accountId로 되돌려 비교한다
+  (토스 배당은 표시용 번호 `158-01-…`로, 포지션은 accountSeq `1`로 적혀 있어서 그냥
+  비교하면 0원이 된다). 계좌가 빈 배당 기록은 그 브로커 계좌가 하나뿐일 때만 그 계좌
+  것으로 본다. IRP처럼 memo로 나뉜 같은 종목 여러 행은 수량 비율로 나눠 붙인다(통째로
+  더하면 이중 집계). 금액은 포지션 통화 기준이라 통화가 같으면 환율 없이 더하고, 다르면
+  `effectiveFxRate`(월평균 아님 — 드문 경우라 추가 조회를 안 붙임)로 환산, 없으면
+  "환율 미적용". 배당 기록은 마운트·브로커 변경 시에만 다시 읽는다(1분 폴링엔 안 얹음).
+  계좌 매칭 규칙(표시용 번호 변환·빈 계좌 처리)은 `src/dividendMatch.ts`의
+  `groupDividendsByAccountSymbol` 하나에 있고 대시보드도 같은 걸 쓴다 — 한쪽만 고치면
+  두 화면 숫자가 어긋난다. **상단 카드**: "총 매입금액/총 평가금액"은
+  `components/PurchaseMarketTile.tsx` 한 카드(대시보드 공용), 손익은 "총 손익금액
+  (배당 제외)"/"(배당 포함)" 두 카드다(사용자 요청, 2026-11-04). 배당 포함 카드는 배당을
+  따로 다시 집계하지 않고 표 행의 `dividendAmount`를 통화별로 더한 값(`dividendTotals`)
+  — 표 열과 카드가 절대 어긋나지 않게.
 - `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회(두 브로커 다 개인 배당 지급
   내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
   그대로 저장(backend/CLAUDE.md 참고). `accountId`(선택, `string | null`)로 한 증권사

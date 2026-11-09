@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { clearCredential, getCredentialFields, hasCredential, setCredentialFields } from '../credentials';
+import { clearCredential, getCredentialFields, hasCredential, listInsecureBrokers, setCredentialFields } from '../credentials';
+import { getSecureStorageState, SECURE_STORAGE_UNAVAILABLE_MESSAGE, SecureStorageUnavailableError } from '../secureStorage';
+import { hasInsecureTokens } from '../google/store';
 import { getSettings, setUsdKrwRate } from '../db/settings';
 import { CREDENTIAL_FIELDS } from '../brokers/credentialFields';
 import { BROKER_IDS } from '../brokers/knownBrokers';
@@ -14,6 +16,19 @@ export const settingsRouter = Router();
 settingsRouter.get('/credentials', (_req, res) => {
   const status = Object.fromEntries(BROKER_IDS.map((b) => [b, hasCredential(b)]));
   res.json(status);
+});
+
+// 설정 화면 경고 배너용 — 키링 없는 Linux 등에서는 자격증명/Google 연결 저장을
+// 거부하므로(secureStorage.ts) 화면이 먼저 이유와 해결 방법을 보여준다.
+settingsRouter.get('/secure-storage', (_req, res) => {
+  const state = getSecureStorageState();
+  res.json({
+    available: state.kind !== 'unavailable',
+    message: state.kind === 'unavailable' ? SECURE_STORAGE_UNAVAILABLE_MESSAGE : null,
+    linuxBackend: state.kind === 'unavailable' ? state.linuxBackend : null,
+    insecureBrokers: listInsecureBrokers(),
+    insecureGoogle: hasInsecureTokens(),
+  });
 });
 
 settingsRouter.get('/credential-fields', (_req, res) => {
@@ -62,7 +77,12 @@ settingsRouter.post('/credentials/:broker', (req, res) => {
   }
 
   const trimmed = Object.fromEntries(spec.map((f) => [f.key, String(fields[f.key]).trim()]));
-  setCredentialFields(broker, trimmed);
+  try {
+    setCredentialFields(broker, trimmed);
+  } catch (err) {
+    if (err instanceof SecureStorageUnavailableError) return res.status(409).json({ error: err.message });
+    throw err;
+  }
   res.status(204).end();
 });
 

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getSecureStorageState, SECURE_STORAGE_UNAVAILABLE_MESSAGE } from '../secureStorage';
 import * as store from '../google/store';
 import * as oauth from '../google/oauth';
 import * as sheetsSync from '../google/sheetsSync';
@@ -26,6 +27,11 @@ googleRouter.get('/status', (_req, res) => {
 googleRouter.post('/connect', (_req, res) => {
   if (!oauth.isClientConfigured()) {
     return res.status(500).json({ error: '이 빌드에 Google Client ID가 설정되지 않았습니다 (개발자 설정 누락).' });
+  }
+  // 로그인을 다 마친 뒤 토큰 저장에서 실패하지 않도록, 브라우저를 열기 전에 먼저
+  // 막는다(키링 없는 Linux 등 — secureStorage.ts).
+  if (getSecureStorageState().kind === 'unavailable') {
+    return res.status(409).json({ error: SECURE_STORAGE_UNAVAILABLE_MESSAGE });
   }
   oauth.startConnectFlow();
   res.json({ started: true });

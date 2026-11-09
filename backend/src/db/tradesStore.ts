@@ -199,16 +199,18 @@ export function upsertFromImport(rows: ImportTradeInput[]): StoredTrade[] {
   return inserted;
 }
 
-/** Google Sheets 가져오기 전용 — 브로커/계좌 구분 없이 저장소 전체를 통째로
- *  교체한다(위 upsertFromImport는 id 기준으로 병합/누적하지만, 이건 시트에 없는
- *  기존 매매내역까지 전부 지운다). Sheets 내보내기가 매번 로컬 전체를 시트에
+/** Google Sheets 가져오기 전용 — `preserve`가 true인 기존 행(API·동기화 계좌,
+ *  brokers/rowOwnership.ts)만 남기고 나머지 전부를 rows로 통째로 교체한다(위
+ *  upsertFromImport는 id 기준으로 병합/누적하지만, 이건 시트에 없는 수동 계좌
+ *  매매내역까지 전부 지운다). Sheets 내보내기가 매번 로컬 전체를 시트에
  *  덮어쓰는 것과 대칭을 이루도록, 가져오기도 시트 내용을 로컬의 유일한 진실로
  *  취급한다(부분 병합이 아님) — 사용자가 명시적으로 요청한 동작. `id` 컬럼이
  *  비어 있는 행(예전에 내보낸 시트, 시트에서 직접 추가한 행)은 upsertFromImport와
  *  같은 방식으로 기존 행의 id를 이어받는다 — 안 그러면 다음 실시간 조회가 같은
  *  체결을 브로커 id로 또 저장해 중복이 생긴다. */
-export function replaceAllTrades(rows: ImportTradeInput[]): StoredTrade[] {
-  const reuseId = createIdReuser(store().read());
+export function replaceAllTrades(rows: ImportTradeInput[], preserve: (t: StoredTrade) => boolean): StoredTrade[] {
+  const current = store().read();
+  const reuseId = createIdReuser(current);
   const fresh: StoredTrade[] = rows.map((row) => ({
     broker: row.broker,
     accountId: row.accountId,
@@ -224,7 +226,7 @@ export function replaceAllTrades(rows: ImportTradeInput[]): StoredTrade[] {
     tax: row.tax ?? null,
     executedAt: row.executedAt,
   }));
-  store().write(fresh);
+  store().write([...current.filter(preserve), ...fresh]);
   return fresh;
 }
 

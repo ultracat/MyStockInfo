@@ -131,8 +131,8 @@ const DRIVE_BASE_URL = 'https://www.googleapis.com/drive/v3';
 
 /** 로컬에 저장된 spreadsheetId가 없거나 더는 유효하지 않을 때(최초 연결,
  *  또는 예전 "연결 해제" 버그로 이미 중복 생성된 경우), 새로 또 만들기 전에
- *  이름이 정확히 일치하는 기존 스프레드시트가 있는지 찾는다 — drive.readonly
- *  범위만으로 되는 조회 전용 호출(oauth.ts의 SCOPES 주석 참고). 여러 개
+ *  이름이 정확히 일치하는 기존 스프레드시트가 있는지 찾는다 — drive.file
+ *  범위라 이 앱이 만든(또는 이 앱으로 연) 파일만 검색된다(oauth.ts의 SCOPES 주석 참고). 여러 개
  *  찾으면(사용자가 수동으로 사본을 만든 경우 등) 가장 최근에 수정된 것을
  *  쓴다 — 사용자가 최근에 실제로 편집하고 있던 파일일 가능성이 가장 높다. */
 export async function findSpreadsheetByName(title: string): Promise<SpreadsheetInfo | null> {
@@ -155,7 +155,7 @@ export async function findSpreadsheetByName(title: string): Promise<SpreadsheetI
     res = await search(freshToken);
   }
   if (!res.ok) {
-    // 구 refresh_token에 drive.readonly 동의가 없는 경우(범위 추가 전에 연결한
+    // 구 refresh_token에 Drive 범위 동의가 없는 경우(범위 추가 전에 연결한
     // 사용자) 403이 날 수 있다 — 검색 실패로 새 파일을 만들어버리지 않고, 그냥
     // "못 찾음"으로 처리해 기존 동작(스프레드시트 새로 생성)으로 자연스럽게
     // 넘어가게 한다. 사용자가 재연결하면 다음부터는 정상적으로 검색된다.

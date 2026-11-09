@@ -152,15 +152,15 @@ export function replaceHoldingsFromImport(rows: UpsertHoldingInput[]): void {
   ]);
 }
 
-/** Google Sheets 가져오기 전용 — 브로커/계좌 구분 없이 저장소 전체를 통째로
- *  교체한다(위 replaceHoldingsFromImport는 CSV에 등장한 (broker,accountId)만
- *  덮어쓰지만, 이건 그 밖의 계좌까지 포함해 전부 지우고 rows로 다시 채운다).
- *  Sheets 내보내기가 매번 로컬 전체를 시트에 덮어쓰는 것과 대칭을 이루도록,
- *  가져오기도 시트 내용을 로컬의 유일한 진실로 취급한다(부분 병합이 아님) —
- *  사용자가 명시적으로 요청한 동작. */
-export function replaceAllHoldings(rows: UpsertHoldingInput[]): void {
+/** Google Sheets 가져오기 전용 — `preserve`가 true인 기존 행(API·동기화 계좌,
+ *  brokers/rowOwnership.ts)만 남기고 나머지 전부를 rows로 통째로 교체한다(위
+ *  replaceHoldingsFromImport는 CSV에 등장한 (broker,accountId)만 덮어쓰지만, 이건
+ *  시트에 없는 수동 계좌까지 지운다). Sheets 내보내기가 매번 로컬 전체를 시트에
+ *  덮어쓰는 것과 대칭을 이루도록, 가져오기도 시트 내용을 수동 행의 유일한 진실로
+ *  취급한다(부분 병합이 아님) — 사용자가 명시적으로 요청한 동작. */
+export function replaceAllHoldings(rows: UpsertHoldingInput[], preserve: (h: StoredHolding) => boolean): void {
   const now = new Date().toISOString();
-  store().write(rows.map((row) => toStoredHolding(row, now)));
+  store().update((current) => [...current.filter(preserve), ...rows.map((row) => toStoredHolding(row, now))]);
 }
 
 export function deleteHolding(broker: BrokerId, accountId: string, symbol: string): boolean {

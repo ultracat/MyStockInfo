@@ -7,18 +7,21 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 
-// spreadsheets 범위만으로 스프레드시트 생성/읽기/쓰기는 다 된다. drive.readonly는
+// spreadsheets 범위만으로 스프레드시트 생성/읽기/쓰기는 다 된다. drive.file은
 // 오직 하나의 목적으로만 쓴다 — sheetsSync.ts의 ensureSpreadsheet()가 로컬에
 // 저장된 spreadsheetId를 못 찾을 때(최초 연결, 또는 예전에 "연결 해제"가
 // spreadsheetId까지 지워버리던 버그로 이미 중복 생성된 경우 등) 이름이
 // "MyStock"인 기존 스프레드시트가 있는지 찾아 재사용하기 위해서다(그렇게 안
-// 하면 매번 새 파일을 만들어 같은 이름의 파일이 계속 늘어남). 그 외의 Drive
-// 조작(업로드/삭제/공유 등)은 하지 않는다 — Google이 "restricted"로 분류하는
-// 더 넓은 drive/drive.file 범위 대신 조회 전용인 readonly만 쓴다. 이메일은
-// Settings 화면에 연결된 계정을 표시하기 위한 것.
+// 하면 매번 새 파일을 만들어 같은 이름의 파일이 계속 늘어남). drive.file은
+// **이 앱이 만들었거나 사용자가 이 앱으로 연 파일만** 보이므로 검색 결과도 그
+// 범위로 한정된다 — 찾으려는 "MyStock" 파일은 이 앱이 만든 것이라 충분하다.
+// 예전엔 drive.readonly(사용자 Drive 전체 조회)를 썼는데, Google 공식 분류상
+// drive.readonly는 "restricted"(가장 무거운 검증 대상), drive.file은
+// "non-sensitive"(권장)라 바꿨다(2026-10-30, Drive/Sheets API scopes 문서 확인).
+// 이메일은 Settings 화면에 연결된 계정을 표시하기 위한 것.
 const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/userinfo.email',
 ];
 

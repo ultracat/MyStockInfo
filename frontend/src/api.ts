@@ -10,6 +10,9 @@ import type {
   CredentialStatus,
   DividendRecord,
   ExchangeRate,
+  ImportResult,
+  RestoreBackupResult,
+  SecureStorageStatus,
   PortfolioOverview,
   StockInfo,
   StockLinkEntry,
@@ -20,12 +23,21 @@ import type {
   WatchlistEntry,
 } from './types';
 
-const BASE_URL = 'http://127.0.0.1:4317/api';
+// 백엔드가 `/api/*` 요청마다 요구하는 실행별 토큰과, 백엔드가 실제로 뜬 포트 —
+// Electron 메인이 창을 열 때 URL 해시(`#token=...&port=...`)로 넘긴다
+// (electron/src/main.ts). 새로고침(⌘R)해도 해시가 그대로 남아서 다시 읽힌다.
+// 포트는 4317이 기본이지만 다른 프로그램이 쓰고 있으면 메인이 빈 포트로 옮기므로
+// 여기 하드코딩하지 않는다(해시에 없으면 — 브라우저로 직접 연 dev 화면 등 — 4317).
+const HASH_PARAMS = new URLSearchParams(window.location.hash.slice(1));
+const BACKEND_PORT = Number(HASH_PARAMS.get('port')) || 4317;
+const BASE_URL = `http://127.0.0.1:${BACKEND_PORT}/api`;
+const API_TOKEN = HASH_PARAMS.get('token') ?? '';
+const AUTH_HEADER = { Authorization: `Bearer ${API_TOKEN}` };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -47,6 +59,7 @@ export const api = {
     request<PortfolioOverview>(`/holdings/${broker}/${accountId}${opts?.forceRefresh ? '?refresh=true' : ''}`),
 
   getCredentialStatus: () => request<CredentialStatus>('/settings/credentials'),
+  getSecureStorageStatus: () => request<SecureStorageStatus>('/settings/secure-storage'),
   getCredentialFields: () => request<Record<BrokerId, CredentialFieldSpec[]>>('/settings/credential-fields'),
   // "증권사 연동 상태" 표에 계좌번호 같은 비밀 아닌 입력값을 보여주기 위한 조회 —
   // secret:true인 필드(appSecret 등)는 서버가 애초에 응답에서 뺀다.
@@ -106,7 +119,7 @@ export const api = {
       method: 'POST',
     }),
   importDividends: (records: Omit<DividendRecord, 'id' | 'name'>[]) =>
-    request<{ added: number; failed: { row: number; error: string }[] }>('/dividends/import', {
+    request<ImportResult>('/dividends/import', {
       method: 'POST',
       body: JSON.stringify({ records }),
     }),
@@ -147,7 +160,7 @@ export const api = {
       memo?: string | null;
     }[]
   ) =>
-    request<{ added: number; failed: { row: number; error: string }[] }>('/holdings-store/import', {
+    request<ImportResult>('/holdings-store/import', {
       method: 'POST',
       body: JSON.stringify({ records }),
     }),
@@ -177,7 +190,7 @@ export const api = {
       executedAt: string;
     }[]
   ) =>
-    request<{ added: number; failed: { row: number; error: string }[] }>('/trades-store/import', {
+    request<ImportResult>('/trades-store/import', {
       method: 'POST',
       body: JSON.stringify({ records }),
     }),
@@ -238,7 +251,7 @@ export const api = {
   exportToGoogleSheet: (dataType: 'holdings' | 'trades' | 'dividends') =>
     request<{ spreadsheetUrl: string; rowCount: number }>(`/google/sync/${dataType}/export`, { method: 'POST' }),
   importFromGoogleSheet: (dataType: 'holdings' | 'trades' | 'dividends') =>
-    request<{ added: number; failed: { row: number; error: string }[] }>(`/google/sync/${dataType}/import`, {
+    request<ImportResult>(`/google/sync/${dataType}/import`, {
       method: 'POST',
     }),
 
@@ -270,10 +283,16 @@ export const api = {
     request<SnapshotRecord>('/portfolio-snapshots', { method: 'POST', body: JSON.stringify(record) }),
   listPortfolioSnapshots: () => request<SnapshotRecord[]>('/portfolio-snapshots'),
 
-  // 데이터 폴더 전체를 묶은 zip — 응답이 JSON이 아니라 바이너리라 request<T>
+  // 데이터 폴더를 묶은 zip — 응답이 JSON이 아니라 바이너리라 request<T>
   // 헬퍼(항상 .json()을 기대)를 거치지 않고 직접 fetch해서 Blob으로 받는다.
-  downloadBackup: async (): Promise<Blob> => {
-    const res = await fetch(`${BASE_URL}/backup`);
+  // password를 주면 API 키·Google 연결을 그 비밀번호로 암호화해 함께 넣는다
+  // (backend/CLAUDE.md의 "백업/복원" 절). URL에 남지 않게 body로 보낸다.
+  downloadBackup: async (password?: string): Promise<Blob> => {
+    const res = await fetch(`${BASE_URL}/backup`, {
+      method: 'POST',
+      headers: { ...AUTH_HEADER, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: password ?? '' }),
+    });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.error ?? `백업 다운로드 실패: ${res.status}`);
@@ -282,10 +301,10 @@ export const api = {
   },
   // zip을 base64로 감싸 보통 JSON body로 보낸다(이 앱이 전부 JSON body만 쓰는
   // 관례 유지 — backend/CLAUDE.md의 "백업/복원" 절 참고).
-  restoreBackup: (zipBase64: string) =>
-    request<{ restored: string[]; skipped: string[] }>('/backup/restore', {
+  restoreBackup: (zipBase64: string, password?: string) =>
+    request<RestoreBackupResult>('/backup/restore', {
       method: 'POST',
-      body: JSON.stringify({ zipBase64 }),
+      body: JSON.stringify({ zipBase64, password: password ?? '' }),
     }),
 
   // ISA/연금저축/IRP 계좌 분류 — RealizedGains.tsx 전용(backend/CLAUDE.md의

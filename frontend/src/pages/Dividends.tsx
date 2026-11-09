@@ -6,6 +6,7 @@ import DonutDetailModal from '../components/DonutDetailModal';
 import CollapseToggle from '../components/CollapseToggle';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
+import { formatImportResult } from '../importResult';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
@@ -606,13 +607,7 @@ export default function Dividends() {
       }
 
       const result = await api.importDividends(parsedRecords);
-      setImportResult(
-        result.failed.length > 0
-          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
-              .map((f) => `${f.row}행 - ${f.error}`)
-              .join('; ')})`
-          : `${result.added}건 추가됨`
-      );
+      setImportResult(formatImportResult(result));
       await refresh();
     } catch (e) {
       setImportResult((e as Error).message);
@@ -658,20 +653,14 @@ export default function Dividends() {
   async function onImportFromGoogleSheet() {
     // 가져오기도 전체 교체다 — 로컬에서 직접 추가/수정했지만 아직 시트로
     // "내보내기"를 안 한 내용이 있으면 시트 내용으로 덮어써지며 사라진다.
-    if (!window.confirm('Google Sheets의 Dividends 탭 내용으로 로컬 데이터 전체를 교체합니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
+    if (!window.confirm('Google Sheets의 Dividends 탭 내용으로 로컬 데이터 전체를 교체합니다. 시트에 실패하는 행이 하나라도 있으면 아무것도 바꾸지 않습니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
       return;
     }
     setGoogleSyncing(true);
     setGoogleSyncResult(null);
     try {
       const result = await api.importFromGoogleSheet('dividends');
-      setGoogleSyncResult(
-        result.failed.length > 0
-          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
-              .map((f) => `${f.row}행 - ${f.error}`)
-              .join('; ')})`
-          : `${result.added}건 추가됨`
-      );
+      setGoogleSyncResult(formatImportResult(result));
       await refresh();
     } catch (e) {
       setGoogleSyncResult((e as Error).message);

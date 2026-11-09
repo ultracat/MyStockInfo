@@ -1,5 +1,6 @@
 import { getDataDir } from '../paths';
 import { JsonStore } from '../jsonStore';
+import { getDecryptor, getSafeStorage, getSecureStorageState, sealJson, shouldReseal, type StoredEnvelope } from '../secureStorage';
 
 /**
  * 사용자별 Google 연결 상태(토큰 + 연결된 계정 이메일 + 연동된 스프레드시트) —
@@ -7,8 +8,8 @@ import { JsonStore } from '../jsonStore';
  * 참고 — 일반 사용자가 입력하거나 알 필요가 없다). credentials.ts와 별도인
  * 이유는 그 파일의 CredentialsFile이 BrokerId로만 키가 잡혀 있어서 Google을
  * 억지로 브로커 취급하면 안 되기 때문. 전체를 하나의 blob으로 암호화해
- * 저장한다(credentials.ts의 {data, encrypted} 봉투와 같은 패턴 — safeStorage
- * lazy-require도 동일하게 복제, credentials.ts에서 export되어 있지 않아서).
+ * 저장한다(credentials.ts와 같은 secureStorage.ts의 봉투 — 키링 없는 Linux에선
+ * 토큰이 든 상태는 저장을 거부한다).
  */
 export interface GoogleAccountState {
   refreshToken: string | null;
@@ -28,24 +29,7 @@ const EMPTY_STATE: GoogleAccountState = {
   spreadsheetUrl: null,
 };
 
-interface StoredBlob {
-  data: string;
-  encrypted: boolean;
-}
-
-function getSafeStorage(): typeof import('electron').safeStorage | null {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const electron = require('electron') as typeof import('electron');
-    if (electron?.safeStorage?.isEncryptionAvailable?.()) {
-      return electron.safeStorage;
-    }
-  } catch {
-    // Not running inside Electron's main process — expected for standalone
-    // backend dev/test runs.
-  }
-  return null;
-}
+type StoredBlob = StoredEnvelope;
 
 function blobStore() {
   return new JsonStore<StoredBlob | null>('google-account.json', getDataDir(), null);
@@ -68,13 +52,13 @@ function readState(): GoogleAccountState {
     return { ...EMPTY_STATE };
   }
 
-  if (cachedState && cachedState.data === stored.data) {
+  if (cachedState && cachedState.data === stored.data && !shouldReseal(stored)) {
     return { ...cachedState.state };
   }
 
   let json: string;
   if (stored.encrypted) {
-    const safeStorage = getSafeStorage();
+    const safeStorage = getDecryptor();
     if (!safeStorage) {
       throw new Error(
         '[google] 저장된 Google 연동 정보가 암호화되어 있지만 Electron safeStorage를 사용할 수 없습니다. ' +
@@ -87,21 +71,46 @@ function readState(): GoogleAccountState {
   }
 
   const state = { ...EMPTY_STATE, ...JSON.parse(json) };
+  // 평문으로 저장돼 있던 상태를 지금 암호화할 수 있으면 다시 쓴다(credentials.ts와 같음).
+  if (shouldReseal(stored)) {
+    writeState(state);
+    return { ...state };
+  }
   cachedState = { data: stored.data, state };
   return { ...state };
 }
 
+/** 토큰이 없는 상태(연결 해제 후 spreadsheetId만 남긴 것)는 비밀이 아니라서 암호화를
+ *  못 해도 평문으로 쓴다 — 그래야 키링 없는 Linux에서도 "연결 해제"가 동작해 예전에
+ *  평문으로 저장된 토큰을 지울 수 있다. 토큰이 있으면 sealJson이 거부한다. */
 function writeState(state: GoogleAccountState): void {
   const json = JSON.stringify(state);
-  const safeStorage = getSafeStorage();
-  const blob: StoredBlob = safeStorage
-    ? { data: safeStorage.encryptString(json).toString('base64'), encrypted: true }
-    : { data: Buffer.from(json, 'utf-8').toString('base64'), encrypted: false };
+  const hasSecret = Boolean(state.refreshToken || state.accessToken);
+  const blob: StoredBlob =
+    !hasSecret && !getSafeStorage()
+      ? { data: Buffer.from(json, 'utf-8').toString('base64'), encrypted: false }
+      : sealJson(json);
   blobStore().write(blob);
+}
+
+/** 안전하지 않게 저장된 Google 토큰이 있는지 — 설정 화면 경고용(credentials.ts의
+ *  listInsecureBrokers와 같은 기준). */
+export function hasInsecureTokens(): boolean {
+  const stored = blobStore().read();
+  if (!stored) return false;
+  if (stored.encrypted && getSecureStorageState().kind !== 'unavailable') return false;
+  const state = readState();
+  return Boolean(state.refreshToken || state.accessToken);
 }
 
 export function getState(): GoogleAccountState {
   return readState();
+}
+
+/** 백업 복원 전용(backup.ts) — 비밀번호로 풀어낸 상태를 이 PC의 키체인으로 다시 잠가
+ *  통째로 저장한다. 키링 없는 Linux에서 토큰이 있으면 sealJson이 거부한다. */
+export function replaceState(state: GoogleAccountState): void {
+  writeState({ ...EMPTY_STATE, ...state });
 }
 
 export function setTokens(tokens: { refreshToken?: string; accessToken: string; expiresAt: number }): void {

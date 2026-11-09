@@ -17,7 +17,8 @@ Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS)**�
 
 ## 워크스페이스 구조
 
-npm workspaces 모노레포이며, 각 폴더에 더 상세한 `CLAUDE.md`가 있다.
+npm workspaces 모노레포이며, 각 폴더에 더 상세한 `CLAUDE.md`가 있다. 같은 폴더의 `AGENTS.md`는
+`CLAUDE.md`를 가리키는 심볼릭 링크다(다른 코딩 에이전트도 같은 지침을 읽게) — **`CLAUDE.md`만 고친다.**
 
 ```
 backend/    Express 서버 — 증권사 API 호출, 자격증명 암호화 저장, 배당 기록 로컬 저장

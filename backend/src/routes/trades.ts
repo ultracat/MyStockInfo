@@ -42,8 +42,9 @@ tradesRouter.get('/:broker/:accountId', async (req, res) => {
 
     // write-through — holdings.ts와 같은 이유(CSV 내보내기, API 연동이 없는
     // 브로커 대비). id 기준 upsert라 같은 구간을 반복 조회해도 중복이 안 쌓인다.
+    // 모의투자 계좌는 저장하지 않는다 — 로컬 매매 저장소는 실현손익·세금 계산의 원천이다.
     try {
-      upsertTrades(broker, accountId, trades);
+      if (!(await adapter.isPaperAccount?.(accountId))) upsertTrades(broker, accountId, trades);
     } catch (storeErr) {
       console.error('[trades-store] 로컬 저장 실패:', storeErr);
     }

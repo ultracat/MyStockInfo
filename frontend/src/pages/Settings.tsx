@@ -243,7 +243,7 @@ export default function Settings() {
       Promise.all(
         API_BROKER_IDS.filter((b) => credStatus[b]).map((b) =>
           api
-            .listAccounts(b)
+            .listAccounts(b, { includePaper: true })
             .then((accounts) => ({ broker: b, accountIds: new Set(accounts.map((a) => a.id)) }))
             .catch(() => ({ broker: b, accountIds: new Set<string>() }))
         )

@@ -9,6 +9,8 @@ import {
   nhDomesticSymbol,
   nhNum,
   nhTradeSide,
+  classifyNhDomesticDividends,
+  classifyNhOverseasDividends,
 } from '../src/brokers/nh/nhMappers';
 import { hasNextPage, rowsOf } from '../src/brokers/nh/nhClient';
 
@@ -89,4 +91,33 @@ test('NH 응답 블록: 객체·배열·없음 모두 배열로', () => {
   assert.deepEqual(rowsOf({ Output_0: { a: 1 } }, 'Output_0'), [{ a: 1 }]);
   assert.deepEqual(rowsOf({ Output_1: [{ a: 1 }, null] }, 'Output_1'), [{ a: 1 }]);
   assert.deepEqual(rowsOf({}, 'Output_1'), []);
+});
+
+test('NH 국내 배당: 배당·분배 적요만, 취소·출금·종목 없는 줄·외화는 뺀다', () => {
+  const base = { trd_dt: '20260415', iem_cd: 'A005930', iem_nm: '가짜전자', cur_cd: 'KRW', trd_amt: 8460, tax_sum: 1540 };
+  const c = classifyNhDomesticDividends([
+    { ...base, sps_cd_krl_anm: '배당금입금' },
+    { ...base, iem_cd: '069500', sps_cd_krl_anm: 'ETF분배금입금' },
+    { ...base, sps_cd_krl_anm: '배당금입금취소' },
+    { ...base, sps_cd_krl_anm: '이체입금' },
+    { ...base, iem_cd: '', sps_cd_krl_anm: '배당금입금' },
+    { ...base, cur_cd: 'USD', sps_cd_krl_anm: '배당금입금' },
+  ]);
+  assert.deepEqual(
+    c.map((x) => [x.symbol, x.kind, x.amount, x.tax, x.paidDate]),
+    [
+      ['005930', 'dividend', 8460, 1540, '2026-04-15'],
+      ['069500', 'etfDistribution', 8460, 1540, '2026-04-15'],
+    ]
+  );
+});
+
+test('NH 해외 배당: 입금 중 배당 적요, 달러만, 외화 금액·세금', () => {
+  const c = classifyNhOverseasDividends([
+    { trd_dt: '20260512', iem_cd: 'aapl', sps_cd_nm: '해외배당금입금', cur_cd_nm: 'USD', fc_trd_amt: 2.55, fc_tax_sum: 0.45 },
+    { trd_dt: '20260512', iem_cd: 'AAPL', sps_cd_nm: '외화입금', cur_cd_nm: 'USD', fc_trd_amt: 100 },
+    { trd_dt: '20260512', iem_cd: '0700', sps_cd_nm: '해외배당금입금', cur_cd_nm: '홍콩달러', fc_trd_amt: 10 },
+    { trd_dt: '20260513', iem_cd: 'MSFT', sps_cd_nm: '해외배당금입금', cur_cd_nm: '미국달러', fc_trd_amt: 1 },
+  ]);
+  assert.deepEqual(c.map((x) => [x.symbol, x.currency, x.amount, x.tax]), [['AAPL', 'USD', 2.55, 0.45], ['MSFT', 'USD', 1, 0]]);
 });

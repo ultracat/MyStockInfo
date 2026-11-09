@@ -57,8 +57,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listBrokers: () => request<BrokerSummary[]>('/accounts'),
-  listAccounts: (broker: BrokerId, opts?: { forceRefresh?: boolean }) =>
-    request<BrokerAccount[]>(`/accounts/${broker}${opts?.forceRefresh ? '?refresh=true' : ''}`),
+  // includePaper: 모의투자 계좌도(NH) — 보유·매매 화면의 계좌 선택에만. 합계를 내는 화면(대시보드·종목별 수익·배당)은
+  // 실전 계좌만 받는다.
+  listAccounts: (broker: BrokerId, opts?: { forceRefresh?: boolean; includePaper?: boolean }) => {
+    const q = new URLSearchParams();
+    if (opts?.forceRefresh) q.set('refresh', 'true');
+    if (opts?.includePaper) q.set('paper', 'true');
+    const qs = q.toString();
+    return request<BrokerAccount[]>(`/accounts/${broker}${qs ? `?${qs}` : ''}`);
+  },
   // Backend caches broker API responses for 5s (see backend's
   // brokers/responseCache.ts) — forceRefresh bypasses that, for the
   // Dashboard's refresh button.

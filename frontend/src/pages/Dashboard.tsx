@@ -411,7 +411,7 @@ export default function Dashboard() {
         // 저장소에 실제로 CSV로 넣어둔 (broker, accountId) 쌍의 accountId를 모아
         // 계좌 목록처럼 쓴다(새 백엔드 엔드포인트 불필요, 이미 있는 조회로 충분).
         const accs = API_BROKER_IDS.includes(selectedBroker)
-          ? await api.listAccounts(selectedBroker)
+          ? await api.listAccounts(selectedBroker, { includePaper: true })
           : await api
               .listHoldingsStore({ broker: selectedBroker })
               .then((rows) => Array.from(new Set(rows.map((r) => r.accountId))).map((id) => ({ id })));
@@ -507,8 +507,11 @@ export default function Dashboard() {
   // "전체 계좌"(API 브로커) — 계좌마다 실시간 조회를 병렬로 호출해 합친다. 계좌 수가
   // 몇 개뿐이라(KB증권 기준 3개) 초당 4~5건 한도에 걸릴 걱정은 없다.
   async function loadLivePortfolioAll(broker: BrokerId, opts?: { forceRefresh?: boolean }): Promise<PortfolioOverview> {
+    // 모의투자 계좌(NH)는 "전체 계좌" 합계에 넣지 않는다 — 실제 자산이 아니다.
     const parts = await Promise.all(
-      accounts.map(async (a) => ({ accountId: a.id, overview: await api.getPortfolio(broker, a.id, opts) }))
+      accounts
+        .filter((a) => !a.paper)
+        .map(async (a) => ({ accountId: a.id, overview: await api.getPortfolio(broker, a.id, opts) }))
     );
     return mergePortfolios(broker, parts);
   }
@@ -1073,7 +1076,9 @@ export default function Dashboard() {
               setAccountId(e.target.value);
             }}
           >
-            <option value={ALL_ACCOUNTS}>전체 계좌</option>
+            <option value={ALL_ACCOUNTS}>
+              {accounts.some((a) => a.paper) ? '전체 계좌 (모의투자 제외)' : '전체 계좌'}
+            </option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {formatAccountOption(
@@ -1085,6 +1090,13 @@ export default function Dashboard() {
               </option>
             ))}
           </select>
+        </div>
+      )}
+
+      {accounts.find((a) => a.id === accountId)?.paper && (
+        <div className="notice">
+          모의투자 계좌입니다 — 가상 자산이라 대시보드·종목별 수익·배당·실현손익 합계와 순자산 기록에는 넣지 않고, 이
+          화면과 매매내역에서만 보여줍니다.
         </div>
       )}
 
@@ -1178,7 +1190,7 @@ export default function Dashboard() {
           {isCurrentBrokerApi && selectedBroker === 'toss' && accountId && (
             <TossPrincipalCard
               portfolio={portfolio}
-              accountSeqs={accountId === ALL_ACCOUNTS ? accounts.map((a) => a.id) : [accountId]}
+              accountSeqs={accountId === ALL_ACCOUNTS ? accounts.filter((a) => !a.paper).map((a) => a.id) : [accountId]}
               fxRate={effectiveFxRate}
             />
           )}

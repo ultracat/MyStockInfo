@@ -16,6 +16,8 @@ import { resolveStockNames } from '../stockNameResolver';
 import { syncTossDividends } from '../brokers/toss/tossDividendSync';
 import { syncKisDividends } from '../brokers/kis/kisDividendSync';
 import { isKisConfigured } from '../brokers/kis/kisClient';
+import { syncNhDividends } from '../brokers/nh/nhDividendSync';
+import { isNhConfigured } from '../brokers/nh/nhClient';
 import type { DividendSyncResult } from '../brokers/dividendSyncTypes';
 import { getUpcomingDividends } from '../upcomingDividends';
 import type { ImportResult } from './importResult';
@@ -249,7 +251,7 @@ export async function importDividendsRecords(
   return { added: resolved.length, failed, skipped };
 }
 
-// 배당 동기화 — API로 배당을 받을 수 있는 증권사(토스·한국투자증권, 키가 있을 때만)마다 그 계좌의 배당 기록을
+// 배당 동기화 — API로 배당을 받을 수 있는 증권사(토스·한국투자증권·NH투자증권, 키가 있을 때만)마다 그 계좌의 배당 기록을
 // **API 내용으로 통째로 교체**한다(brokers/toss/tossDividendSync.ts, brokers/kis/kisDividendSync.ts).
 // 증권사별로 따로 돌아서 한쪽이 실패해도 다른 쪽은 반영된다. 배당금 화면이 열릴 때 프론트가 자동으로 부른다.
 // 다가오는 배당(확정: KIS 계좌 지급 예정 / 예상: 국내 예탁원 일정·해외 권리 × 보유 수량) — src/upcomingDividends.ts.
@@ -266,6 +268,7 @@ dividendsRouter.post('/sync', async (_req, res) => {
   const jobs: Array<{ broker: BrokerId; run: () => Promise<DividendSyncResult> }> = [];
   if (isTossConfigured()) jobs.push({ broker: 'toss', run: syncTossDividends });
   if (isKisConfigured()) jobs.push({ broker: 'kis', run: syncKisDividends });
+  if (isNhConfigured()) jobs.push({ broker: 'nh', run: syncNhDividends });
   const settled = await Promise.allSettled(jobs.map((j) => j.run()));
   const results: DividendSyncResult[] = [];
   const errors: Array<{ broker: BrokerId; error: string }> = [];

@@ -352,7 +352,7 @@ export default function Trades() {
         // CSV 전용 브로커(KB/삼성/미래에셋)는 listAccounts API가 없다 — 로컬
         // 저장소(trades-store)에 실제로 CSV로 넣어둔 accountId를 계좌 목록처럼 쓴다.
         const accs = API_BROKER_IDS.includes(selectedBroker)
-          ? await api.listAccounts(selectedBroker)
+          ? await api.listAccounts(selectedBroker, { includePaper: true })
           : await api
               .listTradesStore({ broker: selectedBroker })
               .then((rows) => Array.from(new Set(rows.map((r) => r.accountId))).map((id) => ({ id })));

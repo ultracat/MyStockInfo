@@ -354,6 +354,67 @@ function parseYmd(s: string): Date {
   return new Date(`${s}T00:00:00`);
 }
 
+/** 기간별계좌권리현황조회(`CTRGA011R`, `GET /uapi/domestic-stock/v1/trading/period-rights`, 공식 예제
+ *  `examples_llm/domestic_stock/period_rights/period_rights.py` 확인 2026-11-09) 한 행 — 배당 동기화에 쓰는
+ *  필드만. 금액은 문자열(원). `rght_type_cd`는 실측상 `03`=주식 배당, `32`=ETF 분배금(코드표는 문서에 없음).
+ *  `last_alct_amt`=최종배정금액(세전), `tax_amt`=세금, `cash_dfrm_dt`=현금지급일(미래면 지급 예정). */
+export interface KisPeriodRight {
+  rght_type_cd: string;
+  bass_dt: string;
+  pdno: string;
+  shtn_pdno: string;
+  prdt_name: string;
+  last_alct_amt: string;
+  tax_amt: string;
+  cash_dfrm_dt: string;
+}
+
+/** 이 앱이 쓰는 KIS 계좌 id(`CANO-상품코드`) — kisAdapter의 계좌 목록과 같은 형식. */
+export function getKisAccountId(): string {
+  const creds = requireCredentials();
+  return `${creds.accountNumber}-${creds.accountProductCode}`;
+}
+
+/** 계좌의 권리 내역 전체(기본 2000-01-01부터) — 25건씩 연속조회(`tr_cont` M/F)로 끝까지 받는다.
+ *  긴 기간을 한 번에 조회해도 된다(실측 2026-11-09). 매매내역 TR과 같은 1tps 리미터를 쓴다. */
+export async function fetchKisPeriodRights(from = '2000-01-01', to = '2099-12-31'): Promise<KisPeriodRight[]> {
+  const creds = requireCredentials();
+  const items: KisPeriodRight[] = [];
+  let fk100 = '';
+  let nk100 = '';
+  let trCont = '';
+  for (let page = 0; page < 200; page++) {
+    const res = await kisGet(
+      '/uapi/domestic-stock/v1/trading/period-rights',
+      'CTRGA011R',
+      {
+        INQR_DVSN: '03',
+        CANO: creds.accountNumber,
+        ACNT_PRDT_CD: creds.accountProductCode,
+        INQR_STRT_DT: from.replace(/-/g, ''),
+        INQR_END_DT: to.replace(/-/g, ''),
+        CUST_RNCNO25: '',
+        HMID: '',
+        RGHT_TYPE_CD: '',
+        PDNO: '',
+        PRDT_TYPE_CD: '',
+        CTX_AREA_FK100: fk100,
+        CTX_AREA_NK100: nk100,
+      },
+      trCont,
+      kisDailyCcldLimiter,
+      5
+    );
+    const out = res.output;
+    items.push(...((Array.isArray(out) ? out : out ? [out] : []) as KisPeriodRight[]));
+    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    fk100 = String(res.ctx_area_fk100 ?? '');
+    nk100 = String(res.ctx_area_nk100 ?? '');
+    trCont = 'N';
+  }
+  return items;
+}
+
 /** Fetches every page of one 주식일별주문체결조회 query (single TR/date range), following `ctx_area_fk100`/`nk100` until `tr_cont` stops being 'M'/'F'. */
 async function fetchDailyCcldAllPages(
   trId: string,

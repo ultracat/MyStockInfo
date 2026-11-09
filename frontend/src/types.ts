@@ -140,6 +140,20 @@ export interface DividendRecord {
   amount: number;
   paidDate: string;
   memo: string | null;
+  /** 원천징수 세금(`currency` 기준, 모르면 null). `amount`는 세후 실수령액, 세전 = amount + tax. */
+  tax: number | null;
+}
+
+/** POST /api/dividends/sync 응답의 증권사 하나 — backend/src/brokers/dividendSyncTypes.ts와 같은 모양.
+ *  그 증권사 API 계좌의 배당 기록은 API 내용으로 통째로 교체된다. */
+export interface DividendSyncResult {
+  broker: BrokerId;
+  added: number;
+  removed: number;
+  unchanged: number;
+  total: number;
+  byKind: { dividend: number; etfDistribution: number; taxRefund: number };
+  skipped: number;
 }
 
 export interface MonthlySummaryRow {

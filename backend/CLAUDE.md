@@ -837,7 +837,7 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
 아래)가 `GET /api/about`로 SW 이름/버전과 사용 중인 오픈소스 패키지 목록(이름/
 버전/라이선스)을 받아 보여준다.
 
-- **버전의 단일 소스는 루트 `version.json`**(`{"version": "0.1.0"}`)이다 —
+- **버전의 단일 소스는 루트 `version.json`**(예: `{"version": "1.0.0"}`)이다 —
   앱 버전을 올릴 땐 이 파일 하나만 고치면 된다. `npm run build`/`npm run dev`가
   둘 다 `backend` 빌드 전에 `scripts/generate-app-info.cjs`를 먼저 돌리는데
   (루트 `package.json`의 `build:backend`), 이 스크립트가 (1) `version.json`을
@@ -871,7 +871,8 @@ github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포
 
 `npm test`(루트) 또는 `npm run test -w backend` — Node 내장 `node:test`를 `tsx --test`로
 돌린다(별도 테스트 프레임워크 없음). 데이터를 잃거나 중복이 생기는 규칙만 골라 덮는다:
-행 소유권(`isSyncOwned`), Sheets 전체 교체의 전부 취소·API 행 보존, 매매내역 중복
+행 소유권(`isSyncOwned`, 배당은 `isDividendSyncOwned`), Sheets 전체 교체의 전부 취소·API 행 보존, 배당 동기화
+(토스·KIS 분류, 우선주 코드, API 우선 교체·id 이어받기·멱등), 매매내역 중복
 제거(`removeImportedDuplicates`, 가져오기 id 이어받기, 실시간 조회의 UUID 사본 제거),
 `normalizeSymbol`, `SAFE_FILENAME_RE`, 백업 비밀번호 암호화·복원(비밀번호가 틀리면 아무것도
 안 바뀜, 접속 토큰은 zip에 안 들어감).

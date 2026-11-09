@@ -10,7 +10,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   않는다** — 로케일 데이터 조회가 있어 공짜가 아니라서, 행마다 새로 만들면 포지션
   30~50개짜리 렌더 한 번에 수백 번 생성된다(과거 `HoldingsTable.tsx`에서 실제 발생).
 - `src/App.tsx` — 좌측 네비 + `page` 상태
-  (`'overview'|'dashboard'|'dividends'|'trades'|'settings'|'about'`, 기본값 `'overview'`).
+  (`'overview'|'dashboard'|'stockReturns'|'dividends'|'trades'|'realizedGains'|'watchlist'|'stockLinks'|'settings'|'about'`,
+  기본값 `'overview'` — 사이드바 순서도 이 순서).
   새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
   **`'overview'`(대시보드, `pages/Overview.tsx`)와 `'dashboard'`(보유 종목,
   `pages/Dashboard.tsx`) 이름이 헷갈리기 쉽다** — `Dashboard.tsx`는 이 세션
@@ -30,9 +31,11 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `#root`가 `min-height:100vh`라 컨테이너 높이가 콘텐츠만큼 계속 늘어났고, 그래서
   `.main`이 절대 자기 안에서 스크롤 못 하고 body(문서 전체)가 스크롤돼 사이드바까지
   같이 밀려 올라갔다. `.sidebar`도 `height:100%`+`overflow:hidden`으로 뷰포트에 고정해
-  스크롤에 안 따라오게 한다(메뉴가 4개뿐이라 넘칠 일도 없음).
-- `src/api.ts` — 백엔드 호출 레이어. `BASE_URL`이 `electron/src/main.ts`의
-  `BACKEND_PORT`와 일치해야 한다. 에러 응답은 `{error, detail?}`을 기대.
+  스크롤에 안 따라오게 한다. 메뉴가 10개라, 창 높이를 아주 낮추면 `overflow:hidden` 때문에 아래쪽 항목이
+  잘린다 — 문제가 되면 `.sidebar`의 메뉴 영역에 `overflow-y:auto`를 준다.
+- `src/api.ts` — 백엔드 호출 레이어. 백엔드 포트와 API 토큰은 Electron이 렌더러 URL 해시(`#token=…&port=…`)로
+  넘긴다 — `BASE_URL`을 그 `port`로 만들고(없으면 4317), 모든 요청에 `AUTH_HEADER`를 싣는다(포트는 고정이 아니다,
+  `electron/CLAUDE.md`의 "포트는 고정이 아니다"). 에러 응답은 `{error, detail?}`을 기대.
 - `src/types.ts` — 백엔드 응답 타입 미러링(`brokers/types.ts`와 형태 유지). CSV 관련
   로컬 저장소 타입은 `StoredHolding`/`StoredTrade`.
 - `src/brokers.ts` — `BROKER_LABELS`/`BROKER_ORDER`/`API_BROKER_IDS`/`CSV_ONLY_BROKER_IDS`.

@@ -59,6 +59,9 @@ interface KisEnvelope {
   output2?: unknown;
   ctx_area_fk100?: string;
   ctx_area_nk100?: string;
+  /** 국내휴장일조회(CTCA0903R)는 100 없는 이름으로 준다(공식 예제). */
+  ctx_area_fk?: string;
+  ctx_area_nk?: string;
 }
 
 export interface KisHoldingItem {
@@ -463,6 +466,52 @@ export async function fetchKisPeriodTradeProfit(from: string, to: string): Promi
     trCont = 'N';
   }
   return rows;
+}
+
+/** 국내휴장일조회 저장 — 공식 예제가 "원장 서비스와 연관돼 가급적 **1일 1회** 호출"을 요청해서 디스크에 하루 단위로 둔다. */
+interface StoredKisHolidays {
+  fetchedOn: string;
+  /** YYYY-MM-DD → 영업일(`bzdy_yn === 'Y'`) 여부. */
+  days: Record<string, boolean>;
+}
+const holidayStore = () => new JsonStore<StoredKisHolidays | null>('kis-holidays.json', getDataDir(), null);
+const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+
+/**
+ * 국내휴장일조회(`CTCA0903R`, `quotations/chk-holiday`) — `from`부터 `to`까지 날짜별 영업일 여부.
+ * 한 페이지 24일(2026-11-10 실측), 연속조회는 본문 `ctx_area_nk`/`ctx_area_fk` + `tr_cont` N. 오늘 받은 저장분이
+ * 범위를 덮으면 다시 부르지 않는다. 필드 `bzdy_yn`(영업일)·`tr_day_yn`·`opnd_yn`(개장일)·`sttl_day_yn`(결제일).
+ */
+export async function fetchKisBusinessDays(from: string, to: string): Promise<Record<string, boolean>> {
+  const today = kstToday();
+  const saved = holidayStore().read();
+  if (saved && saved.fetchedOn === today && from in saved.days && to in saved.days) return saved.days;
+
+  const days: Record<string, boolean> = {};
+  let fk = '';
+  let nk = '';
+  let trCont = '';
+  for (let page = 0; page < 10; page++) {
+    const res = await kisGet(
+      '/uapi/domestic-stock/v1/quotations/chk-holiday',
+      'CTCA0903R',
+      { BASS_DT: from.replace(/-/g, ''), CTX_AREA_FK: fk, CTX_AREA_NK: nk },
+      trCont
+    );
+    const out = res.output;
+    const rows = (Array.isArray(out) ? out : out ? [out] : []) as Array<{ bass_dt: string; bzdy_yn: string }>;
+    for (const r of rows) {
+      const m = /^(\d{4})(\d{2})(\d{2})$/.exec(r.bass_dt ?? '');
+      if (m) days[`${m[1]}-${m[2]}-${m[3]}`] = r.bzdy_yn === 'Y';
+    }
+    const last = Object.keys(days).sort().pop();
+    if ((last && last >= to) || (res.trCont !== 'M' && res.trCont !== 'F')) break;
+    fk = String(res.ctx_area_fk ?? '');
+    nk = String(res.ctx_area_nk ?? '');
+    trCont = 'N';
+  }
+  holidayStore().write({ fetchedOn: today, days });
+  return days;
 }
 
 /** 예탁원정보 배당일정(`HHKDB669102C0`, `ksdinfo/dividend`) — **시장 전체**(계좌 무관) 국내 배당 일정.

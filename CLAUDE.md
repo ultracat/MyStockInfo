@@ -64,8 +64,8 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   `electron/CLAUDE.md`의 "화면 줌" 절(메뉴/페이지 줌이 겹치지 않게 막는 셋) 참고.
 - **배포용 릴리스는 GitHub Actions로 한다** — 로컬 크로스 빌드는 Apple Silicon
   맥에서 `rcedit`(Windows)·`mksquashfs`(Linux AppImage)가 x86_64 바이너리라
-  실행되지 않는다. 버전은 루트 `version.json` 하나만 올리고, `vX.Y.Z` 태그를
-  push하면 세 OS 러너가 빌드해 **초안** 릴리스를 만든다(노트는 `CHANGELOG.md`의 그 버전 절) —
+  실행되지 않는다. 버전은 루트 `version.json` 하나만 올리고 `npm run release:tag`(태그만 — push로 빌드 안 됨) →
+  `npm run release:build`(그 태그로 세 OS 빌드 + **초안** 릴리스, 노트는 `CHANGELOG.md`의 그 버전 절) —
   `electron/CLAUDE.md`의 "GitHub Actions 릴리스" 절 참고.
 - `npm run package:mac`/`package:linux`/`package:win`으로 배포용 산출물(`.dmg`,
   `.AppImage`, `.exe` 설치본)을 만든다 — 상세 설정과 이 모노레포 구조 때문에 필요했던

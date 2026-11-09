@@ -1,7 +1,7 @@
 {
   "name": "mystock-api",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "여러 증권사 Open API를 연동해 보유 종목, 손익, 비중, 배당금을 보여주는 데스크톱 앱",
   "author": "ChangWoo Lee <ultracat.lcw@gmail.com>",
   "license": "AGPL-3.0-only",
@@ -25,6 +25,8 @@
     "check:nh": "npm run build:backend && electron scripts/nh-live-check.cjs",
     "check:kis": "npm run build:backend && electron scripts/kis-live-check.cjs",
     "check:toss": "npm run build:backend && electron scripts/toss-live-check.cjs",
+    "release:tag": "node scripts/release.cjs tag",
+    "release:build": "node scripts/release.cjs build",
     "dev": "npm run build:backend && node scripts/dev.cjs",
     "package:mac": "npm run build && electron-builder --mac",
     "package:linux": "npm run build && electron-builder --linux",

@@ -258,6 +258,9 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 객체끼리의 비교라 `JSON.stringify` 비교로 충분하다 — 혹시 순서가 달라지는 입력이
 들어와도 "달라졌다"고 오판해 다시 쓰는 쪽으로만 안전하게 어긋난다.
 
+**모의투자 계좌(NH 계좌구분 03)는 write-through하지 않는다**(`adapter.isPaperAccount?.(accountId)`) — 로컬 저장소는
+다가오는 배당 예상·실현손익·세금 계산·CSV 내보내기가 "실제 보유·체결"로 읽는다. 아래 "NH투자증권(나무)" 절.
+
 `GET /api/holdings-store`, `GET /api/trades-store`(둘 다 `?broker=&accountId=` 필터)로
 저장된 걸 조회한다 — CSV 전체 내보내기와 CSV 전용 브로커(실시간 조회가 안 되는)의 데이터
 확인용.
@@ -353,8 +356,9 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 없는데, `listDividends()`가 읽을 때 `normalize()`로 항상 `null`로 채워서(마이그레이션
 불필요) 이 밖의 코드는 `undefined` 케이스를 신경 안 써도 된다.
 
-### 배당 동기화(토스·한국투자증권) (`POST /api/dividends/sync`)
+### 배당 동기화(토스·한국투자증권·NH) (`POST /api/dividends/sync`)
 
+(NH투자증권도 같은 원칙 — 국내·달러 배당 모두 API 소유, 상세는 "NH투자증권(나무) Open API" 절.)
 **토스·한국투자증권 계좌의 배당은 API가 유일한 원천이다**(2026-11-09 사용자 결정: "항상 API 우선으로 로컬을
 덮어쓴다"). 동기화할 때마다 그 계좌의 배당 기록을 API 결과로 **통째로 교체**한다(`db/dividends.ts`의
 `replaceSyncedDividends` — 같은 내용의 기존 기록은 id를 이어받는다). 그래서 이 두 증권사(키가 있을 때)의 배당
@@ -437,6 +441,49 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 - `kisAdapter`는 국내 조회와 **독립**으로 부른다 — 해외가 실패해도 국내 보유·매매내역은 그대로(경고 로그만). 해외 보유가 있으면
   `totalXxxUsd`가 채워지고, 없으면 예전처럼 null.
 - 해외 배당은 여전히 없다(계좌 기준 API 없음, 위 "배당 동기화" 절).
+
+## NH투자증권(나무) Open API (`brokers/nh/`, `routes/nhReports.ts`)
+
+**⚠ 실데이터 미검증(행 해석)** — 실키로 인증·계좌 목록·모든 조회 엔드포인트(실전·모의투자)가 정상 응답하는 것까지
+확인했지만(2026-11-09) 연동 계좌에 보유·거래·입출금이 0건이다. 거래가 생기면 `npm run check:nh`로 다시 확인한다.
+명세 정본: 포털 `llms-full.txt` + `www.nhplug.com/openapi-docs/{common,krstock,gbstock}/openapi.json`(2026-11-06), 공식 SDK
+`github.com/PLUG-OpenAPI/nhplug-sdk`(`nhplug/client.py`·`auth.py`). 필드명은 전부 거기서.
+- **규약**: 전부 `POST` + `{"Input_0": {...}}`, 응답 `Output_0`/`Output_1`(객체일 수도 배열일 수도, 0건이면 블록이 없다 —
+  `rowsOf`) + `rsp_cd`/`rsp_msg`. 인증 헤더는 `Bearer` 하나. **HTTP 200이 곧 성공이 아니고 정상 `rsp_cd`가 API마다 달라**
+  코드로 판정하지 않는다 — 200 아님(IGW*)만 던지고, 요약 블록이 반드시 와야 하는 잔고는 블록이 없으면 `rsp_msg`를 담아 던진다.
+  숫자 필드는 실측상 JSON number(명세 그대로), `nhNum`은 문자열도 받는다.
+- **토큰**: `POST /oauth2/token`(쿼리 `appkey`·`appsecretkey`, form 헤더, 운영 도메인만). 24시간, **재발급마다 계좌주에게 보안
+  알림** → `nh-token.json`에 저장(앱키 해시 `keyHash`로 키 변경 감지, 원문 미저장), 동시 요청은 발급 하나 공유, 재발급은 401·
+  IGW40043/40044만(429엔 안 함).
+- **연속조회**: 응답 **헤더** `cts`/`cts_flag`(본문 아님). 플래그가 없으면 응답코드 `00165`/`00218`/`XA109`면 계속(SDK 실측값).
+  **같은 cts가 다시 오면 멈춘다**(전체 문자열 비교, 끝 2~3자만 바뀌는 경우가 있음). 잔고는 "끝까지 조회해야 요약이 채워진다"는
+  명세라 마지막 페이지 `Output_0`을 요약으로 쓴다. 실측: 마지막 페이지에도 `cts`가 오고 `cts_flag=N`.
+- **속도**: 명세 초당 5건 → 리미터 초당 4건(SDK 기본값). IGW42901~3/HTTP 429는 백오프 재시도 + `penalizeUntil`.
+- **계좌**: `/n2/acctinfo`가 앱키에 연결된 계좌를 섞어 준다 — `01` 일반·`02` 주문대리인(운영), `03` 모의투자. 실측: 실전 1 +
+  모의투자 3. 모르는 구분은 버린다. 화면은 실전을 앞에(첫 계좌가 기본 선택).
+- **모의투자(03)**: `moapi.nhplug.com:8443`으로만 조회된다(운영 도메인에 03 계좌를 쓰면 실패). 토큰은 운영에서 받은 것 그대로
+  통한다(실측). `nhClient`의 계좌별 함수가 `baseFor(accountNo)`로 도메인을 고른다. 노출 범위:
+  - `listAccounts({ includePaper: true })`(`GET /api/accounts/nh?paper=true`)일 때만 오고 `BrokerAccount.paper=true` — 보유 종목·
+    매매내역 화면과 설정만 붙인다. 대시보드·종목별 수익·배당 화면은 실전만 받아 합계·순자산 스냅샷에 안 섞인다.
+  - write-through 안 함(위), 배당 동기화·원금·공식 실현손익은 실전 계좌만(`fetchNhAccounts()` 기본값).
+- **보유**: 국내 `krstock/inquiry/v1/balance`(`qut_dit_cd=UNT` 시장 + `aly_qut_cd=1` 정규장 — 2026-09 명세부터 **둘 다 필수**,
+  다른 축). 매입금액 필드가 없어 `eal_amt − eal_pls_amt`. 미국 `gbstock/inquiry/v1/balance`(`200`·USD만), 달러 예수금 `fc_dca`.
+  해외 실패는 국내와 격리.
+- **매매**: 국내는 종합거래내역(`common/inquiry/v1/totalTransaction`, `act_trd_dtl_cd=03`) — `dailyOrderExecution`은 **주문일 하루씩만**
+  조회돼 기간 조회가 비싸서 안 썼다. 매수/매도는 **적요(`sps_cd_krl_anm`)에 "매수"/"매도" 낱말**로 가른다(⚠ 가정, 명세에 값 목록
+  없음). 체결 번호가 없어 id = `nh-{날짜}-{종목}-{방향}-{그날 순번}`. 미국은 해외 일별거래내역(`dailyTransaction`, `05` 매수/`06` 매도
+  — 방향을 요청 코드로 정해 적요 해석 불필요), id `nh-ovrs-{trd_dt}-{trd_sno}`. 통화 필터는 `isUsdName`(USD 또는 "미국" —
+  "달러"만 보면 홍콩달러가 걸린다, 테스트가 잡은 버그).
+- **배당 동기화**(`nhDividendSync.ts`): 국내 = 종합거래내역 입출금(`01`)의 배당·분배 적요, 미국 = 해외 일별거래내역 입금(`01`)의
+  배당 적요. NH는 해외 배당도 계좌 기준으로 줘서 **원화·달러 모두 동기화 소유**(`isDividendSyncOwned`, KIS와 다름). ⚠ 가정:
+  `trd_amt`/`fc_trd_amt`가 세후 입금액, `tax_sum`/`fc_tax_sum`이 세금 — `check:nh`가 권리현황(`rightsHeld`의 세전 `rit_aloc_amt`)과
+  짝지어 자동 판정한다. 해외 조회 실패 시 그 동기화를 통째로 실패시킨다(일부만 받은 채 교체하면 달러 배당이 지워진다).
+- **공식 실현손익**(`GET /api/nh/realized`): 국내 `tradingPnl`(HTS 8229) — **기간 합계가 종목별 한 줄**(KIS는 매도 건별)이라 비교
+  카드도 종목별로 합쳐서 그대로 맞는다. 해외 `periodPnl` 응답엔 종목코드가 없어(주문일·국가 단위) 종목별 비교 불가 → `overseasRows: null`.
+- **입금 기준 원금**(`nhCashFlows.ts`, `GET /api/nh/cash-flows`): 입출금내역(`depositWithdrawal`, HTS 8207)의 입금·출금 —
+  유형명(`act_trd_tp_nm`)·적요에 배당·분배·이자·환급·세금·수수료·이용료·취소·정정이 들어가면 제외(⚠ 가정), 통화 필드가 없어
+  원화로 본다. 타사 입고 건수는 종합거래내역 입출고(`02`)의 "입고" 적요. 토스와 같은 `CashFlowSummary` 모양이라 카드 공용.
+- 쓰지 않은 것: 다가오는 배당 확정분(`rightsScheduled`엔 금액이 없고 비율만), 주문 API 전부.
 
 ## 토스 시장 정보 보조 기능 (`src/marketInsights.ts`, `routes/marketInfo.ts`)
 

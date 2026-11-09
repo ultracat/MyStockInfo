@@ -9,6 +9,8 @@ import {
 import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
 import { isTossConfigured } from '../brokers/toss/tossClient';
 import { BROKER_IDS } from '../brokers/knownBrokers';
+import { isSyncOwned } from '../brokers/rowOwnership';
+import type { ImportResult } from './importResult';
 import type { BrokerId } from '../brokers/types';
 
 export const holdingsStoreRouter = Router();
@@ -39,7 +41,7 @@ interface ImportRowShape {
 // 이름/현재가 자동조회(토스 API)가 못 찾는다. market이 KR이고 숫자만 6자리
 // 이하면 0으로 채워 6자리로 맞춘다. 해외 심볼(예: AAPL)이나 market이 KR이
 // 아닌 행은 그대로 둔다.
-function normalizeSymbol(symbol: string, market: string | null | undefined): string {
+export function normalizeSymbol(symbol: string, market: string | null | undefined): string {
   if (market === 'KR' && /^\d{1,6}$/.test(symbol)) {
     return symbol.padStart(6, '0');
   }
@@ -129,15 +131,18 @@ function parseImportRowShape(body: unknown): { input: ImportRowShape } | { error
 //
 // google/sheetsSync.ts도 Sheets에서 읽은 행을 이 함수에 그대로 넘겨 재사용한다
 // (검증/자동조회 로직을 두 곳에 중복시키지 않기 위해 라우트 핸들러에서 분리) —
-// options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 계좌까지
-// 포함해 저장소 전체를 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
-// 동작인 부분 병합 — false).
+// options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 수동 계좌까지
+// 포함해 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본 동작인 부분 병합 —
+// false). 어느 쪽이든 API·동기화 계좌 행은 건너뛴다(brokers/rowOwnership.ts) —
+// 이름/시세 조회 전에 걸러서 쓰지도 않을 행 때문에 API를 부르지 않는다.
 export async function importHoldingsRecords(
   records: unknown[],
   options?: { fullReplace?: boolean }
-): Promise<{ added: number; failed: { row: number; error: string }[] }> {
+): Promise<ImportResult> {
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
-  const validRows = shapeResults.filter((r): r is { row: number; input: ImportRowShape } => 'input' in r);
+  const shapedRows = shapeResults.filter((r): r is { row: number; input: ImportRowShape } => 'input' in r);
+  const validRows = shapedRows.filter((r) => !isSyncOwned(r.input.broker, r.input.accountId));
+  const skipped = shapedRows.length - validRows.length;
   const failed: Array<{ row: number; error: string }> = shapeResults
     .filter((r): r is { row: number; error: string } => 'error' in r)
     .map(({ row, error }) => ({ row, error }));
@@ -191,18 +196,19 @@ export async function importHoldingsRecords(
   failed.sort((a, b) => a.row - b.row);
 
   if (options?.fullReplace) {
-    // 시트에 행이 있었는데 전부 실패해서 하나도 못 옮겼으면, "사용자가 의도적으로
-    // 비웠다"가 아니라 조회 실패 같은 문제일 가능성이 커서 기존 데이터를 지우지
-    // 않는다(시트가 진짜로 비어 있으면 records.length가 0이라 이 조건에 안 걸림).
-    if (toUpsert.length === 0 && records.length > 0) {
-      return { added: 0, failed };
-    }
-    replaceAllHoldings(toUpsert);
-    return { added: toUpsert.length, failed };
+    // 전체 교체라 한 행이라도 실패하면 아무것도 안 바꾼다 — 일부만 반영하면 실패한
+    // 행(예: 일시적인 종목명 조회 실패)이 경고 없이 로컬에서 지워진다.
+    if (failed.length > 0) return { added: 0, failed, skipped, aborted: true };
+    // 시트의 행이 전부 API·동기화 계좌 것이라 옮길 수동 행이 하나도 없으면, 수동
+    // 행을 "시트에서 다 지웠다"기보다 탭을 잘못 고른 경우가 많아 건드리지 않는다
+    // (시트가 진짜로 비어 있으면 records.length가 0이라 이 조건에 안 걸림).
+    if (toUpsert.length === 0 && records.length > 0) return { added: 0, failed, skipped };
+    replaceAllHoldings(toUpsert, (h) => isSyncOwned(h.broker, h.accountId));
+    return { added: toUpsert.length, failed, skipped };
   }
 
   replaceHoldingsFromImport(toUpsert);
-  return { added: toUpsert.length, failed };
+  return { added: toUpsert.length, failed, skipped };
 }
 
 holdingsStoreRouter.post('/import', async (req, res) => {

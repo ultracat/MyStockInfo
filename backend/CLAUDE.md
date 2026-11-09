@@ -6,14 +6,38 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 
 ## 진입점
 
-- `src/index.ts` — `startServer(port = 4317)`. `app.listen`의 `'error'` 이벤트를 반드시
-  처리한다(안 하면 Electron이 "A JavaScript error occurred" 팝업을 띄운다).
-- `src/server.ts` — `createApp()`: 라우터 등록 + 전역 4-인자 에러 미들웨어(안전망 — JSON
-  에러 바디 보장).
+- `src/index.ts` — `startServer(port = 4317, apiToken?)`. `app.listen`의 `'error'` 이벤트를 반드시
+  처리한다(안 하면 Electron이 "A JavaScript error occurred" 팝업을 띄운다). `apiToken`을
+  안 주면(단독 실행) 새로 만들어 콘솔에 찍는다.
+- `src/server.ts` — `createApp({ apiToken })`: 라우터 등록 + 전역 4-인자 에러 미들웨어(안전망 — JSON
+  에러 바디 보장). **`/api/*`는 전부 `Authorization: Bearer <apiToken>`을 요구한다**(없거나
+  틀리면 401) — 127.0.0.1 리슨은 다른 머신만 막고, 같은 머신 브라우저의 아무 웹페이지가
+  이 서버로 fetch하는 건 못 막기 때문. 토큰은 Electron이 실행할 때마다 새로 만들어
+  렌더러 URL 해시(`#token=…&port=…`)로만 넘긴다(`electron/src/main.ts` → `frontend/src/api.ts`).
+  CORS는 `http://localhost:5173`(dev 기본)·`null`(패키징 `file://`)에 Electron이 넘긴 `extraOrigins`
+  (dev Vite가 다른 포트로 떴을 때 그 origin 하나)만 더해 허용하는 보조 수단이고,
+  실제로 막는 건 토큰이다. **새 `fetch` 경로를 프론트에 만들면 `AUTH_HEADER`를 꼭 실을 것**
+  (`request<T>` 헬퍼 밖의 `downloadBackup`처럼).
 - `src/credentials.ts` — 존재 확인은 `hasCredential()`(안 던짐), 실제 사용은
   `getCredentialFields()`(복호화, 던질 수 있음 — API 호출 직전에만).
+- `src/secureStorage.ts` — 자격증명과 Google 토큰(`google/store.ts`)의 암호화 봉투
+  (`sealJson`)와 "지금 안전하게 암호화할 수 있나" 판단(`getSecureStorageState`)의 단일
+  소스. **Electron 안인데 안전한 암호화가 없으면 저장을 거부한다**
+  (`SecureStorageUnavailableError` → `POST /settings/credentials/:broker`와
+  `POST /google/connect`가 409, 설정 화면은 `GET /settings/secure-storage`로 미리 경고하고
+  저장/연결 버튼을 막는다). 예전엔 경고 로그만 찍고 평문으로 저장했다. ⚠ 키링 없는
+  Linux에서 Chromium은 `basic_text`(소스에 박힌 고정 키) 백엔드로 떨어져 사실상 평문이라
+  `isEncryptionAvailable()`만으로는 못 거른다 — `getSelectedStorageBackend()`가
+  `basic_text`/`unknown`이면 거부한다. 평문 저장은 Electron 밖(단독 dev 실행)에서만
+  허용된다. 이미 평문으로 저장된 항목은 그대로 읽히고(사용자가 해제할 수 있게),
+  나중에 키링이 생기면 다음 읽기 때 암호화해 다시 쓴다(`shouldReseal`). 토큰이 없는
+  Google 상태(연결 해제 후)는 비밀이 아니라 평문으로 쓸 수 있다 — 그래야 키링 없이도
+  "연결 해제"가 동작한다. KIS/KB 토큰 파일(`kis-token.json`/`kb-token.json`)은 여전히
+  평문이다(이 규칙 범위 밖) — 대신 백업 zip에는 넣지 않는다("백업/복원" 절).
 - `src/paths.ts` — `getDataDir()`: Electron 안에서 `app.getPath('userData')/data`,
-  단독 실행 시 `backend/data/`(gitignore).
+  단독 실행 시 `backend/data/`(gitignore). 단독 실행에서 `MYSTOCK_DATA_DIR` 환경변수가
+  있으면 그 폴더를 쓴다 — 테스트가 실제 dev 데이터를 건드리지 않게 하는 용도(Electron
+  안에서는 무시된다).
 - `src/jsonStore.ts` — `JsonStore<T>`: atomic write(tmp+rename) JSON 파일 저장 헬퍼.
   자격증명/배당/보유종목/매매내역/설정이 전부 이걸 쓴다. **파싱 결과를 파일 경로별로
   메모리에 캐시한다**(mtime/size가 같으면 재파싱 안 함) — 이 백엔드는 Electron 메인
@@ -241,8 +265,19 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 
 세 `POST .../import` 라우트(`routes/dividends.ts`, `routes/holdingsStore.ts`,
 `routes/tradesStore.ts`) 모두 `{ records: [...] }`를 받아 행별로 검증하고, 실패해도
-나머지는 계속 저장한 뒤 `{ added, failed: [{row, error}] }`로 응답한다(수동 작성 CSV라
-오타가 흔해서, 몇백 건 중 실패한 몇 건만 골라 고칠 수 있게). CSV 파싱/직렬화 자체는
+나머지는 계속 저장한 뒤 `{ added, failed: [{row, error}], skipped }`로 응답한다
+(`routes/importResult.ts` — 수동 작성 CSV라 오타가 흔해서, 몇백 건 중 실패한 몇 건만
+골라 고칠 수 있게).
+
+**행 소유권(`brokers/rowOwnership.ts`의 `isSyncOwned`)**: 토스/KIS의 모든 계좌와 KB 연동
+계좌 하나는 **실시간 조회·동기화만 쓴다** — 보유종목/매매내역 가져오기(CSV·Sheets
+둘 다)는 그 행을 이름/시세 조회 전에 걸러 `skipped`로 세고 쓰지 않는다(실패 아님 —
+내보낸 파일을 그대로 다시 가져오면 늘 생긴다). 수동 입력 브로커(삼성/미래에셋)와 KB의
+나머지 계좌만 가져오기가 쓴다. 이 구분이 없던 때 같은 체결이 import UUID와 브로커 id로
+두 번 저장되거나(2026-10-19), Sheets 가져오기가 API 계좌 행까지 지웠다. **내보내기는
+이 구분 없이 모든 계좌를 쓴다.** 배당금은 어느 브로커든 수동 입력뿐이라 거르지 않는다
+(`skipped`는 항상 0). 단점: API 계좌의 과거 매매내역을 다른 머신에서 복구하려면
+가져오기가 아니라 zip 백업/복원을 써야 한다. CSV 파싱/직렬화 자체는
 프론트(`frontend/src/csv.ts`)가 하고 백엔드는 파싱된 배열만 받는다. 세 라우트 다
 `name`(종목명)을 심볼로 자동조회한다(`src/stockNameResolver.ts`의 `resolveStockNames` —
 아래 "종목명 자동조회" 절의 토스→KIS→KB 3단계 우선순위 참고). **배당금/보유종목은 이름
@@ -615,11 +650,16 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   전역 변수로 관리 — 프론트가 `GET /status`를 폴링해서 확인한다(별도 push
   메커니즘 불필요, 이 앱 전체가 폴링 기반). `getValidAccessToken()`이 만료
   임박이면 refresh_token으로 자동 갱신 — Sheets API 호출 전에 항상 이걸 거친다.
-  **범위는 `spreadsheets` + `drive.readonly` + `userinfo.email` 세 개다** —
-  `drive.readonly`는 오직 `sheetsApi.findSpreadsheetByName()`(아래)에서 이름으로
+  **범위는 `spreadsheets` + `drive.file` + `userinfo.email` 세 개다** —
+  `drive.file`은 오직 `sheetsApi.findSpreadsheetByName()`(아래)에서 이름으로
   기존 "MyStock" 파일을 찾는 용도로만 쓴다, 업로드/삭제/공유 등 그 외 Drive
-  조작은 안 함(Google이 "restricted"로 분류하는 `drive`/`drive.file`보다 검증
-  부담이 가벼운 "sensitive" 등급 유지). **이 범위는 중간에 추가돼서 그 전에 이미
+  조작은 안 함. `drive.file`은 **이 앱이 만들었거나 이 앱으로 연 파일만** 보인다 —
+  찾는 파일이 이 앱이 만든 "MyStock"이라 충분하다(사용자가 Drive에서 직접 만든
+  같은 이름 파일은 안 찾아진다). 예전엔 `drive.readonly`였는데 Google 공식 분류상
+  `drive.readonly`는 **restricted**, `drive.file`은 **non-sensitive(권장)**,
+  `spreadsheets`는 sensitive라 2026-10-30에 바꿨다. 이미 `drive.readonly`로
+  연결해 둔 사용자는 재연결 전까지 옛 토큰(옛 범위)을 그대로 쓰며 문제없이 동작한다.
+  **Drive 범위는 중간에 추가돼서 그 전에 이미
   연결한 사용자의 refresh_token엔 없다** — "연결 해제" 후 재연결(재동의)해야
   Drive 검색이 실제로 동작한다, 안 그러면 `findSpreadsheetByName`이 403을 조용히
   삼키고 `null`을 반환해 기존 동작(새 파일 생성)으로 자연스럽게 넘어간다.
@@ -659,15 +699,15 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   전부 Sheets API만으로 되고(`spreadsheets.create`가 파일을 Drive 루트에 직접
   만들어줌), **`findSpreadsheetByName`만 예외적으로 Drive API v3
   (`files.list`, `name = '...' and mimeType = '...spreadsheet' and trashed = false`)를
-  직접 호출한다** — Sheets API엔 "이름으로 검색" 기능이 없어서 불가피함, 조회
-  전용이라 `drive.readonly` 범위로 충분하다. `writeValues`는 범위를 탭 이름만으로
+  직접 호출한다** — Sheets API엔 "이름으로 검색" 기능이 없어서 불가피함, 이 앱이
+  만든 파일을 찾는 것이라 `drive.file` 범위로 충분하다. `writeValues`는 범위를 탭 이름만으로
   줘서(Sheets API가 이걸 "그 탭 전체"로 해석) 쓰기 전에 항상 전체를 지운다(clear)
   — 이전 내보내기보다 행이 줄었을 때 마지막 행들이 stale하게 안 남게.
 - **`sheetsSync.ts`** — `ensureSpreadsheet()`가 먼저 로컬에 캐시해둔
   `spreadsheetId`를 재사용하고(`spreadsheetExists()`로 확인), 없거나 404면
   `sheetsApi.findSpreadsheetByName('MyStock')`으로 Drive에서 같은 이름의 기존
   파일을 찾아 재사용을 시도한 뒤, 그마저 없으면(진짜 최초 연결, 또는
-  `drive.readonly` 동의가 없는 옛 토큰) 새로 만든다. 이 순서(캐시 → 이름 검색 →
+  Drive 범위 동의가 없는 옛 토큰) 새로 만든다. 이 순서(캐시 → 이름 검색 →
   생성)를 둔 이유는 **`store.ts`의 `clearAccount()`(연결 해제 버튼)가 옛날엔
   `spreadsheetId`/`spreadsheetUrl`까지 지워서** 재연결할 때마다 "MyStock" 파일이
   중복 생성된 실제 사례가 있었기 때문 — 지금은 `clearAccount()`가 그 두 필드를
@@ -681,15 +721,19 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   바꿔 그 탭에 덮어쓴다(`HOLDINGS_SHEET_HEADER` 등 `sheetSchemas.ts` — 프론트
   `HOLDINGS_CSV_HEADER`와 컬럼 이름/순서를 동일하게 맞춰야 한다, 워크스페이스가
   갈려 있어 상수 공유는 못 함). **`importDataType`은 CSV 가져오기와 다르게
-  "전체 교체"다** — 시트에서 읽은 데이터로 로컬 저장소 전체를 대체하고, 시트에
-  없는 기존 로컬 데이터(다른 계좌/기록 포함)는 지운다. `routes/holdingsStore.ts`/
+  "전체 교체"다** — 시트에서 읽은 데이터로 수동 행 전체를 대체하고, 시트에
+  없는 기존 수동 행(다른 계좌/기록 포함)은 지운다. API·동기화 계좌 행은 시트에서
+  건너뛰고 로컬 것을 그대로 둔다(위 "CSV 가져오기"의 행 소유권 — `replaceAllHoldings`/
+  `replaceAllTrades`의 `preserve` 인자). `routes/holdingsStore.ts`/
   `tradesStore.ts`/`dividends.ts`의 `importXxxRecords(records, {fullReplace})`가
   이 옵션을 받아 `db/*.ts`의 `replaceAllHoldings`/`replaceAllTrades`/
   `replaceAllDividends`(전체 교체, CSV의 부분 병합/업서트/추가와는 다른 함수)로
   분기한다 — CSV 가져오기 쪽(`fullReplace` 생략, 기본 `false`)은 기존 동작 그대로다.
-  **안전장치**: 시트에 행이 있었는데 검증에서 전부 실패했으면(예: 이름 조회 전부
-  실패) 기존 로컬 데이터를 지우지 않는다(`toUpsert.length===0 && records.length>0`
-  가드) — 일시적 조회 실패를 "전부 지워라"로 오인하면 안 되므로. 시트가 완전히
+  **안전장치**: 시트에 실패한 행이 **하나라도** 있으면 아무것도 바꾸지 않고
+  `aborted: true`로 응답한다(예전엔 "전부 실패"만 막아서, 100행 중 5행이 일시적인
+  이름 조회 실패로 떨어지면 그 5행이 경고 없이 로컬에서 지워졌다). 옮길 수동 행이
+  하나도 없을 때(시트 행이 전부 API·동기화 계좌 것)도 건드리지 않는다
+  (`toUpsert.length===0 && records.length>0` 가드). 시트가 완전히
   비어 있으면(`records.length===0`, 아직 한 번도 내보낸 적 없는 새 스프레드시트 등)
   아예 가져오기 자체를 건너뛴다. **토스 accountId 표시 변환**: 토스만
   내부 accountId가 Toss Open API가 요구하는 `accountSeq`(예: `"1"`)라 사람이
@@ -703,36 +747,52 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   (`dataType`은 `holdings`|`trades`|`dividends`). Client ID/Secret을 받는
   라우트는 없다(위 `clientConfig.ts` 참고).
 
-## 백업/복원 (`src/backup.ts`, `src/routes/backup.ts`)
+## 백업/복원 (`src/backup.ts`, `src/backupCrypto.ts`, `src/routes/backup.ts`)
 
-데이터 폴더(`getDataDir()`) 전체를 zip으로 묶어 내려받고, 다시 그 zip으로 통째로
-되돌리는 기능 — Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이
-아니므로, 진짜 전체 백업 수단이 따로 필요해서 추가했다.
+데이터 폴더(`getDataDir()`)를 zip으로 묶어 내려받고, 다시 그 zip으로 되돌리는 기능 —
+Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므로, 진짜 전체 백업
+수단이 따로 필요해서 추가했다.
 
-- **`createBackupZip()`** — `fs.readdirSync(getDataDir())`로 찾은 파일 중
-  `SAFE_FILENAME_RE`(`/^[\w.-]+\.(json|sqlite)$/`)에 맞는 것만(임시 파일 등 제외)
-  화이트리스트 없이 전부(`credentials.json`/`kis-token.json`/`kb-token.json`/
-  `google-account.json`/`stockNames.sqlite` 등) 담는다 — "백업 = 데이터 폴더
-  전체"가 가장 단순하고, 저장소가 하나 늘어도 이 함수를 안 고쳐도 된다.
-  `manifest.json`(생성 시각 + 앱 버전)도 같이 넣지만 복원 대상은 아니다(메타데이터일
-  뿐). 의존성은 `adm-zip`(순수 JS, 네이티브 바인딩 없음 — `electron/CLAUDE.md`의
-  `asar:true`+`npmRebuild:false` 전제를 깨지 않음) — **루트 `package.json`에도
-  같은 버전을 중복 선언해뒀다**(`cors`/`express`와 같은 이유, electron-builder가
-  패키징 대상 결정에 루트 `package.json`의 `dependencies`를 본다).
-- **`restoreBackupZip(buf)`** — 엔트리 이름을 `createBackupZip`과 같은
-  `SAFE_FILENAME_RE`로 재검증한 뒤(zip-slip 방어 — `..`/경로 구분자가 섞인
-  이름은 이 패턴에 아예 안 걸려서 데이터 폴더 밖에 못 씀) `fs.writeFileSync`로
-  직접 덮어쓴다. **`JsonStore`/각 브로커의 메모리 캐시(토큰 캐시, 복호화 캐시
-  등)를 전혀 거치지 않는다** — 파일을 통째로 바꿔치기하는 작업이라 캐시를 하나씩
-  무효화하는 것보다 "복원 후 앱을 재시작해주세요"를 안내하는 쪽이 훨씬 단순하고
-  안전하다(라우트/프론트 둘 다 이 전제로 설계됨).
-- **`routes/backup.ts`** — `GET /`(zip 바이너리를
-  `Content-Disposition: attachment`로 응답), `POST /restore`(body
-  `{zipBase64: string}`). **raw/multipart body 파서를 새로 안 쓰고 base64로
+- **비밀 파일 넷은 zip에 원본 그대로 넣지 않는다**(2026-10-30, EGM 리뷰 S2):
+  - `kis-token.json`/`kb-token.json`(접속 토큰, 평문): **항상 뺀다.** 하루 안팎이면
+    만료되고 없으면 앱이 다시 받는다. 복원할 때도 예전 백업에 들어 있으면 건너뛴다.
+  - `credentials.json`/`google-account.json`(OS 키체인으로 암호화): 그 열쇠는 PC 밖으로
+    못 나가서 그대로 넣으면 다른 PC에선 못 연다. **사용자가 백업 비밀번호를 주면** 풀어서
+    그 비밀번호로 다시 잠근 `secrets.enc.json` 하나로 넣는다(`backupCrypto.ts` —
+    scrypt N=2^16,r=8,p=1 + AES-256-GCM, KDF 파라미터를 파일에 같이 적음, Node 내장
+    `crypto`만 씀). 비밀번호를 안 주면 넣지 않는다. 비밀번호는 8자 이상.
+- **`createBackupZip(password?)`** — 위 넷을 뺀 `SAFE_FILENAME_RE`(`/^[\w.-]+\.(json|sqlite)$/`)
+  파일을 화이트리스트 없이 전부 담는다 — "백업 = 데이터 폴더 전체"가 가장 단순하고,
+  저장소가 하나 늘어도 이 함수를 안 고쳐도 된다. `manifest.json`(생성 시각, 앱 버전,
+  `includesSecrets`)도 같이 넣지만 복원 대상은 아니다. 의존성은 `adm-zip`(순수 JS,
+  네이티브 바인딩 없음 — `electron/CLAUDE.md`의 `asar:true`+`npmRebuild:false` 전제를
+  깨지 않음) — **루트 `package.json`에도 같은 버전을 중복 선언해뒀다**(`cors`/`express`와
+  같은 이유, electron-builder가 패키징 대상 결정에 루트 `package.json`의
+  `dependencies`를 본다).
+- **`restoreBackupZip(buf, password?)`** — **비밀번호 확인을 파일을 쓰기 전에 끝낸다**
+  (`secrets.enc.json`이 있는데 비밀번호가 없거나 틀리면 `BackupPasswordError`, 아무것도
+  안 바뀜). 그다음 엔트리 이름을 `SAFE_FILENAME_RE`로 재검증해(zip-slip 방어)
+  `fs.writeFileSync`로 직접 덮어쓴다. 비밀 정보가 있으면 **백업이 기준이다** — 백업에
+  없는 브로커 키는 지우고, 백업의 키·Google 상태를 이 PC의 키체인으로 다시 잠가
+  저장하고(`setCredentialFields`, `google/store.ts`의 `replaceState`), 남아 있던 접속
+  토큰 파일은 지운다(복원 전 키로 받은 것일 수 있음). 결과의 `secrets`:
+  `restored` / `not-in-backup`(비밀번호 없이 만든 백업 — 지금 키를 그대로 둠) /
+  `keyring-unavailable`(키링 없는 Linux라 저장 거부, `secureStorage.ts` — 지금 키도
+  그대로 둠, 나머지 데이터는 복원). 예전 형식 백업(`secrets.enc.json` 없음)의
+  `credentials.json`/`google-account.json`은 그대로 받는다 — 같은 PC면 열린다.
+- **복원 뒤에는 앱을 다시 시작한다** — `JsonStore` 캐시는 mtime으로 저절로 무효화되지만,
+  열린 `stockNames.sqlite` 핸들과 KIS/KB 토큰 메모리 캐시는 그대로라서. 패키징된 앱은
+  `electron/src/main.ts`가 `startServer(..., { requestRestart })`로 넘긴
+  `app.relaunch()`+`app.exit(0)`을 응답 1.5초 뒤 부른다(응답의 `restarting: true`).
+  dev 실행은 넘기지 않는다 — `concurrently -k`가 Electron 종료를 보고 Vite까지 내린다.
+- **`routes/backup.ts`**(`createBackupRouter`) — `POST /`(body `{password?}`, zip
+  바이너리를 `Content-Disposition: attachment`로 응답 — 비밀번호를 URL에 안 남기려고
+  GET이 아니다), `POST /restore`(body `{zipBase64, password?}`, 비밀번호 오류는 400 +
+  `code: 'BACKUP_PASSWORD'`). **raw/multipart body 파서를 새로 안 쓰고 base64로
   감싼 평범한 JSON body로 받는다** — 이 프로젝트가 지금까지 모든 API에서 JSON
-  body만 썼다는 관례를 유지하기 위해서다. 대신 `server.ts`의
-  `express.json()` 기본 바디 크기 제한(100kb)을 20mb로 올렸다(안 그러면 복원
-  업로드가 데이터가 조금만 쌓여도 막힘).
+  body만 썼다는 관례를 유지하기 위해서다. 대신 `server.ts`의 `express.json()` 기본
+  바디 크기 제한(100kb)을 20mb로 올렸다(안 그러면 복원 업로드가 데이터가 조금만
+  쌓여도 막힘).
 
 ## 앱 정보(About) 화면 (`src/routes/about.ts`, `src/generated/appInfo.ts`, `scripts/generate-app-info.cjs`)
 
@@ -769,3 +829,20 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
 증권사 API 관련 코드는 실제 공식 문서(토스: developers.tossinvest.com, KIS:
 github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포인트/에러 포맷을
 그대로 반영한다. 추측해서 채우지 않는다.
+
+### 자동 테스트 (`backend/test/`)
+
+`npm test`(루트) 또는 `npm run test -w backend` — Node 내장 `node:test`를 `tsx --test`로
+돌린다(별도 테스트 프레임워크 없음). 데이터를 잃거나 중복이 생기는 규칙만 골라 덮는다:
+행 소유권(`isSyncOwned`), Sheets 전체 교체의 전부 취소·API 행 보존, 매매내역 중복
+제거(`removeImportedDuplicates`, 가져오기 id 이어받기, 실시간 조회의 UUID 사본 제거),
+`normalizeSymbol`, `SAFE_FILENAME_RE`, 백업 비밀번호 암호화·복원(비밀번호가 틀리면 아무것도
+안 바뀜, 접속 토큰은 zip에 안 들어감).
+- **`test/setup.ts`를 각 테스트 파일에서 가장 먼저 import한다** — 임시 폴더를 만들어
+  `MYSTOCK_DATA_DIR`로 넘긴다. `getDataDir()`는 처음 불린 값을 고정하므로 다른 모듈이
+  먼저 데이터 폴더를 건드리면 `backend/data/`의 실제 데이터에 쓴다.
+- 브로커를 하나도 연동하지 않은 상태로 돈다 — 네트워크를 타지 않게, 종목명은
+  `cacheStockName()`으로 SQLite 캐시에 미리 넣어 성공 행을 만들고 캐시에 없는 심볼로
+  실패 행을 만든다.
+- `tsconfig.json`의 `include`가 `src`뿐이라 테스트는 `dist`로 빌드되지 않는다(타입
+  검사도 안 한다 — `tsx`는 타입을 지우기만 한다).

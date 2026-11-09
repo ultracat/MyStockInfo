@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, CredentialFieldSpec, CredentialStatus } from '../types';
+import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, CredentialFieldSpec, CredentialStatus, RestoreBackupResult, SecureStorageStatus } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, TAX_TYPE_LABELS, TAX_TYPE_OPTIONS } from '../accountLabels';
 import { downloadBlob } from '../csv';
@@ -23,8 +23,25 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// backend/src/backupCrypto.ts의 MIN_BACKUP_PASSWORD_LENGTH와 맞춘다(서버도 다시 검사).
+const MIN_BACKUP_PASSWORD_LENGTH = 8;
+
+function restoreMessage(result: RestoreBackupResult): string {
+  const secrets =
+    result.secrets === 'restored'
+      ? ' API 키와 Google 연결도 복원했습니다.'
+      : result.secrets === 'keyring-unavailable'
+        ? ' API 키와 Google 연결은 이 PC에 안전하게 저장할 수 없어(키링 없음) 복원하지 않았습니다.'
+        : ' 이 백업에는 API 키가 없어 지금 등록된 키를 그대로 두었습니다.';
+  const restart = result.restarting
+    ? ' 잠시 후 앱이 다시 시작됩니다.'
+    : ' 변경사항을 반영하려면 앱을 다시 시작해주세요.';
+  return `복원이 완료되었습니다(${result.restored.length}개 파일).${secrets}${restart}`;
+}
+
 export default function Settings() {
   const [status, setStatus] = useState<CredentialStatus | null>(null);
+  const [secureStorage, setSecureStorage] = useState<SecureStorageStatus | null>(null);
   const [fieldSpecs, setFieldSpecs] = useState<Record<BrokerId, CredentialFieldSpec[]> | null>(null);
   // KIS의 계좌번호/상품코드, KB의 계좌번호처럼 자격증명 중 비밀이 아닌(secret:
   // false) 입력값 — "증권사 연동 상태" 표에서 "이 브로커에 어느 계좌를 등록해뒀는지"
@@ -38,6 +55,10 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null);
 
   const [backingUp, setBackingUp] = useState(false);
+  // 비워 두면 API 키·Google 연결을 뺀 백업을 만든다(backend/src/backup.ts).
+  const [backupPassword, setBackupPassword] = useState('');
+  const [backupPasswordConfirm, setBackupPasswordConfirm] = useState('');
+  const [restorePassword, setRestorePassword] = useState('');
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [restoring, setRestoring] = useState(false);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
@@ -45,11 +66,27 @@ export default function Settings() {
   async function onDownloadBackup() {
     setError(null);
     setMessage(null);
+    if (backupPassword) {
+      if (backupPassword.length < MIN_BACKUP_PASSWORD_LENGTH) {
+        setError(`백업 비밀번호는 ${MIN_BACKUP_PASSWORD_LENGTH}자 이상이어야 합니다.`);
+        return;
+      }
+      if (backupPassword !== backupPasswordConfirm) {
+        setError('백업 비밀번호 확인이 일치하지 않습니다.');
+        return;
+      }
+    }
     setBackingUp(true);
     try {
-      const blob = await api.downloadBackup();
+      const blob = await api.downloadBackup(backupPassword || undefined);
       downloadBlob(`mystock-backup-${new Date().toISOString().slice(0, 10)}.zip`, blob);
-      setMessage('백업 파일을 다운로드했습니다.');
+      setMessage(
+        backupPassword
+          ? '백업 파일을 다운로드했습니다. API 키와 Google 연결은 입력한 비밀번호로 암호화해 넣었습니다 — 비밀번호를 잊으면 키는 복원할 수 없습니다.'
+          : '백업 파일을 다운로드했습니다. 비밀번호를 정하지 않아 API 키와 Google 연결은 넣지 않았습니다.'
+      );
+      setBackupPassword('');
+      setBackupPasswordConfirm('');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -73,6 +110,7 @@ export default function Settings() {
     setError(null);
     setMessage(null);
     setRestoreFile(file);
+    setRestorePassword('');
   }
 
   async function onConfirmRestore() {
@@ -82,11 +120,10 @@ export default function Settings() {
     setMessage(null);
     try {
       const base64 = arrayBufferToBase64(await restoreFile.arrayBuffer());
-      const result = await api.restoreBackup(base64);
-      setMessage(
-        `복원이 완료되었습니다(${result.restored.length}개 파일). 변경사항을 반영하려면 앱을 재시작해주세요.`
-      );
+      const result = await api.restoreBackup(base64, restorePassword || undefined);
+      setMessage(restoreMessage(result));
       setRestoreFile(null);
+      setRestorePassword('');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -95,13 +132,15 @@ export default function Settings() {
   }
 
   async function refresh() {
-    const [s, fx, specs, info] = await Promise.all([
+    const [s, fx, specs, info, secure] = await Promise.all([
       api.getCredentialStatus(),
       api.getFxRate(),
       api.getCredentialFields(),
       api.getCredentialInfo(),
+      api.getSecureStorageStatus(),
     ]);
     setStatus(s);
+    setSecureStorage(secure);
     setFxRate(fx.usdKrwRate ? String(fx.usdKrwRate) : '');
     setFieldSpecs(specs);
     setCredentialInfo(info);
@@ -448,6 +487,25 @@ export default function Settings() {
 
       <div className="card">
         <h3 style={{ marginTop: 0 }}>API 키 등록</h3>
+        {/* 키링 없는 Linux 등에서는 서버가 저장을 거부한다(backend secureStorage.ts) —
+            입력부터 하고 나서 실패하지 않게 미리 이유와 해결 방법을 보여준다. */}
+        {secureStorage && !secureStorage.available && (
+          <p className="notice text-critical">{secureStorage.message}</p>
+        )}
+        {secureStorage &&
+          (secureStorage.insecureBrokers.length > 0 || secureStorage.insecureGoogle) && (
+            <p className="notice text-critical">
+              다음 연동 정보가 평문이거나 안전하지 않은 방식으로 저장돼 있습니다:{' '}
+              {[
+                ...secureStorage.insecureBrokers.map((id) => BROKER_LABELS[id]),
+                ...(secureStorage.insecureGoogle ? ['Google 계정'] : []),
+              ].join(', ')}
+              .{' '}
+              {secureStorage.available
+                ? '다음에 사용할 때 자동으로 암호화됩니다.'
+                : '위 "증권사 연동 상태"에서 해제(Google은 연결 해제)한 뒤, 키링을 설정하고 다시 입력해주세요.'}
+            </p>
+          )}
         <form onSubmit={onSaveCredential}>
           <div className="form-row">
             <label>증권사</label>
@@ -471,7 +529,7 @@ export default function Settings() {
               />
             </div>
           ))}
-          <button type="submit" className="primary">
+          <button type="submit" className="primary" disabled={secureStorage?.available === false}>
             저장
           </button>
         </form>
@@ -548,7 +606,12 @@ export default function Settings() {
             </div>
           ) : (
             <div>
-              <button className="primary" onClick={onConnectGoogle} disabled={googleConnecting}>
+              <button
+                className="primary"
+                onClick={onConnectGoogle}
+                disabled={googleConnecting || secureStorage?.available === false}
+                title={secureStorage?.available === false ? (secureStorage.message ?? undefined) : undefined}
+              >
                 {googleConnecting ? '브라우저에서 로그인을 완료해주세요...' : 'Google 계정 연결'}
               </button>
               {!googleConnecting && googleStatus.connectStatus === 'error' && googleStatus.connectError && (
@@ -686,10 +749,30 @@ export default function Settings() {
       <div className="card">
         <h3 style={{ marginTop: 0 }}>데이터 백업/복원</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-          자격증명, 보유종목/매매내역/배당 기록 등 로컬에 저장된 데이터 전체를 zip
-          파일로 내려받거나, 백업 파일로 되돌릴 수 있습니다. 다른 기기로 복원하면
-          저장된 API 키는 암호화 방식(OS 키체인) 특성상 다시 입력해야 할 수 있습니다.
+          보유종목/매매내역/배당 기록 등 로컬에 저장된 데이터를 zip 파일로 내려받거나,
+          백업 파일로 되돌릴 수 있습니다. <b>백업 비밀번호</b>를 정하면 API 키와 Google
+          연결도 그 비밀번호로 암호화해 넣어서, 다른 PC에서도 비밀번호만 입력하면 그대로
+          복원됩니다. 비워 두면 키는 넣지 않습니다. 증권사 접속 토큰은 항상 빼고, 필요할 때
+          앱이 다시 받습니다.
         </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+          <input
+            type="password"
+            value={backupPassword}
+            placeholder={`백업 비밀번호 (${MIN_BACKUP_PASSWORD_LENGTH}자 이상, 선택)`}
+            autoComplete="new-password"
+            onChange={(e) => setBackupPassword(e.target.value)}
+          />
+          {backupPassword && (
+            <input
+              type="password"
+              value={backupPasswordConfirm}
+              placeholder="비밀번호 확인"
+              autoComplete="new-password"
+              onChange={(e) => setBackupPasswordConfirm(e.target.value)}
+            />
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           <button className="ghost" onClick={onDownloadBackup} disabled={backingUp}>
             {backingUp ? '백업 생성 중...' : '백업 다운로드'}
@@ -711,6 +794,18 @@ export default function Settings() {
               "{restoreFile.name}" 파일로 복원하면 현재 저장된 모든 데이터가 이 백업
               파일 내용으로 완전히 대체됩니다. 계속하려면 아래 버튼을 눌러주세요.
             </p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              백업할 때 비밀번호를 정했다면 입력해주세요 — API 키와 Google 연결도 함께
+              복원됩니다. 비밀번호 없이 만든 백업이면 비워 두세요.
+            </p>
+            <input
+              type="password"
+              value={restorePassword}
+              placeholder="백업 비밀번호"
+              autoComplete="current-password"
+              onChange={(e) => setRestorePassword(e.target.value)}
+              style={{ marginBottom: 8 }}
+            />
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="primary" onClick={onConfirmRestore} disabled={restoring}>
                 {restoring ? '복원 중...' : '정말 복원하기'}

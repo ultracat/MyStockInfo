@@ -4,6 +4,7 @@ import { listDividends } from '../db/dividends';
 import { importHoldingsRecords } from '../routes/holdingsStore';
 import { importTradesRecords } from '../routes/tradesStore';
 import { importDividendsRecords } from '../routes/dividends';
+import type { ImportResult } from '../routes/importResult';
 import { getAdapter } from '../brokers/registry';
 import { listAccountLabels } from '../db/accountLabels';
 import * as store from './store';
@@ -80,7 +81,7 @@ async function ensureSpreadsheet(): Promise<{ spreadsheetId: string; spreadsheet
   }
 
   // 저장된 spreadsheetId가 없거나 더는 유효하지 않다 — 새로 만들기 전에 이름이
-  // 정확히 일치하는 기존 파일이 Drive에 있는지 먼저 찾는다(drive.readonly 범위가
+  // 정확히 일치하는 기존 파일이 Drive에 있는지 먼저 찾는다(Drive 범위가
   // 없는 옛 refresh_token이면 조용히 null이 와서 아래 createSpreadsheet로
   // 자연스럽게 넘어간다, sheetsApi.findSpreadsheetByName 주석 참고).
   const found = await sheetsApi.findSpreadsheetByName(SPREADSHEET_TITLE);
@@ -281,24 +282,22 @@ const ROW_MAPPERS: Record<
 
 const IMPORTERS: Record<
   SheetDataType,
-  (
-    records: unknown[],
-    options?: { fullReplace?: boolean }
-  ) => Promise<{ added: number; failed: { row: number; error: string }[] }>
+  (records: unknown[], options?: { fullReplace?: boolean }) => Promise<ImportResult>
 > = {
   holdings: importHoldingsRecords,
   trades: importTradesRecords,
   dividends: importDividendsRecords,
 };
 
-// 시트 내용을 로컬의 유일한 진실로 취급한다(부분 병합/누적이 아니라 전체
+// 시트 내용을 수동 행의 유일한 진실로 취급한다(부분 병합/누적이 아니라 전체
 // 교체) — export가 매번 로컬 전체를 시트에 덮어쓰는 것과 대칭을 이루도록,
-// import도 시트에 없는 기존 로컬 데이터를 지운다(fullReplace: true, 각 db
-// 함수의 replaceAllXxx 참고). CSV 가져오기의 기존 부분 병합/추가 동작과는
-// 의도적으로 다르다 — 사용자가 명시적으로 요청한 동작.
-export async function importDataType(
-  dataType: SheetDataType
-): Promise<{ added: number; failed: { row: number; error: string }[] }> {
+// import도 시트에 없는 기존 수동 행을 지운다(fullReplace: true, 각 db 함수의
+// replaceAllXxx 참고). CSV 가져오기의 기존 부분 병합/추가 동작과는 의도적으로
+// 다르다 — 사용자가 명시적으로 요청한 동작. 단 두 가지는 지킨다:
+// - export는 API·동기화 계좌까지 **전부** 쓰지만, import는 그 행을 건너뛰고 기존
+//   로컬 행을 그대로 둔다(brokers/rowOwnership.ts) — 실시간 조회·동기화가 주인이다.
+// - 한 행이라도 실패하면 전부 취소한다(`aborted`, routes/importResult.ts).
+export async function importDataType(dataType: SheetDataType): Promise<ImportResult> {
   const { spreadsheetId } = await ensureSpreadsheet();
   const [rawRows, tossReverseMap] = await Promise.all([
     sheetsApi.readValues(spreadsheetId, SHEET_TAB_TITLES[dataType]),
@@ -307,6 +306,6 @@ export async function importDataType(
   const records = cellsToRecords(HEADERS[dataType], rawRows).map((rec) => ROW_MAPPERS[dataType](rec, tossReverseMap));
   // 시트가 비어 있으면(헤더도 없는 완전히 빈 탭 — 아직 한 번도 내보내지 않은
   // 경우 등) 실수로 로컬 데이터를 전부 지우지 않도록 건드리지 않는다.
-  if (records.length === 0) return { added: 0, failed: [] };
+  if (records.length === 0) return { added: 0, failed: [], skipped: 0 };
   return IMPORTERS[dataType](records, { fullReplace: true });
 }

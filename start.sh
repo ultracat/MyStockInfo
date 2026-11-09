@@ -29,15 +29,11 @@ fi
 
 echo "[MyStock] node $(node -v), npm $(npm -v)"
 
-# 백엔드(4317)나 Vite(5173) 포트를 이미 쓰고 있으면 앱이 이미 떠 있을 가능성이 높다.
-if command -v lsof >/dev/null 2>&1; then
-  for port in 4317 5173; do
-    if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
-      echo "[MyStock] 포트 $port 를 이미 사용 중입니다 — MyStock이 이미 실행 중인지 확인하세요." >&2
-      exit 1
-    fi
-  done
-fi
+# 포트 사전 검사는 하지 않는다 — 예전엔 4317/5173이 사용 중이면 "이미 실행 중"으로 보고
+# 멈췄는데, 다른 프로젝트의 Vite가 5173을 잡고 있어도 막혀버렸다(2026-11-09). 이제
+# 포트가 차 있으면 scripts/dev.cjs(Vite)와 electron/src/main.ts(백엔드)가 빈 포트로
+# 옮겨 뜨고, MyStock이 진짜 이미 떠 있으면 Electron 단일 인스턴스 락이 기존 창을
+# 앞으로 가져온다.
 
 if [ ! -d node_modules ]; then
   echo "[MyStock] 처음 실행이라 의존성을 설치합니다 (npm install)..."

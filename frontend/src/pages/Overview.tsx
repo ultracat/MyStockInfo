@@ -9,6 +9,8 @@ import DividendsChart from '../components/DividendsChart';
 import MonthlyReturnChart, { type MonthlyReturnRow } from '../components/MonthlyReturnChart';
 import MonthlyInvestmentChart, { type MonthlyInvestmentRow } from '../components/MonthlyInvestmentChart';
 import NetWorthChart from '../components/NetWorthChart';
+import PurchaseMarketTile from '../components/PurchaseMarketTile';
+import { dividendKey, groupDividendsByAccountSymbol } from '../dividendMatch';
 import { krw } from '../format';
 
 function todayDate(): string {
@@ -743,6 +745,44 @@ export default function Overview() {
   }, 0);
   const hasUnconvertedUsdDividend = dividendMonthlyRows.some((r) => r.totalUsd > 0 && !dividendFxRateFor(r.month));
 
+  // ---- "총 손익금액(배당 포함)" 카드 — 지금 보유 중인 (증권사, 계좌, 종목)마다 그 계좌의
+  // 그 종목에서 받은 배당만 더한다. 보유 종목 화면의 "배당 포함 손익금액"과 같은 매칭
+  // 규칙(dividendMatch.ts)이라, 증권사별 보유 종목 화면 값을 다 더하면 이 값과 같다.
+  // 전량 매도한 종목·그 종목을 이제 안 갖고 있는 계좌의 배당은 빠진다(평가손익이 없는
+  // 포지션이라) — 그런 배당까지 보려면 "종목별 수익" 화면. 달러 배당은 이 화면의 다른
+  // 배당 수치와 같게 지급월 평균 환율(dividendFxRateFor)로 환산한다.
+  const heldDividends = useMemo(() => {
+    const accountsByBroker = new Map<BrokerId, Set<string>>();
+    const heldKeys = new Set<string>();
+    for (const h of holdings) {
+      if (!h.accountId) continue;
+      heldKeys.add(dividendKey(h.broker, h.accountId, h.symbol));
+      const set = accountsByBroker.get(h.broker) ?? new Set<string>();
+      set.add(h.accountId);
+      accountsByBroker.set(h.broker, set);
+    }
+    const grouped = groupDividendsByAccountSymbol(dividends, accountLabels, (broker) => {
+      const set = accountsByBroker.get(broker);
+      return set && set.size === 1 ? [...set][0] : null;
+    });
+    let totalKrw = 0;
+    let unconverted = false;
+    for (const [key, list] of grouped) {
+      if (!heldKeys.has(key)) continue;
+      for (const d of list) {
+        if (d.currency !== 'USD') {
+          totalKrw += d.amount;
+          continue;
+        }
+        const rate = dividendFxRateFor(d.paidDate.slice(0, 7));
+        if (rate === null) unconverted = true;
+        else totalKrw += d.amount * rate;
+      }
+    }
+    return { totalKrw, unconverted };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdings, dividends, accountLabels, effectiveFxRate, monthlyAvgFxRates]);
+
   if (loading) return <p>불러오는 중...</p>;
   if (error)
     return (
@@ -752,6 +792,7 @@ export default function Overview() {
     );
 
   const totalPl = totalMarketKrw - totalPurchaseKrw;
+  const totalPlWithDividends = totalPl + heldDividends.totalKrw;
 
   return (
     <div>
@@ -777,20 +818,27 @@ export default function Overview() {
       )}
 
       <div className="summary-row">
+        <PurchaseMarketTile purchase={{ krw: totalPurchaseKrw }} market={{ krw: totalMarketKrw }} />
         <div className="stat-tile">
-          <div className="label">총 매입금액</div>
-          <div className="value">{formatKrwValue(totalPurchaseKrw)}</div>
-        </div>
-        <div className="stat-tile">
-          <div className="label">총 평가금액</div>
-          <div className="value">{formatKrwValue(totalMarketKrw)}</div>
-        </div>
-        <div className="stat-tile">
-          <div className="label">총 손익금액</div>
+          <div className="label">총 손익금액 (배당 제외)</div>
           <div className="value" style={{ color: totalPl >= 0 ? 'var(--good)' : 'var(--critical)' }}>
             {totalPl >= 0 ? '+' : ''}
             {formatKrwValue(totalPl)}
           </div>
+        </div>
+        <div className="stat-tile">
+          <div className="label">총 손익금액 (배당 포함)</div>
+          <div
+            className="value"
+            style={{ color: totalPlWithDividends >= 0 ? 'var(--good)' : 'var(--critical)' }}
+            title={`평가손익 ${formatKrwValue(totalPl)} + 보유 종목 누적 배당금 ${formatKrwValue(heldDividends.totalKrw)}`}
+          >
+            {totalPlWithDividends >= 0 ? '+' : ''}
+            {formatKrwValue(totalPlWithDividends)}
+          </div>
+          {heldDividends.unconverted && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>일부 배당은 환율이 없어 빠짐</div>
+          )}
         </div>
         <div className="stat-tile">
           <div className="label">{year}년 총 배당금</div>

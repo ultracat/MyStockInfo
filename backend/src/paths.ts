@@ -13,18 +13,23 @@ let resolvedDir: string | null = null;
 export function getDataDir(): string {
   if (resolvedDir) return resolvedDir;
   let dir: string;
+  // 테스트(backend/test/)가 임시 폴더를 쓰게 하는 탈출구 — 없으면 backend/data/의
+  // 실제 dev 데이터를 건드린다. Electron 안에서는 쓰지 않는다(userData가 항상 이긴다).
+  const override = process.env.MYSTOCK_DATA_DIR;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const electron = require('electron') as typeof import('electron');
     if (electron && typeof electron.app?.getPath === 'function') {
       dir = path.join(electron.app.getPath('userData'), 'data');
+    } else if (override) {
+      dir = override;
     } else {
       // Standalone (non-Electron) dev/test run — keep it inside the backend
       // package regardless of the shell's cwd, matching .gitignore's `backend/data/`.
       dir = path.join(__dirname, '..', 'data');
     }
   } catch {
-    dir = path.join(__dirname, '..', 'data');
+    dir = override || path.join(__dirname, '..', 'data');
   }
 
   fs.mkdirSync(dir, { recursive: true });

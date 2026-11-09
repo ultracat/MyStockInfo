@@ -13,11 +13,9 @@ if errorlevel 1 (
 
 for /f "delims=" %%v in ('node -v') do echo [MyStock] node %%v
 
-netstat -ano | findstr /r /c:":4317 .*LISTENING" /c:":5173 .*LISTENING" >nul
-if not errorlevel 1 (
-  echo [MyStock] Port 4317 or 5173 is already in use - MyStock may already be running.
-  goto :fail
-)
+rem No port pre-check: busy ports are skipped automatically (scripts/dev.cjs for Vite,
+rem electron/src/main.ts for the backend), and a second MyStock instance just focuses
+rem the existing window (Electron single-instance lock). See start.sh.
 
 if not exist node_modules (
   echo [MyStock] First run: installing dependencies ^(npm install^)...

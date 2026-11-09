@@ -1,9 +1,37 @@
 import { app, BrowserWindow, dialog, Menu, nativeImage, shell } from 'electron';
+import { randomBytes } from 'node:crypto';
+import net from 'node:net';
 import path from 'node:path';
 import { startServer } from '@mystock/backend';
 
-const BACKEND_PORT = 4317;
-const FRONTEND_DEV_URL = 'http://localhost:5173';
+// 백엔드는 4317을 먼저 시도하고, 다른 프로그램이 쓰고 있으면 그 위의 빈 포트로 옮긴다
+// (findFreeBackendPort). 실제 포트는 렌더러에 URL 해시(`port=`)로 넘긴다 —
+// frontend/src/api.ts가 그걸 읽으므로 두 곳에 포트를 하드코딩해 맞출 필요가 없다.
+const PREFERRED_BACKEND_PORT = 4317;
+const BACKEND_PORT_TRIES = 20;
+// dev Vite 포트는 scripts/dev.cjs가 빈 포트를 골라 넘긴다(기본 5173).
+const FRONTEND_DEV_PORT = Number(process.env.MYSTOCK_VITE_PORT) || 5173;
+const FRONTEND_DEV_ORIGIN = `http://localhost:${FRONTEND_DEV_PORT}`;
+
+/** 127.0.0.1에서 비어 있는 포트를 4317부터 찾는다 — 백엔드가 127.0.0.1에만 리슨하므로
+ *  그 주소만 확인하면 된다. 확인과 실제 listen 사이 틈에 남이 잡을 수도 있지만, 그
+ *  경우는 기존 'error' 핸들러(EADDRINUSE 안내 창)가 그대로 처리한다. */
+async function findFreeBackendPort(): Promise<number> {
+  const isFree = (port: number) =>
+    new Promise<boolean>((resolve) => {
+      const probe = net.createServer();
+      probe.unref();
+      probe.once('error', () => resolve(false));
+      probe.listen({ port, host: '127.0.0.1', exclusive: true }, () => probe.close(() => resolve(true)));
+    });
+  for (let port = PREFERRED_BACKEND_PORT; port < PREFERRED_BACKEND_PORT + BACKEND_PORT_TRIES; port++) {
+    if (await isFree(port)) return port;
+  }
+  // 전부 막혀 있으면 기본 포트로 시도해서 기존 EADDRINUSE 안내 창을 띄운다.
+  return PREFERRED_BACKEND_PORT;
+}
+
+let backendPort = PREFERRED_BACKEND_PORT;
 
 // 런타임 아이콘. 실행 파일/설치본 아이콘(Finder·탐색기에서 보이는 것)은 빌드 때
 // electron-builder가 박는 별개의 파일(build/icon.icns|ico|png)이고, 이 PNG는
@@ -64,7 +92,18 @@ if (process.platform !== 'darwin') {
   );
 }
 
+// 백엔드가 `/api/*` 요청마다 요구하는 토큰(backend/src/server.ts 참고) — 실행할
+// 때마다 새로 만든다. 렌더러엔 preload/IPC 없이 **URL 해시**로만 넘긴다: 해시는
+// 서버로 전송되지 않고, 다른 웹페이지는 이 창의 URL을 읽을 수 없다.
+// frontend/src/api.ts가 첫 로드 때 읽어 헤더로 보낸다.
+const API_TOKEN = randomBytes(32).toString('base64url');
+
 let mainWindow: BrowserWindow | null = null;
+
+/** 렌더러에 넘기는 URL 해시 — 토큰 + 백엔드가 실제로 뜬 포트(frontend/src/api.ts가 읽음). */
+function rendererHash() {
+  return `token=${API_TOKEN}&port=${backendPort}`;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -104,9 +143,9 @@ function createWindow() {
   });
 
   if (app.isPackaged) {
-    mainWindow.loadFile(path.join(__dirname, '../../frontend/dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../../frontend/dist/index.html'), { hash: rendererHash() });
   } else {
-    mainWindow.loadURL(FRONTEND_DEV_URL);
+    mainWindow.loadURL(`${FRONTEND_DEV_ORIGIN}#${rendererHash()}`);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
@@ -120,7 +159,31 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+// 앱은 한 번에 하나만 뜨게 한다. 두 번째 인스턴스는 백엔드 포트(4317)를 못 잡아
+// "포트 사용 중" 오류 창을 띄우는데, 그보다 먼저 여기서 조용히 종료하고 이미 떠 있는
+// 창을 앞으로 가져온다(아래 'second-instance'). 두 인스턴스가 같은 userData의
+// JSON 파일을 동시에 쓰는 일도 이걸로 막는다.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // mac에선 창을 닫아도 앱이 남아 있고 mainWindow는 파괴된 창을 가리킨다 — 새로 연다.
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      if (app.isReady()) createWindow();
+      return;
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
+app.whenReady().then(async () => {
+  // 락을 못 잡은 두 번째 인스턴스는 app.quit()이 끝나기 전에 ready가 올 수 있다 —
+  // 백엔드·창을 띄우지 않는다.
+  if (!gotSingleInstanceLock) return;
+
   // 패키징된 mac 앱은 번들의 .icns를 쓰므로 건드리지 않는다 — dev 실행만
   // Electron 기본 아이콘으로 뜨기 때문에 여기서 Dock 아이콘을 채워준다.
   if (process.platform === 'darwin' && !app.isPackaged) {
@@ -130,7 +193,24 @@ app.whenReady().then(() => {
 
   // Runs in Electron's main process, so backend/src/credentials.ts can
   // reach `electron.safeStorage` and `electron.app.getPath('userData')`.
-  const server = startServer(BACKEND_PORT);
+  // 백업 복원은 열린 SQLite 핸들·메모리 캐시를 우회해 파일을 직접 바꾸므로 복원 직후
+  // 앱을 다시 띄운다(backend/src/routes/backup.ts). dev 실행은 `concurrently -k`가
+  // Electron 종료를 보고 Vite까지 내려버려서 넘기지 않는다 — 사용자가 직접 다시 시작한다.
+  const requestRestart = app.isPackaged
+    ? () => {
+        app.relaunch();
+        app.exit(0);
+      }
+    : undefined;
+  backendPort = await findFreeBackendPort();
+  if (backendPort !== PREFERRED_BACKEND_PORT) {
+    console.log(`[electron] 포트 ${PREFERRED_BACKEND_PORT}을 다른 프로그램이 쓰고 있어 백엔드를 ${backendPort}에서 띄웁니다.`);
+  }
+  const server = startServer(backendPort, API_TOKEN, {
+    requestRestart,
+    // dev Vite가 5173이 아닌 포트로 떴으면 그 origin도 CORS에 허용한다(패키징은 file:// → 'null').
+    extraOrigins: app.isPackaged ? [] : [FRONTEND_DEV_ORIGIN],
+  });
 
   // startServer() no longer throws on a listen failure (e.g. a leftover
   // process from a previous run still holding the port) — it logs and
@@ -139,8 +219,9 @@ app.whenReady().then(() => {
   server.on('error', (err: NodeJS.ErrnoException) => {
     const message =
       err.code === 'EADDRINUSE'
-        ? `포트 ${BACKEND_PORT}이 이미 사용 중이라 백엔드를 시작하지 못했습니다.\n` +
-          `이전에 실행된 MyStock 프로세스가 남아있는지 확인 후 종료하고 다시 실행해주세요.`
+        ? `포트 ${backendPort}이 이미 사용 중이라 백엔드를 시작하지 못했습니다` +
+          `(${PREFERRED_BACKEND_PORT}~${PREFERRED_BACKEND_PORT + BACKEND_PORT_TRIES - 1} 모두 사용 중이거나, 빈 포트를 고른 직후 다른 프로그램이 먼저 잡았습니다).\n` +
+          `다시 실행해주세요.`
         : `백엔드 서버 시작에 실패했습니다: ${err.message}`;
     dialog.showErrorBox('MyStock 시작 실패', message);
     app.quit();

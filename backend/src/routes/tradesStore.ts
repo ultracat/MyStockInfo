@@ -9,6 +9,8 @@ import {
   type ImportTradeInput,
 } from '../db/tradesStore';
 import { BROKER_IDS } from '../brokers/knownBrokers';
+import { isSyncOwned } from '../brokers/rowOwnership';
+import type { ImportResult } from './importResult';
 import type { BrokerId } from '../brokers/types';
 import { resolveStockNames } from '../stockNameResolver';
 
@@ -111,15 +113,18 @@ function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { err
 //
 // google/sheetsSync.ts도 Sheets에서 읽은 행을 이 함수에 그대로 넘겨 재사용한다
 // (검증/자동조회 로직을 두 곳에 중복시키지 않기 위해 라우트 핸들러에서 분리) —
-// options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 매매내역까지
-// 포함해 저장소 전체를 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
-// 동작인 id 기준 upsert/누적 — false).
+// options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 수동 계좌
+// 매매내역까지 포함해 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
+// 동작인 id 기준 upsert/누적 — false). 어느 쪽이든 API·동기화 계좌 행은 건너뛴다
+// (brokers/rowOwnership.ts) — 그 체결은 브로커 id로 실시간 조회/동기화가 쓴다.
 export async function importTradesRecords(
   records: unknown[],
   options?: { fullReplace?: boolean }
-): Promise<{ added: number; failed: { row: number; error: string }[] }> {
+): Promise<ImportResult> {
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
-  const validRows = shapeResults.filter((r): r is { row: number; input: ImportTradeInput } => 'input' in r);
+  const shapedRows = shapeResults.filter((r): r is { row: number; input: ImportTradeInput } => 'input' in r);
+  const validRows = shapedRows.filter((r) => !isSyncOwned(r.input.broker, r.input.accountId));
+  const skipped = shapedRows.length - validRows.length;
   const failed: Array<{ row: number; error: string }> = shapeResults
     .filter((r): r is { row: number; error: string } => 'error' in r)
     .map(({ row, error }) => ({ row, error }));
@@ -134,18 +139,18 @@ export async function importTradesRecords(
   }));
 
   if (options?.fullReplace) {
-    // 시트에 행이 있었는데 형태 검증에서 전부 실패했으면(예: 헤더가 깨짐) 기존
-    // 데이터를 지우지 않는다 — 시트가 진짜로 비어 있으면 records.length가 0이라
-    // 이 조건에 안 걸린다.
-    if (toInsert.length === 0 && records.length > 0) {
-      return { added: 0, failed };
-    }
-    const replaced = replaceAllTrades(toInsert);
-    return { added: replaced.length, failed };
+    // 전체 교체라 한 행이라도 실패하면(예: 헤더가 깨짐) 아무것도 안 바꾼다 —
+    // 일부만 반영하면 실패한 행이 경고 없이 로컬에서 지워진다.
+    if (failed.length > 0) return { added: 0, failed, skipped, aborted: true };
+    // 옮길 수동 행이 하나도 없으면(시트 행이 전부 API·동기화 계좌 것) 건드리지
+    // 않는다 — 시트가 진짜로 비어 있으면 records.length가 0이라 이 조건에 안 걸린다.
+    if (toInsert.length === 0 && records.length > 0) return { added: 0, failed, skipped };
+    const replaced = replaceAllTrades(toInsert, (t) => isSyncOwned(t.broker, t.accountId));
+    return { added: replaced.length, failed, skipped };
   }
 
   const inserted = upsertFromImport(toInsert);
-  return { added: inserted.length, failed };
+  return { added: inserted.length, failed, skipped };
 }
 
 tradesStoreRouter.post('/import', async (req, res) => {

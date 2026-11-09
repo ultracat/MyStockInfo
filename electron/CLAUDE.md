@@ -23,13 +23,31 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
     고정해서 어떻게 실행되든(스크립트 경로든 디렉터리든, dev든 패키징된 빌드든) 항상 같은
     `userData` 경로를 쓰게 만들어 근본적으로 해결했다 — 새 이름을 고르지 않고 기존 폴더명
     그대로 쓴 이유는 이미 있는 사용자 데이터를 마이그레이션 없이 계속 쓰기 위해서다.
-  - `BACKEND_PORT = 4317` — `frontend/src/api.ts`의 `BASE_URL`과 반드시 일치해야 한다.
-  - `app.whenReady()` 안에서 `startServer(BACKEND_PORT)` → `createWindow()` 순서.
+  - **포트는 고정이 아니다**(2026-11-09) — 다른 프로젝트의 Vite가 5173을 잡고 있어 앱이
+    아예 못 뜬 일이 있어서 둘 다 빈 포트로 옮겨 뜬다.
+    - 백엔드: `findFreeBackendPort()`가 127.0.0.1에서 4317부터 20개를 확인해 고르고, 실제
+      포트를 렌더러 URL 해시(`#token=…&port=…`, `rendererHash()`)로 넘긴다 —
+      `frontend/src/api.ts`가 해시의 `port`로 `BASE_URL`을 만든다(없으면 4317).
+    - dev Vite: **`scripts/dev.cjs`**(`npm run dev`의 진입점)가 5173부터 빈 포트를 골라
+      `MYSTOCK_VITE_PORT`로 Vite(`vite.config.ts`, `strictPort` 유지)와 Electron 둘 다에
+      넘긴다. ⚠ Vite에 `strictPort: false`만 주면 안 된다 — Vite만 옮겨 뜨고 Electron은
+      여전히 5173(남의 앱)을 연다. ⚠ 빈 포트 판단은 127.0.0.1과 **::1 둘 다** 본다
+      (`localhost`가 ::1로 풀려 남의 Vite가 `[::1]:5173`에 떠 있었다).
+    - dev origin이 바뀌므로 Electron이 그 origin을 `startServer(…, { extraOrigins })`로
+      백엔드 CORS에 추가한다(패키징은 `file://` → `null`이라 불필요).
+    - `start.sh`/`start-windows.bat`의 포트 사전 검사는 없앴다 — 중복 실행은 아래 단일
+      인스턴스 락이 막는다.
+  - **앱은 한 번에 하나만 뜬다** — `app.requestSingleInstanceLock()`을 못 잡은 두 번째
+    인스턴스는 `whenReady()`에서 백엔드·창을 띄우지 않고 바로 종료하고, 먼저 떠 있던
+    쪽이 `'second-instance'`에서 창을 앞으로 가져온다(mac에서 창을 닫아 둔 상태면 새로
+    연다 — `mainWindow`가 파괴된 창을 가리키므로 `isDestroyed()`로 확인). 이게 없으면
+    두 번째 실행이 아래 EADDRINUSE 오류 창으로 끝났다.
+  - `app.whenReady()` 안에서 `findFreeBackendPort()` → `startServer(backendPort, API_TOKEN, …)` → `createWindow()` 순서.
   - **`startServer()`가 반환한 서버의 `'error'` 이벤트를 반드시 처리한다** (예:
     EADDRINUSE — 이전 실행이 남아 포트를 점유한 경우). 처리하지 않으면 창은 뜨지만
     모든 API 호출이 이유 없이 실패하거나, backend 쪽에서 처리 안 하면 uncaught
     exception으로 "A JavaScript error occurred in the main process" 팝업이 뜬다.
-  - `createWindow()` — dev 모드는 `http://localhost:5173`(Vite) 로드 + DevTools 자동
+  - `createWindow()` — dev 모드는 `http://localhost:${MYSTOCK_VITE_PORT}`(Vite, 기본 5173) 로드 + DevTools 자동
     오픈, 패키징된 빌드는 `frontend/dist/index.html`을 파일로 로드. **`show: false`로
     만들고 `ready-to-show` 이벤트에서만 `show()`한다** — 기본값(즉시 표시)이면 로드가
     끝나기 전 빈 창(흰 화면)이 그대로 보였다가 콘텐츠가 뒤늦게 나타난다. Vite

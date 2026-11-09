@@ -5,15 +5,19 @@ import type {
   BrokerAccount,
   BrokerId,
   BrokerSummary,
+  DividendRecord,
   HoldingPosition,
   PortfolioOverview,
   StoredHolding,
 } from '../types';
 import HoldingsTable from '../components/HoldingsTable';
+import PurchaseMarketTile from '../components/PurchaseMarketTile';
 import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
+import { formatImportResult } from '../importResult';
 import { API_BROKER_IDS } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
+import { groupDividendsByAccountSymbol } from '../dividendMatch';
 import { useStockLinkResolver } from '../components/StockNameLink';
 import { getKbLinkStatus, type KbLinkStatus } from '../kbSync';
 
@@ -179,6 +183,7 @@ function AmountTile({
   hasUsd,
   fxRate,
   signed = false,
+  note,
 }: {
   label: string;
   /** null이면 "아직 데이터가 없다"는 뜻(예: 예수금을 한 번도 입력/조회 못한
@@ -188,7 +193,10 @@ function AmountTile({
   hasUsd: boolean;
   fxRate: number | null;
   signed?: boolean;
+  /** 카드 맨 아래 작은 안내 한 줄(예: 일부 배당 환율 미적용). */
+  note?: string;
 }) {
+  const noteLine = note ? <div style={SMALL_LINE}>{note}</div> : null;
   const sign = (v: number) => (signed && v >= 0 ? '+' : '');
   const fmt = (v: number) => `${sign(v)}${formatKrw(v)}`;
   const tone = (v: number) => (signed ? (v >= 0 ? 'text-good' : 'text-critical') : '');
@@ -204,6 +212,7 @@ function AmountTile({
         ) : (
           <div className={`value ${tone(krwAmount)}`}>{fmt(krwAmount)}</div>
         )}
+        {noteLine}
       </div>
     );
   }
@@ -221,6 +230,7 @@ function AmountTile({
       <div className={`value ${tone(totalKrw)}`} style={{ marginTop: 2 }}>
         {fxRate ? fmt(totalKrw) : '환율 미적용'}
       </div>
+      {noteLine}
     </div>
   );
 }
@@ -304,6 +314,14 @@ export default function Dashboard() {
   useEffect(() => {
     api.listAccountLabels().then(setAccountLabels).catch(() => {});
   }, []);
+
+  // "배당 포함 손익금액" 열용 배당 기록 — 로컬 JSON 하나라 가볍다. 다른 화면(배당금)에서
+  // 기록을 고친 뒤 돌아오면 이 화면이 다시 마운트되므로, 마운트 + 브로커 변경 시점에만
+  // 다시 읽는다(1분 자동 새로고침에는 안 얹음 — 배당 기록은 라이브 데이터가 아님).
+  const [dividends, setDividends] = useState<DividendRecord[]>([]);
+  useEffect(() => {
+    api.listDividends().then(setDividends).catch(() => {});
+  }, [selectedBroker]);
 
   // KB증권 Open API 연동 상태 — appKey/appSecret이 계좌 하나에 고정 바인딩돼
   // 있어(kbSync.ts 참고) "연동 여부"와 "그 계좌가 로컬 accountId로 뭔지"만
@@ -714,13 +732,7 @@ export default function Dashboard() {
         }));
 
       const result = await api.importHoldingsStore(records);
-      setImportResult(
-        result.failed.length > 0
-          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
-              .map((f) => `${f.row}행 - ${f.error}`)
-              .join('; ')})`
-          : `${result.added}건 추가됨`
-      );
+      setImportResult(formatImportResult(result));
       await refreshAfterStoreImport();
     } catch (e) {
       setImportResult((e as Error).message);
@@ -784,20 +796,14 @@ export default function Dashboard() {
   }
 
   async function onImportFromGoogleSheet() {
-    if (!window.confirm('Google Sheets의 Holdings 탭 내용으로 로컬 데이터 전체를 교체합니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
+    if (!window.confirm('Google Sheets의 Holdings 탭 내용으로 수동 입력 계좌의 로컬 데이터를 전부 교체합니다(API·동기화 계좌는 실시간 조회/동기화 값을 그대로 둡니다). 시트에 실패하는 행이 하나라도 있으면 아무것도 바꾸지 않습니다. 로컬에서 직접 추가/수정했지만 아직 "내보내기"로 시트에 반영하지 않은 내용이 있다면 사라집니다. 계속할까요?')) {
       return;
     }
     setGoogleSyncing(true);
     setGoogleSyncResult(null);
     try {
       const result = await api.importFromGoogleSheet('holdings');
-      setGoogleSyncResult(
-        result.failed.length > 0
-          ? `${result.added}건 추가됨 (실패 ${result.failed.length}건: ${result.failed
-              .map((f) => `${f.row}행 - ${f.error}`)
-              .join('; ')})`
-          : `${result.added}건 추가됨`
-      );
+      setGoogleSyncResult(formatImportResult(result));
       await refreshAfterStoreImport();
     } catch (e) {
       setGoogleSyncResult((e as Error).message);
@@ -832,8 +838,57 @@ export default function Dashboard() {
     });
     const total = convertedValues.reduce((sum: number, v) => sum + (v ?? 0), 0);
 
+    // ---- "배당 포함 손익금액" — 이 계좌의 이 종목에서 받은 배당만 더한다(다른 계좌의
+    // 같은 종목 배당은 섞지 않음 — 그건 "종목별 수익" 화면 몫). 포지션의 계좌는
+    // "전체 계좌" 모드면 mergePortfolios가 붙인 p.accountId, 개별 계좌 모드면 지금
+    // 선택된 accountId다. 배당 기록 쪽 계좌 매칭 규칙은 dividendMatch.ts(대시보드와 공용).
+    const accountOf = (p: HoldingPosition) => p.accountId ?? (accountId !== ALL_ACCOUNTS ? accountId : null);
+    const soleAccountId = accounts.length === 1 ? accounts[0].id : null;
+    const grouped = groupDividendsByAccountSymbol(
+      selectedBroker ? dividends.filter((d) => d.broker === selectedBroker) : [],
+      accountLabels,
+      () => soleAccountId
+    );
+    const divSums = new Map<string, { krw: number; usd: number }>();
+    for (const [gk, list] of grouped) {
+      const sum = { krw: 0, usd: 0 };
+      for (const d of list) {
+        if (d.currency === 'USD') sum.usd += d.amount;
+        else sum.krw += d.amount;
+      }
+      // 키에서 broker를 떼고 "계좌|종목"만 남긴다 — 이 화면은 브로커가 하나뿐이라.
+      divSums.set(gk.slice(gk.indexOf('|') + 1), sum);
+    }
+    // IRP처럼 같은 계좌의 같은 종목이 memo("개인납입"/"회사납입")로 여러 행이면, 그
+    // 종목 배당을 행마다 통째로 더하면 이중 집계가 된다 — 수량 비율로 나눠 붙인다.
+    const qtyByKey = new Map<string, { qty: number; count: number }>();
+    for (const p of portfolio.positions) {
+      const key = `${accountOf(p)}|${p.symbol}`;
+      const e = qtyByKey.get(key) ?? { qty: 0, count: 0 };
+      e.qty += p.quantity;
+      e.count += 1;
+      qtyByKey.set(key, e);
+    }
+    // 배당은 포지션 통화로 맞춰 더한다(표가 원화 종목은 원, 달러 종목은 USD로 보여줌).
+    // 통화가 같으면 환율 없이 그대로, 다르면 effectiveFxRate로 환산하고 환율이 없으면
+    // null("환율 미적용") — 조용히 틀린 숫자를 보여주지 않는다(이 앱 공통 규칙).
+    function dividendFor(p: HoldingPosition): number | null {
+      const key = `${accountOf(p)}|${p.symbol}`;
+      const sum = divSums.get(key);
+      if (!sum) return 0;
+      const g = qtyByKey.get(key)!;
+      const share = g.count === 1 ? 1 : g.qty > 0 ? p.quantity / g.qty : 1 / g.count;
+      if (p.currency === 'USD') {
+        if (sum.krw === 0) return sum.usd * share;
+        return effectiveFxRate ? (sum.usd + sum.krw / effectiveFxRate) * share : null;
+      }
+      if (sum.usd === 0) return sum.krw * share;
+      return effectiveFxRate ? (sum.krw + sum.usd * effectiveFxRate) * share : null;
+    }
+
     return portfolio.positions.map((p, i) => ({
       ...p,
+      dividendAmount: dividendFor(p),
       weight: convertedValues[i] === null || total === 0 ? null : (convertedValues[i] as number) / total,
       // "전체 계좌" 모드(mergePortfolios가 채운 p.accountId)에서만 값이 붙는다 —
       // HoldingsTable이 이 필드가 하나라도 있으면 "계좌" 열을 보여준다.
@@ -847,7 +902,22 @@ export default function Dashboard() {
         : undefined,
       externalUrl: stockLinkFor(p.symbol, p.currency) ?? undefined,
     }));
-  }, [portfolio, effectiveFxRate, accountLabels, selectedBroker, stockLinkFor]);
+  }, [portfolio, effectiveFxRate, accountLabels, selectedBroker, stockLinkFor, dividends, accounts, accountId]);
+
+  // "총 손익금액(배당 포함)" 카드 — 표의 "배당 포함 손익금액" 열과 같은 값(rows의
+  // dividendAmount, 포지션 통화 기준)을 통화별로 더한다. 카드와 표 합계가 어긋나지
+  // 않도록 배당을 따로 다시 집계하지 않는다.
+  const dividendTotals = useMemo(() => {
+    let krwSum = 0;
+    let usdSum = 0;
+    let unconverted = false;
+    for (const r of rows) {
+      if (r.dividendAmount === null) unconverted = true;
+      else if (r.currency === 'USD') usdSum += r.dividendAmount;
+      else krwSum += r.dividendAmount;
+    }
+    return { krw: krwSum, usd: usdSum, unconverted };
+  }, [rows]);
 
   const hasUnconvertedUsd = portfolio?.positions.some((p) => p.currency === 'USD') && !effectiveFxRate;
 
@@ -1048,27 +1118,28 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
-            <AmountTile
-              label="총 매입금액"
-              krwAmount={portfolio.totalPurchaseAmountKrw}
-              usdAmount={portfolio.totalPurchaseAmountUsd}
+            <PurchaseMarketTile
+              purchase={{ krw: portfolio.totalPurchaseAmountKrw, usd: portfolio.totalPurchaseAmountUsd }}
+              market={{ krw: portfolio.totalMarketValueKrw, usd: portfolio.totalMarketValueUsd }}
               hasUsd={hasUsdHoldings}
               fxRate={effectiveFxRate}
             />
             <AmountTile
-              label="총 평가금액"
-              krwAmount={portfolio.totalMarketValueKrw}
-              usdAmount={portfolio.totalMarketValueUsd}
-              hasUsd={hasUsdHoldings}
-              fxRate={effectiveFxRate}
-            />
-            <AmountTile
-              label="총 손익금액"
+              label="총 손익금액 (배당 제외)"
               krwAmount={portfolio.totalProfitLossKrw}
               usdAmount={portfolio.totalProfitLossUsd}
               hasUsd={hasUsdHoldings}
               fxRate={effectiveFxRate}
               signed
+            />
+            <AmountTile
+              label="총 손익금액 (배당 포함)"
+              krwAmount={portfolio.totalProfitLossKrw + dividendTotals.krw}
+              usdAmount={(portfolio.totalProfitLossUsd ?? 0) + dividendTotals.usd}
+              hasUsd={hasUsdHoldings}
+              fxRate={effectiveFxRate}
+              signed
+              note={dividendTotals.unconverted ? '일부 배당은 환율이 없어 빠짐' : undefined}
             />
             <RateTile
               label="손익률"

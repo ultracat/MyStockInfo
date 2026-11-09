@@ -13,6 +13,7 @@ import { cacheStockName } from '../db/stockNames';
 import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
 import { resolveStockNames } from '../stockNameResolver';
+import type { ImportResult } from './importResult';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
 
@@ -174,11 +175,12 @@ dividendsRouter.put('/:id', (req, res) => {
 // (검증/자동조회 로직을 두 곳에 중복시키지 않기 위해 라우트 핸들러에서 분리) —
 // options.fullReplace가 true면(Sheets 가져오기 전용) 시트에 없는 다른 배당 기록까지
 // 포함해 저장소 전체를 시트 내용으로 통째로 교체한다(CSV 가져오기는 계속 기본
-// 동작인 순수 추가 — false).
+// 동작인 순수 추가 — false). 배당 기록은 어느 브로커든 수동 입력뿐이라(입금
+// 배당 조회 API가 없음) 행 소유권(brokers/rowOwnership.ts)으로 거르지 않는다.
 export async function importDividendsRecords(
   records: unknown[],
   options?: { fullReplace?: boolean }
-): Promise<{ added: number; failed: { row: number; error: string }[] }> {
+): Promise<ImportResult> {
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
   const validRows = shapeResults.filter(
     (r): r is { row: number; input: ImportRowShape } => 'input' in r
@@ -209,18 +211,15 @@ export async function importDividendsRecords(
   failed.sort((a, b) => a.row - b.row);
 
   if (options?.fullReplace) {
-    // 시트에 행이 있었는데 전부 실패했으면(예: 종목명 조회 전부 실패) 기존
-    // 데이터를 지우지 않는다 — 시트가 진짜로 비어 있으면 records.length가 0이라
-    // 이 조건에 안 걸린다.
-    if (resolved.length === 0 && records.length > 0) {
-      return { added: 0, failed };
-    }
+    // 전체 교체라 한 행이라도 실패하면(예: 종목명 조회 일부 실패) 아무것도 안
+    // 바꾼다 — 일부만 반영하면 실패한 기록이 경고 없이 로컬에서 지워진다.
+    if (failed.length > 0) return { added: 0, failed, skipped: 0, aborted: true };
     const replaced = replaceAllDividends(resolved);
-    return { added: replaced.length, failed };
+    return { added: replaced.length, failed, skipped: 0 };
   }
 
   addDividends(resolved);
-  return { added: resolved.length, failed };
+  return { added: resolved.length, failed, skipped: 0 };
 }
 
 dividendsRouter.post('/import', async (req, res) => {

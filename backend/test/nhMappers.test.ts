@@ -121,3 +121,26 @@ test('NH 해외 배당: 입금 중 배당 적요, 달러만, 외화 금액·세�
   ]);
   assert.deepEqual(c.map((x) => [x.symbol, x.currency, x.amount, x.tax]), [['AAPL', 'USD', 2.55, 0.45], ['MSFT', 'USD', 1, 0]]);
 });
+
+test('NH 입금 기준 원금: 유형·적요의 입금/출금만, 배당·이자·세금·취소는 원금이 아니다, 입고는 건수만', async () => {
+  const { summarizeNhCashFlows, nhFlowDirection } = await import('../src/brokers/nh/nhCashFlows');
+  assert.equal(nhFlowDirection({ act_trd_tp_nm: '입금', sps_cd_krl_anm: '이체입금' }), 'in');
+  assert.equal(nhFlowDirection({ act_trd_tp_nm: '출금', sps_cd_krl_anm: '이체출금' }), 'out');
+  assert.equal(nhFlowDirection({ act_trd_tp_nm: '입금', sps_cd_krl_anm: '배당금입금' }), null);
+  assert.equal(nhFlowDirection({ act_trd_tp_nm: '입금', sps_cd_krl_anm: '예탁금이용료' }), null);
+  assert.equal(nhFlowDirection({ act_trd_tp_nm: '', sps_cd_krl_anm: '대체입금' }), 'in');
+  const s = summarizeNhCashFlows(
+    [
+      { trd_dt: '20250310', trd_amt: 1000000, act_trd_tp_nm: '입금', sps_cd_krl_anm: '이체입금' },
+      { trd_dt: '20260105', trd_amt: 300000, act_trd_tp_nm: '출금', sps_cd_krl_anm: '이체출금' },
+      { trd_dt: '20260415', trd_amt: 8460, act_trd_tp_nm: '입금', sps_cd_krl_anm: '배당금입금' },
+      { trd_dt: '20260416', trd_amt: 500000, act_trd_tp_nm: '입금', sps_cd_krl_anm: '이체입금취소' },
+    ],
+    [
+      { iem_cd: '005930', sps_cd_krl_anm: '타사대체입고' },
+      { iem_cd: '', sps_cd_krl_anm: '입고' },
+    ]
+  );
+  assert.deepEqual([s.depositKrw, s.withdrawalKrw, s.netPrincipalKrw, s.firstDate, s.transferIn], [1000000, 300000, 700000, '2025-03-10', 1]);
+  assert.deepEqual(s.byYear.map((y) => [y.year, y.depositKrw, y.withdrawalKrw]), [['2025', 1000000, 0], ['2026', 0, 300000]]);
+});

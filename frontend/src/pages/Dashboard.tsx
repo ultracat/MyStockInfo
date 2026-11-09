@@ -12,7 +12,7 @@ import type {
 } from '../types';
 import HoldingsTable from '../components/HoldingsTable';
 import PurchaseMarketTile from '../components/PurchaseMarketTile';
-import TossPrincipalCard from '../components/TossPrincipalCard';
+import PrincipalCard from '../components/PrincipalCard';
 import { formatKrw, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { formatImportResult } from '../importResult';
@@ -1187,8 +1187,14 @@ export default function Dashboard() {
             />
           </div>
 
-          {isCurrentBrokerApi && selectedBroker === 'toss' && accountId && (
-            <TossPrincipalCard
+          {/* 입금 기준 원금 — 입출금 내역 API가 있는 토스·NH만(한투·KB는 없음). 모의투자 계좌는 원금 개념이 없어 뺀다. */}
+          {isCurrentBrokerApi &&
+            (selectedBroker === 'toss' || selectedBroker === 'nh') &&
+            accountId &&
+            !accounts.find((a) => a.id === accountId)?.paper && (
+            <PrincipalCard
+              key={selectedBroker}
+              broker={selectedBroker}
               portfolio={portfolio}
               accountSeqs={accountId === ALL_ACCOUNTS ? accounts.filter((a) => !a.paper).map((a) => a.id) : [accountId]}
               fxRate={effectiveFxRate}

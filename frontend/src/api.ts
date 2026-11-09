@@ -265,6 +265,11 @@ export const api = {
   getKisStockDetail: (symbol: string) => request<KisStockDetail>(`/kis/stock-detail/${encodeURIComponent(symbol)}`),
   getTossCashFlows: (opts?: { forceRefresh?: boolean }) =>
     request<TossAccountCashFlows[]>(`/toss/cash-flows${opts?.forceRefresh ? '?refresh=true' : ''}`),
+  // NH투자증권 — 공식 국내 실현손익(종목별 기간 합계, 실전 계좌 전부)과 입금 기준 원금(토스와 같은 모양).
+  getNhRealized: (from: string, to: string) =>
+    request<{ accountIds: string[]; rows: KisRealizedRow[]; overseasRows: KisRealizedRow[] | null }>(`/nh/realized?from=${from}&to=${to}`),
+  getNhCashFlows: (opts?: { forceRefresh?: boolean }) =>
+    request<TossAccountCashFlows[]>(`/nh/cash-flows${opts?.forceRefresh ? '?refresh=true' : ''}`),
   syncKbHoldings: (accountId?: string) =>
     request<{ synced: number; accountId: string }>('/kb/sync-holdings', {
       method: 'POST',

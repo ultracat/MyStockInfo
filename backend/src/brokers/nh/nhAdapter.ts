@@ -6,6 +6,8 @@ import {
   fetchNhOverseasTransactions,
   fetchNhTotalTransactions,
   isNhConfigured,
+  isNhPaperAccount,
+  isPaperType,
 } from './nhClient';
 import { mapNhDomesticPosition, mapNhDomesticTrades, mapNhOverseasPosition, mapNhOverseasTrades, nhNum } from './nhMappers';
 
@@ -20,13 +22,22 @@ export const nhAdapter: BrokerAdapter = {
     return isNhConfigured();
   },
 
-  async listAccounts(opts?: FetchOpts): Promise<BrokerAccount[]> {
-    const accounts = await fetchNhAccounts(opts);
-    return accounts.map((a) => ({
+  // 모의투자(03) 계좌는 `includePaper`일 때만 — 보유·매매 화면의 계좌 선택에는 보이고, 대시보드 합계·종목별 수익·
+  // 배당은 실전 계좌만 모은다(types.ts의 `BrokerAccount.paper`).
+  async listAccounts(opts?: FetchOpts & { includePaper?: boolean }): Promise<BrokerAccount[]> {
+    const accounts = await fetchNhAccounts(opts, opts?.includePaper ?? false);
+    // 실전 계좌를 앞에 — 화면은 첫 계좌를 기본으로 고른다(API는 구분을 섞어서 준다).
+    const ordered = [...accounts].sort((a, b) => Number(isPaperType(a.type)) - Number(isPaperType(b.type)));
+    return ordered.map((a) => ({
       id: a.accountNo,
       accountNumber: a.accountNo,
-      accountType: a.type === '02' ? '주문대리인' : '일반',
+      accountType: isPaperType(a.type) ? '모의투자' : a.type === '02' ? '주문대리인' : '일반',
+      ...(isPaperType(a.type) ? { paper: true } : {}),
     }));
+  },
+
+  isPaperAccount(accountId: string): Promise<boolean> {
+    return isNhPaperAccount(accountId);
   },
 
   async getPortfolio(accountId: string, opts?: FetchOpts): Promise<PortfolioOverview> {

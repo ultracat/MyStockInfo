@@ -10,6 +10,8 @@ export interface BrokerAccount {
   id: string;
   accountNumber?: string;
   accountType?: string;
+  /** 모의투자 계좌(NH) — `listAccounts(..., { includePaper: true })`일 때만 온다. */
+  paper?: boolean;
 }
 
 /** `(broker, accountId)` → 사람이 읽을 수 있는 별칭. Settings.tsx에서만 관리하고

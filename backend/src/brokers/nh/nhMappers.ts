@@ -15,6 +15,13 @@ export function nhNum(value: unknown): number {
 
 const str = (v: unknown) => (v === null || v === undefined ? '' : String(v).trim());
 
+/** 해외 거래내역의 통화코드명(`cur_cd_nm`)이 미국 달러인가. 빈 값은 달러로 본다(미국 잔고만 조회하므로).
+ *  "달러"만 보면 홍콩달러·캐나다달러까지 걸린다 — USD 또는 "미국"이 있어야 한다. */
+export function isUsdName(name: unknown): boolean {
+  const s = str(name);
+  return !s || /USD/i.test(s) || s.includes('미국');
+}
+
 export function nhYmd(v: unknown): string {
   const s = str(v);
   return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : '';
@@ -116,7 +123,7 @@ export function mapNhDomesticTrades(rows: Record<string, unknown>[]): TradeRecor
 }
 
 /** 해외 매수/매도(일별거래내역 `act_trd_cfc_cd=05/06`) → 체결 기록. 방향은 요청 코드로 정해져 적요를 해석하지 않는다.
- *  달러가 아닌 통화(통화코드명에 USD/달러가 없음)는 뺀다. */
+ *  미국 달러가 아닌 통화는 뺀다(`isUsdName`). */
 export function mapNhOverseasTrades(rows: Record<string, unknown>[], side: 'BUY' | 'SELL'): TradeRecord[] {
   const out: TradeRecord[] = [];
   for (const r of rows) {
@@ -125,7 +132,7 @@ export function mapNhOverseasTrades(rows: Record<string, unknown>[], side: 'BUY'
     const date = nhYmd(r.trd_dt);
     const curName = str(r.cur_cd_nm);
     if (!symbol || quantity <= 0 || !date) continue;
-    if (curName && !/USD|달러/i.test(curName)) continue;
+    if (!isUsdName(curName)) continue;
     out.push({
       id: `nh-ovrs-${str(r.trd_dt)}-${str(r.trd_sno)}`,
       symbol,
@@ -138,6 +145,70 @@ export function mapNhOverseasTrades(rows: Record<string, unknown>[], side: 'BUY'
       commission: null,
       tax: null,
       executedAt: date,
+    });
+  }
+  return out;
+}
+
+export interface NhDividendCandidate {
+  symbol: string;
+  name: string;
+  currency: 'KRW' | 'USD';
+  /** 세후(실수령). */
+  amount: number;
+  tax: number;
+  paidDate: string;
+  kind: 'dividend' | 'etfDistribution';
+}
+
+/** 적요가 배당·분배금 입금인지. ⚠ 가정: 명세에 적요 값 목록이 없다 — "배당금입금"·"ETF분배금" 같은 낱말을 본다.
+ *  "배당"이 들어가도 출금·취소·정정은 빼고, 종목코드가 없는 줄(계좌 단위 이자 등)도 뺀다. */
+function dividendKind(summary: string): NhDividendCandidate['kind'] | null {
+  if (/취소|정정|출금|환급/.test(summary)) return null;
+  if (summary.includes('분배')) return 'etfDistribution';
+  if (summary.includes('배당')) return 'dividend';
+  return null;
+}
+
+/** 국내 배당 — 종합거래내역 입출금(`act_trd_dtl_cd=01`) 중 배당·분배 적요. 원화만.
+ *  ⚠ 가정: `trd_amt`(거래금액)는 계좌에 실제로 들어온 **세후** 금액, `tax_sum`이 원천징수 세금이다(종합거래내역은
+ *  예수금 변동을 적는 화면이라). 실데이터로 세전이 확인되면 여기서 세금을 빼야 한다. */
+export function classifyNhDomesticDividends(rows: Record<string, unknown>[]): NhDividendCandidate[] {
+  const out: NhDividendCandidate[] = [];
+  for (const r of rows) {
+    const kind = dividendKind(str(r.sps_cd_krl_anm));
+    const symbol = nhDomesticSymbol(r.iem_cd);
+    const paidDate = nhYmd(r.trd_dt);
+    const amount = nhNum(r.trd_amt);
+    const cur = str(r.cur_cd).toUpperCase() || 'KRW';
+    if (!kind || !symbol || !paidDate || amount <= 0 || cur !== 'KRW') continue;
+    const tax = nhNum(r.tax_sum);
+    out.push({ symbol, name: str(r.iem_nm) || symbol, currency: 'KRW', amount, tax: tax > 0 ? tax : 0, paidDate, kind });
+  }
+  return out;
+}
+
+/** 해외 배당 — 해외 일별거래내역 입금(`act_trd_cfc_cd=01`) 중 배당 적요(`sps_cd_nm`). 달러만.
+ *  ⚠ 가정: `fc_trd_amt`가 세후 입금액, `fc_tax_sum`이 외화 세금(현지 원천징수)이다. */
+export function classifyNhOverseasDividends(rows: Record<string, unknown>[]): NhDividendCandidate[] {
+  const out: NhDividendCandidate[] = [];
+  for (const r of rows) {
+    const kind = dividendKind(str(r.sps_cd_nm) || str(r.act_trd_tp_nm));
+    const symbol = (str(r.iem_cd) || str(r.oss_iem_cd)).toUpperCase();
+    const paidDate = nhYmd(r.trd_dt);
+    const amount = nhNum(r.fc_trd_amt);
+    const curName = str(r.cur_cd_nm);
+    if (!kind || !symbol || !paidDate || amount <= 0) continue;
+    if (!isUsdName(curName)) continue;
+    const tax = nhNum(r.fc_tax_sum);
+    out.push({
+      symbol,
+      name: str(r.iem_krl_nm) || str(r.oss_iem_nm) || symbol,
+      currency: 'USD',
+      amount,
+      tax: tax > 0 ? tax : 0,
+      paidDate,
+      kind,
     });
   }
   return out;

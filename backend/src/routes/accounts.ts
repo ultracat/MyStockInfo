@@ -30,12 +30,14 @@ accountsRouter.get('/', (_req, res) => {
 accountsRouter.get('/:broker', async (req, res) => {
   const broker = req.params.broker as BrokerId;
   const forceRefresh = req.query.refresh === 'true';
+  // ?paper=true — 모의투자 계좌도(보유·매매 화면의 계좌 선택용). 합계를 내는 화면은 붙이지 않는다.
+  const includePaper = req.query.paper === 'true';
   try {
     const adapter = getAdapter(broker);
     if (!adapter.isConfigured()) {
       return res.status(409).json({ error: `${adapter.displayName} API 키가 설정되지 않았습니다.` });
     }
-    res.json(await adapter.listAccounts({ forceRefresh }));
+    res.json(await adapter.listAccounts({ forceRefresh, includePaper }));
   } catch (err) {
     handleBrokerApiError(err, res);
   }

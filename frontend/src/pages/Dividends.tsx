@@ -177,7 +177,7 @@ export default function Dividends() {
       .listBrokers()
       .then((brokers) => {
         const owned = new Set(
-          brokers.filter((b) => (b.id === 'toss' || b.id === 'kis') && b.configured).map((b) => b.id)
+          brokers.filter((b) => (b.id === 'toss' || b.id === 'kis' || b.id === 'nh') && b.configured).map((b) => b.id)
         );
         if (cancelled || owned.size === 0) return;
         setSyncOwnedBrokers(owned);

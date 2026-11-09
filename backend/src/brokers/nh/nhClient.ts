@@ -22,6 +22,9 @@ import type { FetchOpts } from '../types';
 //   요약 블록이 반드시 와야 하는 API는 호출부가 `rsp_msg`를 담아 던진다).
 // - 연속조회 키는 응답 **헤더** `cts`/`cts_flag`로 온다(본문 아님). 같은 `cts`가 다시 오면 끝낸다(무한루프 방지).
 const BASE_URL = 'https://api.nhplug.com:8443';
+// 모의투자 — 계좌구분 03 계좌는 **이 도메인으로만** 조회된다(운영 도메인에 03 계좌를 쓰면 실패, 명세). 토큰은 운영에서
+// 받은 것을 그대로 쓴다(모의투자는 토큰 발급 미제공 — 실키로 운영 토큰이 moapi 조회에 통하는 것 확인, 2026-11-09).
+const MOCK_BASE_URL = 'https://moapi.nhplug.com:8443';
 
 // 명세: REST 1초당 최대 5건. 공식 SDK 기본값(초당 4건)에 맞춘다.
 const nhLimiter = new RateLimiter({ tps: 4 }, 'NH');
@@ -145,7 +148,12 @@ export interface NhPage {
   ctsFlag: string | null;
 }
 
-export async function nhPost(path: string, input: Record<string, string>, cont?: { cts: string; ctsFlag: string | null }): Promise<NhPage> {
+export async function nhPost(
+  path: string,
+  input: Record<string, string>,
+  cont?: { cts: string; ctsFlag: string | null },
+  base: string = BASE_URL
+): Promise<NhPage> {
   return nhLimiter.schedule(async () => {
     let force = false;
     for (let attempt = 0; ; attempt++) {
@@ -156,7 +164,7 @@ export async function nhPost(path: string, input: Record<string, string>, cont?:
       };
       if (cont?.cts) headers.cts = cont.cts;
       if (cont?.ctsFlag) headers.cts_flag = cont.ctsFlag;
-      const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: JSON.stringify({ Input_0: input }) });
+      const res = await fetch(`${base}${path}`, { method: 'POST', headers, body: JSON.stringify({ Input_0: input }) });
       const text = await res.text();
 
       if (!res.ok) {
@@ -197,11 +205,11 @@ export function hasNextPage(page: Pick<NhPage, 'cts' | 'ctsFlag'> & { rspCd?: st
 }
 
 /** 연속조회를 끝까지 돈다. 같은 `cts`가 다시 오면 즉시 끝낸다(끝 2~3자만 바뀌는 경우가 있어 전체 문자열 비교). */
-export async function nhPostAll(path: string, input: Record<string, string>): Promise<NhBody[]> {
+export async function nhPostAll(path: string, input: Record<string, string>, base: string = BASE_URL): Promise<NhBody[]> {
   const pages: NhBody[] = [];
   let cont: { cts: string; ctsFlag: string | null } | undefined;
   for (let i = 0; i < MAX_PAGES; i++) {
-    const page = await nhPost(path, input, cont);
+    const page = await nhPost(path, input, cont, base);
     pages.push(page.body);
     if (!hasNextPage({ ...page, rspCd: page.body.rsp_cd })) break;
     if (cont && page.cts === cont.cts) break;
@@ -227,19 +235,33 @@ export interface NhAccount {
   type: string;
 }
 
-/** 계좌 목록(`/n2/acctinfo`) — 앱키에 연결된 계좌가 섞여 온다. 이 앱은 운영 도메인만 쓰므로 01·02만 남긴다. */
-export function fetchNhAccounts(opts: FetchOpts = {}): Promise<NhAccount[]> {
-  return withCache(
+export const isPaperType = (type: string) => type === '03';
+
+/** 계좌 목록(`/n2/acctinfo`) — 앱키에 연결된 실전(01 일반·02 주문대리인)과 모의투자(03) 계좌가 섞여 온다.
+ *  기본은 실전만. `includePaper`면 모의투자도(보유·매매 화면의 계좌 선택용). 알 수 없는 구분은 버린다. */
+export async function fetchNhAccounts(opts: FetchOpts = {}, includePaper = false): Promise<NhAccount[]> {
+  const all = await withCache(
     'nh:accounts',
     10 * 60_000,
     async () => {
       const { body } = await nhPost('/n2/acctinfo', {});
       return rowsOf(body, 'Output_0')
         .map((r) => ({ accountNo: String(r.acct_no ?? '').trim(), type: String(r.acct_type ?? '').trim() }))
-        .filter((a) => a.accountNo && (a.type === '01' || a.type === '02'));
+        .filter((a) => a.accountNo && ['01', '02', '03'].includes(a.type));
     },
     opts
   );
+  return includePaper ? all : all.filter((a) => !isPaperType(a.type));
+}
+
+/** 이 계좌를 조회할 도메인 — 모의투자 계좌면 moapi. 목록에 없는 계좌(키를 바꿨거나 잘못된 id)는 운영으로 보낸다. */
+async function baseFor(accountNo: string): Promise<string> {
+  const accounts = await fetchNhAccounts({}, true);
+  return accounts.some((a) => a.accountNo === accountNo && isPaperType(a.type)) ? MOCK_BASE_URL : BASE_URL;
+}
+
+export async function isNhPaperAccount(accountNo: string): Promise<boolean> {
+  return (await baseFor(accountNo)) === MOCK_BASE_URL;
 }
 
 // ── 잔고 ───────────────────────────────────────────────────────────────────────
@@ -258,7 +280,7 @@ export function fetchNhDomesticBalance(accountNo: string, opts: FetchOpts = {}) 
         aet_bse: '2', // 총자산
         qut_dit_cd: 'UNT',
         aly_qut_cd: '1',
-      });
+      }, await baseFor(accountNo));
       const summary = [...pages].reverse().map((p) => rowsOf(p, 'Output_0')[0]).find(Boolean) ?? null;
       if (!summary) {
         const last = pages[pages.length - 1];
@@ -283,7 +305,7 @@ export function fetchNhOverseasBalance(accountNo: string, opts: FetchOpts = {}) 
         fc_sec_trd_nat_cd: '200',
         cur_cd: 'USD',
         xns_dit_cd: '0',
-      });
+      }, await baseFor(accountNo));
       const summary = [...pages].reverse().map((p) => rowsOf(p, 'Output_0')[0]).find(Boolean) ?? null;
       return { summary, items: pages.flatMap((p) => rowsOf(p, 'Output_1')) };
     },
@@ -314,7 +336,7 @@ export function fetchNhTotalTransactions(
         iqr_end_dt: compact(to),
         iem_llf_cd: '00', // 전체 — 국내 주식/ETF는 01이지만 ETF 분배금 적요가 어느 대분류로 오는지 몰라 전체로 받는다
         act_trd_dtl_cd: kind,
-      });
+      }, await baseFor(accountNo));
       return pages.flatMap((p) => rowsOf(p, 'Output_0'));
     },
     opts
@@ -340,7 +362,7 @@ export function fetchNhOverseasTransactions(
         act_trd_cfc_cd: kind,
         iem_mlf_cd: '00001',
         iem_cd: '',
-      });
+      }, await baseFor(accountNo));
       return pages.flatMap((p) => rowsOf(p, 'Output_0'));
     },
     opts
@@ -356,7 +378,7 @@ export function fetchNhDepositWithdrawals(accountNo: string, from: string, to: s
       iqr_sta_dt: compact(from),
       iqr_end_dt: compact(to),
       act_trd_dtl_cd: '01',
-    });
+    }, await baseFor(accountNo));
     return pages.flatMap((p) => rowsOf(p, 'Output_0'));
   });
 }
@@ -368,7 +390,7 @@ export async function fetchNhDomesticTradingPnl(accountNo: string, from: string,
     act_no: accountNo,
     iqr_sta_dt: compact(from),
     iqr_end_dt: compact(to),
-  });
+  }, await baseFor(accountNo));
   return pages.flatMap((p) => rowsOf(p, 'Output_1'));
 }
 
@@ -382,6 +404,6 @@ export async function fetchNhOverseasPeriodPnl(accountNo: string, from: string, 
     iem_cd: '',
     trd_cur_cd: 'USD',
     fc_sec_trd_nat_cd: '200',
-  });
+  }, await baseFor(accountNo));
   return pages.flatMap((p) => rowsOf(p, 'Output_1'));
 }

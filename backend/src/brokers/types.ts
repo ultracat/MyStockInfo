@@ -5,6 +5,9 @@ export interface BrokerAccount {
   id: string;
   accountNumber?: string;
   accountType?: string;
+  /** 모의투자 계좌(NH 나무의 acct_type 03) — 보유·매매 화면에서 고를 수만 있고, 합계·스냅샷·배당 동기화·로컬
+   *  저장소(write-through)에는 넣지 않는다(실제 자산이 아니라서). `listAccounts({ includePaper: true })`일 때만 온다. */
+  paper?: boolean;
 }
 
 export interface HoldingPosition {
@@ -88,7 +91,10 @@ export interface BrokerAdapter {
   id: BrokerId;
   displayName: string;
   isConfigured(): boolean;
-  listAccounts(opts?: FetchOpts): Promise<BrokerAccount[]>;
+  /** `includePaper`: 모의투자 계좌도 포함(지원하는 브로커만 — 지금은 NH). 기본은 실전 계좌만. */
+  listAccounts(opts?: FetchOpts & { includePaper?: boolean }): Promise<BrokerAccount[]>;
+  /** 이 계좌가 모의투자인가 — 라우트가 로컬 저장소 write-through를 건너뛰는 데 쓴다. 없으면 실전으로 본다. */
+  isPaperAccount?(accountId: string): Promise<boolean>;
   getPortfolio(accountId: string, opts?: FetchOpts): Promise<PortfolioOverview>;
   /** Not every broker's Open API publishes this — omit when it doesn't. */
   getExchangeRate?(baseCurrency: string, quoteCurrency: string, opts?: FetchOpts): Promise<ExchangeRate>;

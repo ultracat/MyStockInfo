@@ -2,6 +2,7 @@ import { KNOWN_BROKERS } from './knownBrokers';
 import { getKbLinkedAccountId, isKbConfigured } from './kb/kbClient';
 import { isTossConfigured } from './toss/tossClient';
 import { isKisConfigured } from './kis/kisClient';
+import { isNhConfigured } from './nh/nhClient';
 import type { BrokerId } from './types';
 
 /** holdings.json/trades.json의 행은 두 종류다 — (1) 실시간 조회(write-through)와
@@ -31,5 +32,7 @@ export function isDividendSyncOwned(row: { broker: BrokerId; currency?: string |
   // 한국투자증권 API(CTRGA011R)는 **국내(원화) 배당만** 준다 — 미국 주식 배당(USD)은 계좌 기준 API가 없어
   // 사용자가 직접 적는다. 그래서 KIS는 원화 기록만 동기화 소유이고, 달러 기록은 수동 소유다(동기화가 안 지운다).
   if (row.broker === 'kis') return isKisConfigured() && row.currency !== 'USD';
+  // NH투자증권은 국내(종합거래내역)·해외(해외 일별거래내역) 배당을 모두 계좌 기준으로 준다 — 원화·달러 모두 동기화 소유.
+  if (row.broker === 'nh') return isNhConfigured();
   return false;
 }

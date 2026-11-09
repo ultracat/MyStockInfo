@@ -19,8 +19,9 @@ holdingsRouter.get('/:broker/:accountId', async (req, res) => {
     // write-through: 실시간 조회가 성공할 때마다 로컬 저장소도 최신 스냅샷으로
     // 갱신해둔다(CSV 내보내기/가져오기, API 연동이 없는 브로커 대비용) — 저장
     // 실패가 실시간 응답 자체를 막으면 안 되므로 별도로 감싼다.
+    // 모의투자 계좌는 저장하지 않는다 — 로컬 저장소는 다가오는 배당 예상·CSV 내보내기 등이 "실제 보유"로 읽는다.
     try {
-      replaceSnapshot(broker, accountId, portfolio.positions);
+      if (!(await adapter.isPaperAccount?.(accountId))) replaceSnapshot(broker, accountId, portfolio.positions);
     } catch (storeErr) {
       console.error('[holdings-store] 로컬 저장 실패:', storeErr);
     }

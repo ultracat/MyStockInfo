@@ -150,6 +150,7 @@ function dividendsToRows(tossMap: Map<string, string>): string[][] {
     numStr(d.amount),
     d.paidDate,
     d.memo ?? '',
+    d.tax === null ? '' : numStr(d.tax),
   ]);
 }
 
@@ -268,6 +269,7 @@ function dividendsRowToInput(rec: Record<string, string>, tossReverseMap: Map<st
     amount: Number((rec.amount ?? '').trim()),
     paidDate: (rec.paidDate ?? '').trim(),
     memo: rec.memo?.trim() || undefined,
+    tax: rec.tax?.trim() || undefined,
   };
 }
 

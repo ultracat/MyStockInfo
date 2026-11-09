@@ -16,7 +16,8 @@ import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink
 // 헤더 매칭이 대소문자만 다르면 되게 하기 위함). name(종목명)은 없다 — 심볼로부터
 // 서버가 자동조회하므로 CSV에 넣을 필요가 없다(가져오기도 마찬가지). accountId는
 // 선택 컬럼 — 브로커 한 곳에 계좌가 여러 개일 때만 채우면 된다.
-const DIVIDEND_CSV_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo'];
+// amount = 세후(실수령), tax = 원천징수 세금(선택 — 예전 CSV처럼 없어도 된다).
+const DIVIDEND_CSV_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo', 'tax'];
 
 // 토스 종목 기본 정보 API가 symbols 파라미터에 실제로 허용하는 문자 범위
 // (backend/src/routes/stockInfo.ts의 TOSS_SYMBOL_PATTERN과 동일 — 백엔드가 이미
@@ -90,6 +91,7 @@ export default function Dividends() {
   const [amount, setAmount] = useState('');
   const [paidDate, setPaidDate] = useState(today());
   const [memo, setMemo] = useState('');
+  const [taxInput, setTaxInput] = useState('');
 
   // 종목명 자동조회 — 백엔드가 심볼별로 로컬 캐시(SQLite, stockNames.sqlite)를
   // 두므로 같은 심볼을 다시 입력해도 매번 토스 API를 부르지 않는다. 사용자가
@@ -139,6 +141,62 @@ export default function Dividends() {
   useEffect(() => {
     refresh().catch((e) => setError((e as Error).message));
   }, []);
+
+  // ---- 배당 동기화(토스증권·한국투자증권) ----
+  // API로 배당을 받을 수 있는 증권사는 그 계좌 배당 기록을 **API 내용으로 통째로 교체**한다(백엔드
+  // brokers/*/…DividendSync.ts). 화면에 들어오면 백그라운드로 한 번 돌고, 버튼으로 다시 돌릴 수 있다.
+  // 그 증권사 행은 직접 추가·수정·삭제를 막는다(syncOwnedBrokers — 백엔드도 409로 막는다).
+  const [syncOwnedBrokers, setSyncOwnedBrokers] = useState<Set<BrokerId>>(new Set());
+  const [dividendSyncing, setDividendSyncing] = useState(false);
+  const [dividendSyncNotice, setDividendSyncNotice] = useState<string | null>(null);
+
+  async function runDividendSync(manual: boolean) {
+    setDividendSyncing(true);
+    if (manual) setDividendSyncNotice(null);
+    try {
+      const { results, errors } = await api.syncDividends();
+      const changed = results.filter((r) => r.added > 0 || r.removed > 0);
+      const parts = changed.map(
+        (r) => `${BROKER_LABELS[r.broker]} 추가 ${r.added}건${r.removed ? ` · 삭제 ${r.removed}건` : ''}`
+      );
+      const errs = errors.map((e) => `${BROKER_LABELS[e.broker]} 실패: ${e.error}`);
+      if (changed.length > 0) await refresh();
+      if (parts.length > 0 || errs.length > 0) setDividendSyncNotice(['배당 동기화', ...parts, ...errs].join(' — '));
+      else if (manual) setDividendSyncNotice('배당 동기화: 이미 최신입니다.');
+    } catch (e) {
+      setDividendSyncNotice(`배당 동기화 실패: ${(e as Error).message}`);
+    } finally {
+      setDividendSyncing(false);
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listBrokers()
+      .then((brokers) => {
+        const owned = new Set(
+          brokers.filter((b) => (b.id === 'toss' || b.id === 'kis') && b.configured).map((b) => b.id)
+        );
+        if (cancelled || owned.size === 0) return;
+        setSyncOwnedBrokers(owned);
+        void runDividendSync(false);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 직접 입력 폼의 증권사 기본값이 API 동기화 증권사면 직접 입력 가능한 첫 증권사로 옮긴다.
+  useEffect(() => {
+    if (syncOwnedBrokers.has(broker)) {
+      const first = BROKER_ORDER.find((id) => !syncOwnedBrokers.has(id));
+      if (first) setBroker(first);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncOwnedBrokers]);
 
   // records가 바뀔 때마다(최초 로드/추가/수정/가져오기 등) 그 안의 달러 배당
   // 기록이 걸쳐 있는 달들의 평균 환율을 다시 구한다 — 연도 필터(year)는 이
@@ -411,6 +469,11 @@ export default function Dividends() {
       setError('종목코드, 종목명, 배당금(양수), 지급일을 입력해주세요.');
       return;
     }
+    const taxNum = taxInput.trim() ? Number(taxInput) : null;
+    if (taxNum !== null && (!Number.isFinite(taxNum) || taxNum < 0)) {
+      setError('세금은 0 이상의 숫자로 입력해주세요(모르면 비워 두세요).');
+      return;
+    }
     try {
       await api.addDividend({
         broker,
@@ -421,8 +484,10 @@ export default function Dividends() {
         amount: amountNum,
         paidDate,
         memo: memo || null,
+        tax: taxNum,
       });
       setSymbol('');
+      setTaxInput('');
       setName('');
       setAmount('');
       setMemo('');
@@ -454,6 +519,7 @@ export default function Dividends() {
     amount: string;
     paidDate: string;
     memo: string;
+    tax: string;
   } | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -469,6 +535,7 @@ export default function Dividends() {
       amount: String(r.amount),
       paidDate: r.paidDate,
       memo: r.memo ?? '',
+      tax: r.tax === null ? '' : String(r.tax),
     });
     setEditError(null);
   }
@@ -486,6 +553,11 @@ export default function Dividends() {
       setEditError('종목코드, 종목명, 배당금(양수), 지급일을 입력해주세요.');
       return;
     }
+    const editTax = editDraft.tax.trim() ? Number(editDraft.tax) : null;
+    if (editTax !== null && (!Number.isFinite(editTax) || editTax < 0)) {
+      setEditError('세금은 0 이상의 숫자로 입력해주세요(모르면 비워 두세요).');
+      return;
+    }
     setEditSaving(true);
     setEditError(null);
     try {
@@ -498,6 +570,7 @@ export default function Dividends() {
         amount: amountNum,
         paidDate: editDraft.paidDate,
         memo: editDraft.memo || null,
+        tax: editTax,
       });
       setEditingId(null);
       setEditDraft(null);
@@ -541,6 +614,7 @@ export default function Dividends() {
         String(r.amount),
         r.paidDate,
         r.memo ?? '',
+        r.tax === null ? '' : String(r.tax),
       ]),
     ];
     const scope = listBroker === 'ALL' ? 'all' : listBroker;
@@ -577,6 +651,7 @@ export default function Dividends() {
       const iAmount = colIndex('amount');
       const iPaidDate = colIndex('paidDate');
       const iMemo = colIndex('memo');
+      const iTax = colIndex('tax');
 
       if ([iBroker, iSymbol, iCurrency, iAmount, iPaidDate].some((i) => i === -1)) {
         setImportResult(`CSV 헤더가 올바르지 않습니다. 다음 컬럼이 필요합니다: ${DIVIDEND_CSV_HEADER.join(', ')}`);
@@ -593,6 +668,7 @@ export default function Dividends() {
           amount: Number((r[iAmount] ?? '').trim()),
           paidDate: (r[iPaidDate] ?? '').trim(),
           memo: iMemo !== -1 && (r[iMemo] ?? '').trim() ? r[iMemo] : null,
+          tax: iTax !== -1 && (r[iTax] ?? '').trim() ? Number(r[iTax].trim()) : null,
         }));
 
       // "가져오기 대상" 선택이 전체가 아니면 해당 증권사 행만 골라서 보낸다 —
@@ -960,9 +1036,9 @@ export default function Dividends() {
     <div>
       <h2 className="page-title">배당금</h2>
       <div className="notice">
-        토스증권/한국투자증권 Open API 모두 "내 계좌에 실제로 입금된 배당금" 내역을 조회하는 API는
-        제공하지 않아 (한국투자증권은 종목별 배당 일정/배당률 같은 공개 시세 데이터는 있지만, 개인
-        계좌의 배당 지급 내역은 없습니다), 배당금은 지급 시 직접 입력해 관리합니다.
+        토스증권·한국투자증권은 API 키가 등록돼 있으면 이 화면에 들어올 때 배당(국내 ETF 분배금, 외화세금환급 포함)을
+        API 내용으로 자동으로 맞춥니다 — 그 증권사 기록은 직접 고칠 수 없습니다. 그 밖의 증권사는 입금된 배당을
+        조회하는 API가 없어 지급 시 직접 입력합니다. 배당금은 세후 실수령액이고, 세금은 따로 적습니다.
       </div>
 
       <div className="form-row">
@@ -1096,7 +1172,7 @@ export default function Dividends() {
             <div className="form-row">
               <label>증권사</label>
               <select value={broker} onChange={(e) => setBroker(e.target.value as BrokerId)}>
-                {BROKER_ORDER.map((id) => (
+                {BROKER_ORDER.filter((id) => !syncOwnedBrokers.has(id)).map((id) => (
                   <option key={id} value={id}>
                     {BROKER_LABELS[id]}
                   </option>
@@ -1157,8 +1233,19 @@ export default function Dividends() {
               </select>
             </div>
             <div className="form-row">
-              <label>배당금 ({currency === 'USD' ? '$' : '원'})</label>
+              <label>배당금 · 세후 ({currency === 'USD' ? '$' : '원'})</label>
               <input type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>세금 (선택)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={taxInput}
+                onChange={(e) => setTaxInput(e.target.value)}
+                placeholder="원천징수 세금"
+              />
             </div>
             <div className="form-row">
               <label>지급일</label>
@@ -1181,6 +1268,17 @@ export default function Dividends() {
             {refreshingNames ? '갱신 중...' : '종목명 일괄 갱신'}
           </button>
           {refreshResult && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{refreshResult}</span>}
+          {syncOwnedBrokers.size > 0 && (
+            <button
+              className="ghost"
+              onClick={() => runDividendSync(true)}
+              disabled={dividendSyncing}
+              title={`${[...syncOwnedBrokers].map((b) => BROKER_LABELS[b]).join('·')} 배당을 API 내용으로 다시 맞춥니다`}
+            >
+              {dividendSyncing ? '배당 동기화 중...' : '배당 동기화'}
+            </button>
+          )}
+          {dividendSyncNotice && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{dividendSyncNotice}</span>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
             <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
             <select
@@ -1294,7 +1392,8 @@ export default function Dividends() {
               <th>계좌</th>
               <th>종목코드</th>
               <th>종목명</th>
-              <th>배당금</th>
+              <th title="세후 실수령액">배당금</th>
+              <th title="원천징수 세금 — 세전 = 배당금 + 세금">세금</th>
               <th>메모</th>
               <th></th>
             </tr>
@@ -1371,6 +1470,16 @@ export default function Dividends() {
                   </td>
                   <td>
                     <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editDraft.tax}
+                      onChange={(e) => setEditDraft({ ...editDraft, tax: e.target.value })}
+                      style={{ width: 80 }}
+                    />
+                  </td>
+                  <td>
+                    <input
                       value={editDraft.memo}
                       onChange={(e) => setEditDraft({ ...editDraft, memo: e.target.value })}
                     />
@@ -1401,16 +1510,25 @@ export default function Dividends() {
                     <StockNameLink name={r.name} url={stockLinkFor(r.symbol, r.currency)} />
                   </td>
                   <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>
+                    {r.tax === null ? '-' : r.currency === 'USD' ? usdFmt.format(r.tax) : `${krw.format(r.tax)}원`}
+                  </td>
                   <td>{r.memo ?? '-'}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button className="ghost" onClick={() => startEdit(r)}>
-                        수정
-                      </button>
-                      <button className="ghost" onClick={() => onDelete(r.id)}>
-                        삭제
-                      </button>
-                    </div>
+                    {syncOwnedBrokers.has(r.broker) ? (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }} title="API 동기화로만 관리됩니다">
+                        API 연동
+                      </span>
+                    ) : (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="ghost" onClick={() => startEdit(r)}>
+                          수정
+                        </button>
+                        <button className="ghost" onClick={() => onDelete(r.id)}>
+                          삭제
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               )

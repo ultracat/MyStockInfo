@@ -39,7 +39,8 @@ export const TRADES_SHEET_HEADER = [
   'id',
 ];
 
-export const DIVIDENDS_SHEET_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo'];
+// amount = 세후(실수령), tax = 원천징수 세금(선택, 맨 뒤 — 예전 시트도 그대로 읽힌다).
+export const DIVIDENDS_SHEET_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo', 'tax'];
 
 export type SheetDataType = 'holdings' | 'trades' | 'dividends';
 

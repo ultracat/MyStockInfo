@@ -543,6 +543,14 @@ export default function Settings() {
             보통 01)를 직접 입력해야 합니다. 실전투자 계좌만 지원되며 모의투자는 지원하지 않습니다.
           </p>
         )}
+        {broker === 'nh' && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            NH투자증권 나무 Open API(www.nhplug.com)에서 발급받은 앱키/앱시크릿을 입력하세요. 계좌 목록 API가 있어
+            계좌번호는 입력하지 않습니다 — 앱키에 연결된 실전 계좌(일반·주문대리인)가 모두 보이고, 모의투자 계좌는
+            빠집니다. 접근 토큰을 새로 받을 때마다 NH투자증권이 보안 알림을 보내므로, 토큰은 24시간 동안 저장해
+            재사용합니다.
+          </p>
+        )}
         {broker === 'kb' && (
           <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
             KB증권 Open API 포털(developer.kbsec.com)에서 발급받은 appKey/appSecret을 입력하세요. KB Open

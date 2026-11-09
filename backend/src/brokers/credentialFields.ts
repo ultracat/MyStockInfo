@@ -28,6 +28,11 @@ export const CREDENTIAL_FIELDS: Record<BrokerId, CredentialFieldSpec[]> = {
     { key: 'accountNumber', label: '계좌번호 (CANO, 8자리)', secret: false, placeholder: '12345678', kind: 'account' },
     { key: 'accountProductCode', label: '상품코드 (ACNT_PRDT_CD, 2자리)', secret: false, placeholder: '01', kind: 'account' },
   ],
+  // NH투자증권(나무) — 계좌 목록 API(/n2/acctinfo)가 있어 계좌번호는 받지 않는다(토스와 같음).
+  nh: [
+    { key: 'appKey', label: '앱키 (App Key)', secret: false },
+    { key: 'appSecret', label: '앱시크릿 (App Secret)', secret: true },
+  ],
   kb: [
     { key: 'appKey', label: 'appKey', secret: false },
     { key: 'appSecret', label: 'appSecret', secret: true },

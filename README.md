@@ -72,7 +72,8 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 | Windows | 탐색기에서 `start-windows.bat` 더블클릭 |
 
 nvm/Homebrew로 설치한 node는 셸 설정을 읽지 않는 더블클릭 실행에서도 찾도록 했습니다.
-macOS에서 처음 더블클릭할 때 "확인되지 않은 개발자" 경고가 뜨면 우클릭 → 열기로 한 번 허용하세요.
+설치본(릴리스의 `.dmg`/`.exe`/`.AppImage`)은 코드 서명 인증서로 서명되어 있지 않아 처음 실행할 때 OS가 막습니다.
+OS별로 허용하는 방법(macOS 15부터는 우클릭 → 열기가 통하지 않음)은 [사용자 매뉴얼의 "서명하지 않은 앱 처음 실행하기"](doc/user-manual.md#서명하지-않은-앱-처음-실행하기)를 보세요.
 
 Electron 창이 뜨면 좌측 **설정** 메뉴에서 증권사별 API 키를 입력하세요.
 저장된 키는 OS 키체인 기반으로 암호화되어 로컬에만 저장되고, `backend/data/`(gitignore됨)
@@ -91,9 +92,9 @@ npm run package:mac
 `MyStock.app`(및 `Applications` 폴더로 드래그해서 설치하는 `.dmg`)를 만듭니다.
 
 - **코드 서명·공증이 되어 있지 않습니다** (Apple Developer ID 인증서가 없어서 의도적으로
-  뺐습니다). 만든 사람 본인 Mac에서 실행하는 건 문제없지만(첫 실행 시 우클릭 → 열기),
+  뺐습니다). 만든 사람 본인 Mac에서 실행하는 건 문제없지만,
   **다른 사람에게 그대로 배포하면 macOS Gatekeeper가 "손상되었거나 확인할 수 없는
-  개발자입니다" 경고를 띄웁니다.** 여러 사람에게 배포하려면 유료 Apple Developer Program
+  개발자입니다" 경고를 띄웁니다**(허용 방법은 [사용자 매뉴얼](doc/user-manual.md#서명하지-않은-앱-처음-실행하기) 참고). 여러 사람에게 배포하려면 유료 Apple Developer Program
   인증서로 서명 + 공증이 추가로 필요합니다.
 - 앱 아이콘은 아직 별도로 만들지 않아 Electron 기본 아이콘이 붙습니다.
 - 패키징된 앱은 `npm run dev`로 띄운 개발용 앱과 **같은** 자격증명/배당 데이터

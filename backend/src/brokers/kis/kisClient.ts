@@ -415,6 +415,80 @@ export async function fetchKisPeriodRights(from = '2000-01-01', to = '2099-12-31
   return items;
 }
 
+/** 기간별매매손익현황조회(`TTTC8715R`, `inquire-period-trade-profit`, 공식 예제 확인 2026-11-09) 한 행 — 매도 체결별
+ *  증권사가 계산한 실현손익. 금액은 문자열(원). 국내주식만. */
+export interface KisTradeProfitRow {
+  trad_dt: string;
+  pdno: string;
+  prdt_name: string;
+  sll_qty: string;
+  sll_amt: string;
+  buy_amt: string;
+  rlzt_pfls: string;
+  fee: string;
+  tl_tax: string;
+}
+
+/** 기간 내 국내 매도 실현손익 전체(50건씩 연속조회). 합계(output2)는 쓰지 않고 행을 더해 쓴다(페이지가 나뉘어서). */
+export async function fetchKisPeriodTradeProfit(from: string, to: string): Promise<KisTradeProfitRow[]> {
+  const creds = requireCredentials();
+  const rows: KisTradeProfitRow[] = [];
+  let fk100 = '';
+  let nk100 = '';
+  let trCont = '';
+  for (let page = 0; page < 100; page++) {
+    const res = await kisGet(
+      '/uapi/domestic-stock/v1/trading/inquire-period-trade-profit',
+      'TTTC8715R',
+      {
+        CANO: creds.accountNumber,
+        ACNT_PRDT_CD: creds.accountProductCode,
+        SORT_DVSN: '01',
+        INQR_STRT_DT: from.replace(/-/g, ''),
+        INQR_END_DT: to.replace(/-/g, ''),
+        CBLC_DVSN: '00',
+        PDNO: '',
+        CTX_AREA_FK100: fk100,
+        CTX_AREA_NK100: nk100,
+      },
+      trCont,
+      kisDailyCcldLimiter,
+      5
+    );
+    const out = res.output1;
+    rows.push(...((Array.isArray(out) ? out : out ? [out] : []) as KisTradeProfitRow[]));
+    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    fk100 = String(res.ctx_area_fk100 ?? '');
+    nk100 = String(res.ctx_area_nk100 ?? '');
+    trCont = 'N';
+  }
+  return rows;
+}
+
+/** 예탁원정보 배당일정(`HHKDB669102C0`, `ksdinfo/dividend`) — **시장 전체**(계좌 무관) 국내 배당 일정.
+ *  `per_sto_divi_amt`=주당 배당금(원, 미정이면 0), `record_date`=기준일, `divi_pay_dt`=지급일(미정이면 빈 값). */
+export interface KisDividendScheduleRow {
+  record_date: string;
+  sht_cd: string;
+  isin_name: string;
+  divi_kind: string;
+  per_sto_divi_amt: string;
+  divi_pay_dt: string;
+}
+
+export async function fetchKisDividendSchedule(from: string, to: string): Promise<KisDividendScheduleRow[]> {
+  const res = await kisGet('/uapi/domestic-stock/v1/ksdinfo/dividend', 'HHKDB669102C0', {
+    CTS: '',
+    GB1: '0',
+    F_DT: from.replace(/-/g, ''),
+    T_DT: to.replace(/-/g, ''),
+    SHT_CD: '',
+    HIGH_GB: '',
+  });
+  const out = res.output1 ?? res.output;
+  return (Array.isArray(out) ? out : out ? [out] : []) as KisDividendScheduleRow[];
+}
+
 /** Fetches every page of one 주식일별주문체결조회 query (single TR/date range), following `ctx_area_fk100`/`nk100` until `tr_cont` stops being 'M'/'F'. */
 async function fetchDailyCcldAllPages(
   trId: string,

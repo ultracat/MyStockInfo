@@ -170,6 +170,37 @@ export interface ActiveWarning {
   endDate: string | null;
 }
 
+/** 다가오는 배당(백엔드 upcomingDividends.ts) — 확정은 한국투자증권 계좌 권리, 예상은 예탁원 일정 × 보유 수량. */
+export interface UpcomingDividend {
+  status: 'confirmed' | 'estimated';
+  broker: BrokerId;
+  accountId: string;
+  symbol: string;
+  name: string;
+  currency: 'KRW' | 'USD';
+  payDate: string | null;
+  recordDate: string | null;
+  quantity: number;
+  perShare: number | null;
+  /** 세전. */
+  grossAmount: number;
+  tax: number | null;
+  source: 'kis-account' | 'ksd-schedule';
+}
+
+/** 한국투자증권 기간별매매손익(TTTC8715R) 매도 한 줄 — 원. */
+export interface KisRealizedRow {
+  date: string;
+  symbol: string;
+  name: string;
+  quantity: number;
+  sellAmount: number;
+  buyAmount: number;
+  realized: number;
+  fee: number;
+  tax: number;
+}
+
 export interface MonthlySummaryRow {
   month: string;
   totalKrw: number;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, CredentialFieldSpec, CredentialStatus, RestoreBackupResult, SecureStorageStatus } from '../types';
+import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerAccount, BrokerId, CredentialFieldSpec, CredentialStatus, RestoreBackupResult, SecureStorageStatus } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, TAX_TYPE_LABELS, TAX_TYPE_OPTIONS } from '../accountLabels';
 import { downloadBlob } from '../csv';
@@ -173,6 +173,8 @@ export default function Settings() {
       setFieldValues({});
       setMessage('저장되었습니다.');
       await refresh();
+      // 키를 바꾸면 API 계좌 목록(NH의 실전·모의투자 계좌 등)도 다시 받는다.
+      void refreshAccounts().catch(() => {});
     } catch (e) {
       setError((e as Error).message);
     }
@@ -181,6 +183,7 @@ export default function Settings() {
   async function onClearCredential(b: BrokerId) {
     await api.clearCredential(b);
     await refresh();
+    void refreshAccounts().catch(() => {});
   }
 
   async function onSaveFxRate() {
@@ -213,6 +216,8 @@ export default function Settings() {
   // (실사용자의 한국투자증권 ISA 계좌가 실제 사례 — backend/CLAUDE.md의
   // "계좌별 세금 유형" 절 참고).
   const [knownAccounts, setKnownAccounts] = useState<{ broker: BrokerId; accountId: string }[]>([]);
+  // API 브로커의 실시간 계좌 목록(모의투자 포함) — "증권사 연동 상태"의 계좌 정보 칸과 별칭 표의 모의투자 표시용.
+  const [apiAccounts, setApiAccounts] = useState<Partial<Record<BrokerId, BrokerAccount[]>>>({});
   const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
   // 표시용 계좌번호 — accountId가 사람이 읽는 번호가 아닌 브로커(토스증권의
   // accountSeq "1")만 입력칸을 보여준다(ACCOUNT_NUMBER_EDITABLE_BROKERS).
@@ -222,6 +227,10 @@ export default function Settings() {
   const [newAccountBroker, setNewAccountBroker] = useState<BrokerId>(CSV_ONLY_BROKER_IDS[0]);
   const [newAccountId, setNewAccountId] = useState('');
   const [newAccountLabel, setNewAccountLabel] = useState('');
+
+  // 모의투자 계좌는 세금 계산(실현손익)에 들어가지 않아 세금 유형이 의미 없다.
+  const isPaperAccount = (b: BrokerId, accountId: string) =>
+    apiAccounts[b]?.some((x) => x.id === accountId && x.paper) ?? false;
 
   async function refreshAccounts() {
     setAccountsLoading(true);
@@ -244,12 +253,13 @@ export default function Settings() {
         API_BROKER_IDS.filter((b) => credStatus[b]).map((b) =>
           api
             .listAccounts(b, { includePaper: true })
-            .then((accounts) => ({ broker: b, accountIds: new Set(accounts.map((a) => a.id)) }))
-            .catch(() => ({ broker: b, accountIds: new Set<string>() }))
+            .then((accounts) => ({ broker: b, accounts, accountIds: new Set(accounts.map((a) => a.id)) }))
+            .catch(() => ({ broker: b, accounts: [] as BrokerAccount[], accountIds: new Set<string>() }))
         )
       ),
     ]);
 
+    setApiAccounts(Object.fromEntries(perApiBroker.map((p) => [p.broker, p.accounts])));
     const known = new Map<string, { broker: BrokerId; accountId: string }>();
     for (const { broker: b, accountIds } of [...perBroker, ...perApiBroker]) {
       for (const accountId of accountIds) known.set(accountLabelKey(b, accountId), { broker: b, accountId });
@@ -459,12 +469,23 @@ export default function Settings() {
                     )}
                   </td>
                   <td style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-                    {nonSecretValues
-                      ? (fieldSpecs?.[id] ?? [])
-                          .filter((f) => f.kind === 'account' && nonSecretValues[f.key])
-                          .map((f) => `${f.label}: ${nonSecretValues[f.key]}`)
-                          .join(' · ')
-                      : '-'}
+                    {nonSecretValues ? (
+                      (fieldSpecs?.[id] ?? [])
+                        .filter((f) => f.kind === 'account' && nonSecretValues[f.key])
+                        .map((f) => `${f.label}: ${nonSecretValues[f.key]}`)
+                        .join(' · ')
+                    ) : id === 'nh' && status?.[id] && (apiAccounts.nh?.length ?? 0) > 0 ? (
+                      // NH는 계좌번호를 입력받지 않고 계좌 목록 API로 찾는다 — 찾은 실전·모의투자 계좌를 그대로 보여준다.
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {apiAccounts.nh!.map((a) => (
+                          <span key={a.id}>
+                            {a.accountNumber ?? a.id} ({a.accountType ?? '일반'})
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      '-'
+                    )}
                   </td>
                   <td>
                     {hasCredentialFields && status?.[id] && (
@@ -546,9 +567,10 @@ export default function Settings() {
         {broker === 'nh' && (
           <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
             NH투자증권 나무 Open API(www.nhplug.com)에서 발급받은 앱키/앱시크릿을 입력하세요. 계좌 목록 API가 있어
-            계좌번호는 입력하지 않습니다 — 앱키에 연결된 실전 계좌(일반·주문대리인)가 모두 보이고, 모의투자 계좌는
-            빠집니다. 접근 토큰을 새로 받을 때마다 NH투자증권이 보안 알림을 보내므로, 토큰은 24시간 동안 저장해
-            재사용합니다.
+            계좌번호는 입력하지 않습니다 — 앱키에 연결된 실전 계좌(일반·주문대리인)와 모의투자 계좌가 모두 위 "증권사
+            연동 상태"에 보입니다. 모의투자 계좌는 보유 종목·매매내역 화면에서 골라 볼 수 있고, 가상 자산이라 대시보드
+            합계·종목별 수익·배당·실현손익과 순자산 기록에는 넣지 않습니다. 접근 토큰을 새로 받을 때마다 NH투자증권이
+            보안 알림을 보내므로, 토큰은 24시간 동안 저장해 재사용합니다.
           </p>
         )}
         {broker === 'kb' && (
@@ -677,7 +699,12 @@ export default function Settings() {
                           <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>내부 ID: {a.accountId}</span>
                         </div>
                       ) : (
-                        a.accountId
+                        <>
+                          {a.accountId}
+                          {isPaperAccount(a.broker, a.accountId) && (
+                            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}> (모의투자)</span>
+                          )}
+                        </>
                       )}
                     </td>
                     <td>
@@ -691,6 +718,9 @@ export default function Settings() {
                       />
                     </td>
                     <td>
+                      {isPaperAccount(a.broker, a.accountId) ? (
+                        <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>해당 없음</span>
+                      ) : (
                       <select
                         value={taxTypeFor(a.broker, a.accountId)}
                         onChange={(e) => onChangeTaxType(a.broker, a.accountId, e.target.value as AccountTaxType)}
@@ -701,6 +731,7 @@ export default function Settings() {
                           </option>
                         ))}
                       </select>
+                      )}
                     </td>
                     <td>
                       <button className="ghost" onClick={() => onSaveLabel(a.broker, a.accountId)}>

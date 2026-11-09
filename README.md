@@ -19,7 +19,7 @@ API 연동 없이 CSV로 보유종목·매매내역을 직접 관리합니다(�
 만듭니다 — Apple Silicon 맥에서는 Windows/Linux 산출물을 만들 수 없기 때문입니다.
 
 1. 루트 `version.json`의 버전을 올립니다(여기가 단일 원천입니다).
-2. 커밋 후 `git tag -a v0.3.0 -m "..." && git push origin v0.3.0`
+2. 커밋 후 `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`
 3. Actions가 세 산출물을 만들고 **초안** 릴리스를 올립니다. 내용을 확인하고 직접 공개하세요.
 
 필요한 OS만 빌드하려면 Actions 탭에서 수동 실행 후 플랫폼을 고르면 됩니다(릴리스는 안 만듭니다).

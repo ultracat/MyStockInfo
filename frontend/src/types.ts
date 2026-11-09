@@ -276,6 +276,41 @@ export interface AccountTaxTypeEntry {
 
 /** 보유하지 않은 종목을 가격만 추적하려고 등록해두는 목록 — `lastPrice`는
  *  저장되지 않고 조회할 때마다 서버가 라이브로 채워서 내려준다. */
+/** 국내 종목 상세(한국투자증권, `GET /kis/stock-detail/:symbol`) — 실패한 칸은 null. */
+export interface StockNewsItem { date: string; time: string; title: string; source: string }
+export type KisStockDetail =
+  | {
+      kind: 'etf';
+      etf: {
+        price: number | null;
+        nav: number | null;
+        premiumRate: number | null;
+        trackingErrorRate: number | null;
+        netAssetsEok: number | null;
+        componentCount: number | null;
+        dividendCycle: string | null;
+        manager: string | null;
+        benchmark: string | null;
+        components: Array<{ symbol: string; name: string; weight: number | null; changeRate: number | null }> | null;
+      };
+      news: StockNewsItem[] | null;
+    }
+  | {
+      kind: 'stock';
+      financials: Array<{
+        period: string;
+        revenueGrowth: number | null;
+        operatingIncomeGrowth: number | null;
+        netIncomeGrowth: number | null;
+        roe: number | null;
+        eps: number | null;
+        bps: number | null;
+        debtRatio: number | null;
+      }> | null;
+      opinions: Array<{ date: string; firm: string; opinion: string; previousOpinion: string | null; targetPrice: number | null }> | null;
+      news: StockNewsItem[] | null;
+    };
+
 export interface WatchlistEntry {
   symbol: string;
   name: string;

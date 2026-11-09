@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { WatchlistEntry } from '../types';
 import { krw2dp, usdFmt } from '../format';
 import PriceChart, { type PricePoint } from '../components/PriceChart';
+import KisStockInsights from '../components/KisStockInsights';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
 import WarningBadges from '../components/WarningBadges';
 import { useStockWarnings } from '../marketInsights';
@@ -249,6 +250,7 @@ export default function Watchlist() {
           ) : (
             <PriceChart points={shownPoints} />
           )}
+          {selectedEntry.currency === 'KRW' && <KisStockInsights symbol={selectedEntry.symbol} />}
         </div>
       )}
     </div>

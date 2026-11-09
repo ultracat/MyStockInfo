@@ -23,6 +23,7 @@ import type {
   MarketStatus,
   ActiveWarning,
   KisRealizedRow,
+  KisStockDetail,
   UpcomingDividend,
   TradeRecord,
   WatchlistEntry,
@@ -245,6 +246,7 @@ export const api = {
   getUpcomingDividends: () => request<{ items: UpcomingDividend[]; available: boolean }>('/dividends/upcoming'),
   getKisRealized: (from: string, to: string) =>
     request<{ accountId: string; rows: KisRealizedRow[] }>(`/kis/realized?from=${from}&to=${to}`),
+  getKisStockDetail: (symbol: string) => request<KisStockDetail>(`/kis/stock-detail/${encodeURIComponent(symbol)}`),
   syncKbHoldings: (accountId?: string) =>
     request<{ synced: number; accountId: string }>('/kb/sync-holdings', {
       method: 'POST',

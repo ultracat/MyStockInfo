@@ -5,6 +5,7 @@ import { handleBrokerApiError } from '../brokers/errors';
 import { resolveUsdKrwRate } from '../exchangeRateResolver';
 import { fetchTossMonthlyClosePrices, type MonthlyClosePrice } from '../brokers/toss/tossClient';
 import { fetchEximbankMonthlyAvgUsdKrwRate } from '../fx/eximbankClient';
+import { getActiveWarnings, getIndexMonthlyCloses, getMarketStatus, getSectorsFor } from '../marketInsights';
 
 export const marketInfoRouter = Router();
 
@@ -67,6 +68,33 @@ marketInfoRouter.get('/exchange-rate/monthly-avg', async (req, res) => {
     )
   );
   res.json(Object.fromEntries(entries));
+});
+
+// ---- 토스 시장 정보로 만드는 보조 기능(src/marketInsights.ts) — 전부 토스 키만 있으면 되고 실패해도 예외 대신
+//      빈 결과를 준다(화면은 이 정보 없이도 동작해야 한다).
+function symbolsQuery(q: unknown): string[] {
+  return typeof q === 'string' ? q.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 300) : [];
+}
+
+// 국내·미국 장 운영 상태(지금 세션, 오늘 휴장 여부) — 보유 종목 화면이 장이 닫혀 있으면 1분 자동 새로고침을 쉰다.
+marketInfoRouter.get('/market-status', async (_req, res) => {
+  res.json(await getMarketStatus());
+});
+
+// 보유·관심 종목의 활성 매수 유의사항(정리매매·투자경고·VI 등) — 경고가 있는 종목만 키로 온다.
+marketInfoRouter.get('/warnings', async (req, res) => {
+  res.json({ bySymbol: await getActiveWarnings(symbolsQuery(req.query.symbols)) });
+});
+
+// 코스피·코스닥 월말 종가(대시보드의 "지수와 비교" 표).
+marketInfoRouter.get('/index-monthly', async (req, res) => {
+  const months = Math.min(60, Math.max(1, Number(req.query.months) || 12));
+  res.json(await getIndexMonthlyCloses(months));
+});
+
+// 종목 → 토스 대분류 섹터(대시보드의 "섹터 비중"). 하루 한 번 전체 표를 만들어 디스크에 둔다(첫 호출은 수십 초).
+marketInfoRouter.get('/sectors', async (req, res) => {
+  res.json(await getSectorsFor(symbolsQuery(req.query.symbols)));
 });
 
 marketInfoRouter.get('/:broker/exchange-rate', async (req, res) => {

@@ -4,6 +4,8 @@ import type { WatchlistEntry } from '../types';
 import { krw2dp, usdFmt } from '../format';
 import PriceChart, { type PricePoint } from '../components/PriceChart';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
+import WarningBadges from '../components/WarningBadges';
+import { useStockWarnings } from '../marketInsights';
 
 function formatPrice(entry: WatchlistEntry): string {
   if (entry.lastPrice === null) return '-';
@@ -12,6 +14,8 @@ function formatPrice(entry: WatchlistEntry): string {
 
 export default function Watchlist() {
   const [entries, setEntries] = useState<WatchlistEntry[]>([]);
+  // 관심종목의 매수 유의사항(토스) — 종목명 옆 배지.
+  const warningsBySymbol = useStockWarnings(entries.map((e) => e.symbol));
   // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
   const stockLinkFor = useStockLinkResolver();
   const [loading, setLoading] = useState(true);
@@ -175,6 +179,7 @@ export default function Watchlist() {
                     <td>
                       <StockNameLink name={e.name} url={stockLinkFor(e.symbol, e.currency)} />{' '}
                       <span style={{ color: 'var(--text-muted)' }}>({e.symbol})</span>
+                      <WarningBadges warnings={warningsBySymbol[e.symbol]} />
                     </td>
                     <td>{e.market ?? '-'}</td>
                     <td>{formatPrice(e)}</td>

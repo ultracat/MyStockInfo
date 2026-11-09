@@ -156,6 +156,20 @@ export interface DividendSyncResult {
   skipped: number;
 }
 
+/** 토스 시장 정보 보조 기능(백엔드 src/marketInsights.ts) 응답들. */
+export type MarketSession = 'day' | 'pre' | 'regular' | 'after' | 'closed';
+export interface MarketStatus {
+  session: MarketSession;
+  holidayToday: boolean;
+  nextBusinessDay: string | null;
+}
+export interface ActiveWarning {
+  type: string;
+  label: string;
+  startDate: string | null;
+  endDate: string | null;
+}
+
 export interface MonthlySummaryRow {
   month: string;
   totalKrw: number;

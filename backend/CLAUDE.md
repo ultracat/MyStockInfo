@@ -388,6 +388,26 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 
 테스트: `test/tossDividendSync.test.ts`(토스·KIS 분류, 우선주, 교체·id 이어받기·멱등, 가져오기 건너뜀).
 
+## 토스 시장 정보 보조 기능 (`src/marketInsights.ts`, `routes/marketInfo.ts`)
+
+계좌와 무관한 토스 시장 정보로 만드는 기능 넷 — 토스 키만 있으면 **어느 증권사 보유 종목에든** 적용된다(종목
+코드 기준). 토스 미연동·실패면 예외 대신 빈 결과를 줘서 화면은 이 정보 없이 예전처럼 동작한다. 원시 호출은
+`tossClient.ts`의 `fetchTossMarketCalendar`/`fetchTossStockWarnings`/`fetchTossIndicatorDailyCandles`/
+`fetchTossSectors`/`fetchTossSectorStocks`(공식 스펙 v1.2.28, 2026-11-09 실측).
+- `GET /market-info/market-status` — 장 운영 캘린더(`MARKET_INFO`, 10분 캐시)로 국내·미국의 **지금 세션**
+  (`day`/`pre`/`regular`/`after`/`closed`)과 오늘 휴장 여부. **미국 세션은 KST로 자정을 넘긴다**(정규장 23:30~06:00,
+  애프터 06:00~09:50) — 전일·당일·익일 세 날의 세션을 모두 보고 판단한다(`marketStatusFrom`). 보유 종목 화면이
+  두 시장 모두 `closed`면 1분 자동 새로고침을 쉰다.
+- `GET /market-info/warnings?symbols=` — 매수 유의사항(`STOCK`, 종목당 1회·30분 캐시) 중 **오늘 활성**
+  (`startDate ≤ 오늘 ≤ endDate`, endDate null=진행 중)만. 문서대로 모르는 유형도 코드 그대로 라벨로 둔다.
+- `GET /market-info/index-monthly?months=` — 시장 지표 일봉(`MARKET_INDICATOR_CHART`, 4시간 캐시)에서 코스피·
+  코스닥 월말 종가. **지원 심볼은 국내 지수 2개 + 국채 6개뿐 — 미국 지수 없음.**
+- `GET /market-info/sectors?symbols=` — 대분류(depth 0, 실측 39개) × 국내·미국 구성 주식으로 "종목 → 섹터" 표를
+  만들어 `toss-sector-cache.json`에 **하루 한 번** 저장(약 80회 호출, 5tps에 실측 34초, 이후 즉시). 구성 주식은
+  **보통주만**이라 ETF·우선주는 표에 없다(화면이 "ETF·기타"로). 한 종목이 여러 섹터일 수 있다. 새로 못 만들면
+  어제 표를 쓴다.
+- 테스트: `test/marketInsights.test.ts`(세션 판정·자정 넘김, 활성 경고, 월말 종가).
+
 ## 일별 자산 스냅샷 (`src/db/portfolioSnapshots.ts`, `src/routes/portfolioSnapshots.ts`)
 
 `Overview.tsx`가 전체 브로커/계좌를 합산해 이미 계산해둔 KRW 환산 총액

@@ -156,6 +156,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   라벨 문자열이 아니라 라벨 엔트리 전체(`findAccountLabel`)를 받는다 — 엔트리의
   `accountNumber`(표시용 계좌번호, 토스 accountSeq "1" 대신 보여줄 실제 번호)를
   `displayAccountNumber`로 같이 반영하기 위함(`backend/CLAUDE.md`의 "계좌 별칭" 절).
+- `src/marketInsights.ts` — 토스 시장 정보 보조 기능 훅(백엔드 `src/marketInsights.ts`와 짝):
+  `useStockWarnings(symbols)`(종목 집합이 바뀔 때만 조회 → `components/WarningBadges.tsx` 배지, 보유 종목 표·관심종목 표),
+  `useMarketStatus()`(10분마다), `anyMarketOpen()`(둘 다 모르면 true — 토스 미연동이면 예전처럼 새로고침),
+  `describeMarket()`. Dashboard.tsx는 `marketOpenRef`로 인터벌 콜백이 최신 장 상태를 보게 해서, 국내·미국이 모두
+  `closed`면 1분 자동 새로고침 호출을 건너뛴다(수동 새로고침은 그대로). Overview.tsx는 "섹터 비중" 도넛
+  (`sectorSlices` — 섹터 없는 종목은 "ETF·기타" 회색, 여러 섹터면 평가금액 균등 분배, 첫 로딩 수십 초라 별도 상태)과
+  월별 수익률 카드 아래 "지수와 비교" 표(`indexComparisonRows` — 내 보유종목은 `monthlyAmountRows`로 단순 Dietz 근사:
+  (평가 변화 − 투자금 변화) ÷ 전월 평가)를 둔다.
 - `src/kbSync.ts` — `getKbLinkStatus()`: `api.getCredentialStatus()`(KB 자격증명
   저장 여부) + `api.getCredentialInfo()`(KB `accountId` 필드, `kind:'account'`로
   이미 노출됨)를 합쳐 `{configured, linkedAccountId}`를 돌려준다. KB Open API는

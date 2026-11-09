@@ -20,6 +20,8 @@ import type {
   StoredHolding,
   StoredTrade,
   DividendSyncResult,
+  MarketStatus,
+  ActiveWarning,
   TradeRecord,
   WatchlistEntry,
 } from './types';
@@ -225,6 +227,18 @@ export const api = {
   // trades-store)로 동기화하는 액션만 제공한다. accountId는 보통 안 넘긴다 —
   // Settings의 KB 자격증명 세 번째 필드(계좌번호)로 미리 등록해둔 값을 백엔드가
   // 기본으로 쓴다(routes/kb.ts). 다른 계좌로 한 번만 동기화하고 싶을 때만 넘긴다.
+  // 토스 시장 정보 보조 기능 — 토스 미연동이면 빈 결과(화면은 이 정보 없이 동작).
+  getMarketStatus: () => request<{ kr: MarketStatus | null; us: MarketStatus | null }>('/market-info/market-status'),
+  getStockWarnings: (symbols: string[]) =>
+    request<{ bySymbol: Record<string, ActiveWarning[]> }>(
+      `/market-info/warnings?symbols=${encodeURIComponent(symbols.join(','))}`
+    ),
+  getIndexMonthly: (months: number) =>
+    request<Record<string, Array<{ month: string; close: number }>>>(`/market-info/index-monthly?months=${months}`),
+  getSectors: (symbols: string[]) =>
+    request<{ bySymbol: Record<string, string[]>; date: string | null }>(
+      `/market-info/sectors?symbols=${encodeURIComponent(symbols.join(','))}`
+    ),
   syncKbHoldings: (accountId?: string) =>
     request<{ synced: number; accountId: string }>('/kb/sync-holdings', {
       method: 'POST',

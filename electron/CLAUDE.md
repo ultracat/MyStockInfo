@@ -273,8 +273,15 @@ Sheets 연동과 실시간 환율 조회만 동작하지 않고 `::warning::`을
 ### 릴리스 절차
 1. 루트 `version.json`의 `version`을 올린다(**단일 원천** — `generate-app-info.cjs`가
    루트 `package.json`을 자동으로 맞춘다. `package-lock.json`은 안 맞춰주므로 같이 고친다).
+   같은 커밋에서 **`CHANGELOG.md` 맨 위에 새 버전 절**을 쓰고, 매뉴얼 머리말의 "vX.Y.Z 기준"과
+   정보 화면 스크린샷(`doc/images/10-about.png` — 버전이 찍혀 있다)도 맞춘다.
+   스크린샷은 **빈 `--user-data-dir`** 인스턴스로 찍으면 자격증명·보유 데이터가 없어 토스 토큰 충돌도 없다
+   (메인 앱을 안 닫아도 됨). 작성자·저작권 줄만 가리고, 시스템이 다크 모드면 CDP
+   `Emulation.setEmulatedMedia`로 `prefers-color-scheme: light`를 강제해 다른 스크린샷과 맞춘다.
 2. 커밋 → push → `git tag -a vX.Y.Z` → **태그 push가 빌드를 깨운다.**
-3. Actions가 세 산출물을 만들고 초안 릴리스를 올리면, 내용을 확인하고 사람이 공개한다.
+3. Actions가 세 산출물을 만들고 초안 릴리스를 올리면, 본문(`--generate-notes`라 Full Changelog 한 줄뿐)을
+   `CHANGELOG.md`의 그 버전 절로 바꿔 사람이 공개한다 —
+   `gh release edit vX.Y.Z --notes-file <노트.md> --draft=false --latest`.
 
 필요한 OS만 돌리려면 Actions 탭에서 수동 실행(`workflow_dispatch`)하고 플랫폼을
 고른다 — 이때는 빌드만 하고 릴리스는 만들지 않는다.

@@ -24,7 +24,7 @@ npm workspaces 모노레포이며, 각 폴더에 더 상세한 `CLAUDE.md`가 �
 backend/    Express 서버 — 증권사 API 호출, 자격증명 암호화 저장, 로컬 저장소(보유종목·매매·배당 등)
 frontend/   React + Vite 렌더러 UI
 electron/   Electron 메인 프로세스 — backend를 같은 프로세스에서 구동하고 창을 띄움
-doc/        사용자 매뉴얼(user-manual.md) + 스크린샷(images/)
+doc/        사용자 매뉴얼(user-manual.md) + 스크린샷(images/) — 버전별 변경은 루트 CHANGELOG.md
 ```
 
 - **사용자가 보는 동작을 바꾸면 `doc/user-manual.md`와 `README.md`도 같은 커밋에서 고친다** — 둘 다 공개
@@ -65,7 +65,7 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - **배포용 릴리스는 GitHub Actions로 한다** — 로컬 크로스 빌드는 Apple Silicon
   맥에서 `rcedit`(Windows)·`mksquashfs`(Linux AppImage)가 x86_64 바이너리라
   실행되지 않는다. 버전은 루트 `version.json` 하나만 올리고, `vX.Y.Z` 태그를
-  push하면 세 OS 러너가 빌드해 **초안** 릴리스를 만든다 —
+  push하면 세 OS 러너가 빌드해 **초안** 릴리스를 만든다(노트는 `CHANGELOG.md`의 그 버전 절) —
   `electron/CLAUDE.md`의 "GitHub Actions 릴리스" 절 참고.
 - `npm run package:mac`/`package:linux`/`package:win`으로 배포용 산출물(`.dmg`,
   `.AppImage`, `.exe` 설치본)을 만든다 — 상세 설정과 이 모노레포 구조 때문에 필요했던

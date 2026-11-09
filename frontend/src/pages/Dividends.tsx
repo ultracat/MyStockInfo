@@ -190,9 +190,19 @@ export default function Dividends() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 한 행이 API 동기화 소유인가 — 한국투자증권은 국내(원화) 배당만 API로 오므로 **달러 배당은 직접 입력**한다
+  // (백엔드 rowOwnership.ts의 isDividendSyncOwned와 같은 규칙).
+  const isRowSyncOwned = (b: BrokerId, cur: string) => syncOwnedBrokers.has(b) && !(b === 'kis' && cur === 'USD');
+
+  // 직접 입력 폼에서 한국투자증권(동기화 중)을 고르면 통화를 달러로 고정한다.
+  useEffect(() => {
+    if (broker === 'kis' && syncOwnedBrokers.has('kis') && currency !== 'USD') setCurrency('USD');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [broker, syncOwnedBrokers]);
+
   // 직접 입력 폼의 증권사 기본값이 API 동기화 증권사면 직접 입력 가능한 첫 증권사로 옮긴다.
   useEffect(() => {
-    if (syncOwnedBrokers.has(broker)) {
+    if (syncOwnedBrokers.has(broker) && broker !== 'kis') {
       const first = BROKER_ORDER.find((id) => !syncOwnedBrokers.has(id));
       if (first) setBroker(first);
     }
@@ -468,6 +478,10 @@ export default function Dividends() {
     const amountNum = Number(amount);
     if (!symbol || !name || !amountNum || amountNum <= 0 || !paidDate) {
       setError('종목코드, 종목명, 배당금(양수), 지급일을 입력해주세요.');
+      return;
+    }
+    if (isRowSyncOwned(broker, currency)) {
+      setError(`${BROKER_LABELS[broker]}의 원화 배당은 API 동기화로만 관리됩니다(한국투자증권은 달러 배당만 직접 입력).`);
       return;
     }
     const taxNum = taxInput.trim() ? Number(taxInput) : null;
@@ -1175,9 +1189,10 @@ export default function Dividends() {
             <div className="form-row">
               <label>증권사</label>
               <select value={broker} onChange={(e) => setBroker(e.target.value as BrokerId)}>
-                {BROKER_ORDER.filter((id) => !syncOwnedBrokers.has(id)).map((id) => (
+                {BROKER_ORDER.filter((id) => !syncOwnedBrokers.has(id) || id === 'kis').map((id) => (
                   <option key={id} value={id}>
                     {BROKER_LABELS[id]}
+                    {syncOwnedBrokers.has(id) ? ' (달러 배당만)' : ''}
                   </option>
                 ))}
               </select>
@@ -1231,7 +1246,9 @@ export default function Dividends() {
             <div className="form-row">
               <label>통화</label>
               <select value={currency} onChange={(e) => setCurrency(e.target.value as DividendCurrency)}>
-                <option value="KRW">원화 (KRW)</option>
+                <option value="KRW" disabled={broker === 'kis' && syncOwnedBrokers.has('kis')}>
+                  원화 (KRW)
+                </option>
                 <option value="USD">달러 (USD)</option>
               </select>
             </div>
@@ -1518,7 +1535,7 @@ export default function Dividends() {
                   </td>
                   <td>{r.memo ?? '-'}</td>
                   <td>
-                    {syncOwnedBrokers.has(r.broker) ? (
+                    {isRowSyncOwned(r.broker, r.currency) ? (
                       <span style={{ fontSize: 12, color: 'var(--text-muted)' }} title="API 동기화로만 관리됩니다">
                         API 연동
                       </span>

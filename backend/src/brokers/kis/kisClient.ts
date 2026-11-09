@@ -718,3 +718,167 @@ export async function fetchKisEtfComponents(
     return { summary: asRows(res.output1)[0] ?? null, components: asRows(res.output2) };
   });
 }
+
+// ---------------------------------------------------------------- 해외주식(미국, 계좌)
+// 공식 예제 examples_llm/overseas_stock/{inquire_present_balance,inquire_ccnl,inquire_period_profit}(2026-11-09 확인).
+// **미국(USD)만** 다룬다 — 이 앱의 통화 모델이 KRW/USD뿐이라 홍콩·중국·일본·베트남은 넣지 않는다.
+// ⚠ 실데이터 검증 전: 연동 계좌에 해외 보유·거래가 없어(2026-11-09) 요청 형식(rt_cd 0, 빈 결과)까지만 확인했다.
+// 필드 매핑은 공식 예제의 COLUMN_MAPPING 그대로다 — 해외 거래가 생기면 화면 숫자를 증권사 앱과 대조할 것.
+
+/** FK200/NK200 + `tr_cont`로 끝까지 받는다(해외 계좌 TR 공통 연속조회 방식). `pick`이 페이지마다 행을 꺼낸다. */
+async function fetchAllPages200(
+  path: string,
+  trId: string,
+  params: Record<string, string>,
+  pick: (res: KisEnvelope & Record<string, unknown>) => unknown,
+  limiter: RateLimiter = kisLimiter
+): Promise<{ rows: Record<string, string>[]; last: KisEnvelope & Record<string, unknown> }> {
+  const rows: Record<string, string>[] = [];
+  let fk = '';
+  let nk = '';
+  let trCont = '';
+  let last: (KisEnvelope & Record<string, unknown>) | null = null;
+  for (let page = 0; page < 50; page++) {
+    const res = (await kisGet(path, trId, { ...params, CTX_AREA_FK200: fk, CTX_AREA_NK200: nk }, trCont, limiter, 5)) as KisEnvelope &
+      Record<string, unknown> & { trCont: string };
+    last = res;
+    rows.push(...asRows(pick(res)));
+    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    fk = String(res.ctx_area_fk200 ?? '').trim();
+    nk = String(res.ctx_area_nk200 ?? '').trim();
+    trCont = 'N';
+  }
+  return { rows, last: last! };
+}
+
+export interface KisOverseasPosition {
+  symbol: string;
+  name: string;
+  quantity: number;
+  averagePurchasePrice: number;
+  lastPrice: number;
+  purchaseAmount: number;
+  marketValue: number;
+  profitLossAmount: number;
+  /** 소수 비율(0.15 = 15%) — 국내 잔고와 같은 관례로 100으로 나눈다. */
+  profitLossRate: number;
+}
+
+const n0 = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+
+/** 해외주식 체결기준현재잔고(`CTRP6504R`, 미국·외화 기준) — 보유 종목(output1) + 달러 예수금(output2의
+ *  `frcr_dncl_amt_2` 외화예수금액, 통화코드 USD 줄). 잔고(`TTTS3012R`)와 달리 예수금까지 한 번에 준다. */
+async function fetchKisOverseasBalanceUncached(): Promise<{ positions: KisOverseasPosition[]; cashUsd: number | null }> {
+  const creds = requireCredentials();
+  const res = await kisGet('/uapi/overseas-stock/v1/trading/inquire-present-balance', 'CTRP6504R', {
+    CANO: creds.accountNumber,
+    ACNT_PRDT_CD: creds.accountProductCode,
+    WCRC_FRCR_DVSN_CD: '02',
+    NATN_CD: '840',
+    TR_MKET_CD: '00',
+    INQR_DVSN_CD: '00',
+  });
+  const positions = asRows(res.output1)
+    .filter((p) => n0(p.cblc_qty13) > 0 && (!p.buy_crcy_cd || p.buy_crcy_cd === 'USD'))
+    .map((p) => ({
+      symbol: String(p.pdno ?? '').trim(),
+      name: String(p.prdt_name ?? p.pdno ?? '').trim(),
+      quantity: n0(p.cblc_qty13),
+      averagePurchasePrice: n0(p.avg_unpr3),
+      lastPrice: n0(p.ovrs_now_pric1),
+      purchaseAmount: n0(p.frcr_pchs_amt),
+      marketValue: n0(p.frcr_evlu_amt2),
+      profitLossAmount: n0(p.evlu_pfls_amt2),
+      profitLossRate: n0(p.evlu_pfls_rt1) / 100,
+    }));
+  const usdRow = asRows(res.output2).find((r) => (r.crcy_cd ?? '').trim() === 'USD');
+  return { positions, cashUsd: usdRow ? n0(usdRow.frcr_dncl_amt_2) : null };
+}
+
+export function fetchKisOverseasBalance(opts: FetchOpts = {}) {
+  return withCache('kis:overseas-balance', PORTFOLIO_TTL_MS, fetchKisOverseasBalanceUncached, opts);
+}
+
+export interface KisOverseasTrade {
+  id: string;
+  date: string;
+  symbol: string;
+  name: string;
+  side: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  amount: number;
+}
+
+/** 해외주식 주문체결내역(`TTTS3035R`, 미국 전체 `NASD`, 체결만) — 날짜는 **현지 주문일**(`ord_dt`). 체결수량 0인
+ *  줄(거부·미체결)은 뺀다. 매매내역 1tps 리미터를 같이 쓴다. */
+export async function fetchKisOverseasTrades(from: string, to: string, opts: FetchOpts = {}): Promise<KisOverseasTrade[]> {
+  return withCache(
+    `kis:overseas-trades:${from}:${to}`,
+    PORTFOLIO_TTL_MS,
+    async () => {
+      const creds = requireCredentials();
+      const { rows } = await fetchAllPages200(
+        '/uapi/overseas-stock/v1/trading/inquire-ccnl',
+        'TTTS3035R',
+        {
+          CANO: creds.accountNumber,
+          ACNT_PRDT_CD: creds.accountProductCode,
+          PDNO: '%',
+          ORD_STRT_DT: from.replace(/-/g, ''),
+          ORD_END_DT: to.replace(/-/g, ''),
+          SLL_BUY_DVSN: '00',
+          CCLD_NCCS_DVSN: '01',
+          OVRS_EXCG_CD: 'NASD',
+          SORT_SQN: 'DS',
+          ORD_DT: '',
+          ORD_GNO_BRNO: '',
+          ODNO: '',
+        },
+        (res) => res.output ?? res.output1,
+        kisDailyCcldLimiter
+      );
+      return rows
+        .filter((r) => n0(r.ft_ccld_qty) > 0 && (!r.tr_crcy_cd || r.tr_crcy_cd === 'USD'))
+        .map((r) => {
+          const d = String(r.ord_dt ?? '');
+          return {
+            // 국내 주문번호와 겹칠 수 있어 접두어를 붙인다(매매내역 저장소는 id로 upsert).
+            id: `ovrs-${d}-${String(r.odno ?? '').trim()}`,
+            date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+            symbol: String(r.pdno ?? '').trim(),
+            name: String(r.prdt_name ?? r.pdno ?? '').trim(),
+            side: r.sll_buy_dvsn_cd === '02' ? 'BUY' : 'SELL',
+            quantity: n0(r.ft_ccld_qty),
+            price: n0(r.ft_ccld_unpr3),
+            amount: n0(r.ft_ccld_amt3),
+          };
+        });
+    },
+    opts
+  );
+}
+
+/** 해외주식 기간손익(`TTTS3039R`, 미국 `NASD`, **원화 기준** `WCRC_FRCR_DVSN_CD=02`) — 매도 한 줄씩. 실현손익 화면의
+ *  공식 값 비교용(앱 추정치도 원화라 바로 비교된다). `ovrs_rlzt_pfls_amt`는 제비용 차감 손익. */
+export async function fetchKisOverseasPeriodProfit(from: string, to: string): Promise<Record<string, string>[]> {
+  const creds = requireCredentials();
+  const { rows } = await fetchAllPages200(
+    '/uapi/overseas-stock/v1/trading/inquire-period-profit',
+    'TTTS3039R',
+    {
+      CANO: creds.accountNumber,
+      ACNT_PRDT_CD: creds.accountProductCode,
+      OVRS_EXCG_CD: 'NASD',
+      NATN_CD: '',
+      CRCY_CD: 'USD',
+      PDNO: '',
+      INQR_STRT_DT: from.replace(/-/g, ''),
+      INQR_END_DT: to.replace(/-/g, ''),
+      WCRC_FRCR_DVSN_CD: '02',
+    },
+    (res) => res.output1,
+    kisDailyCcldLimiter
+  );
+  return rows;
+}

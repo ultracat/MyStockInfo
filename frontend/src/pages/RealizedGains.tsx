@@ -476,10 +476,19 @@ export default function RealizedGains() {
       )}
 
       {(broker === 'ALL' || broker === 'kis') && (
-        <KisRealizedCompare
-          year={year}
-          kisSales={yearSales.filter((s) => s.broker === 'kis' && s.currency === 'KRW')}
-        />
+        <>
+          <KisRealizedCompare
+            year={year}
+            kisSales={yearSales.filter((s) => s.broker === 'kis' && s.currency === 'KRW')}
+          />
+          {yearSales.some((s) => s.broker === 'kis' && s.currency !== 'KRW') && (
+            <KisRealizedCompare
+              year={year}
+              market="overseas"
+              kisSales={yearSales.filter((s) => s.broker === 'kis' && s.currency !== 'KRW')}
+            />
+          )}
+        </>
       )}
 
       <div className="card">

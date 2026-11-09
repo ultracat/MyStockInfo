@@ -164,7 +164,7 @@ const SYNC_OWNED_ERROR = '토스증권·한국투자증권 배당은 API 동기�
 dividendsRouter.post('/', (req, res) => {
   const parsed = parseDividendInput(req.body);
   if ('error' in parsed) return res.status(400).json({ error: parsed.error });
-  if (isDividendSyncOwned(parsed.input.broker)) return res.status(409).json({ error: SYNC_OWNED_ERROR });
+  if (isDividendSyncOwned(parsed.input)) return res.status(409).json({ error: SYNC_OWNED_ERROR });
 
   const record = addDividend(parsed.input);
   res.status(201).json(record);
@@ -176,7 +176,7 @@ dividendsRouter.put('/:id', (req, res) => {
   const parsed = parseDividendInput(req.body);
   if ('error' in parsed) return res.status(400).json({ error: parsed.error });
   const existing = listDividends().find((d) => d.id === req.params.id);
-  if (isDividendSyncOwned(parsed.input.broker) || (existing && isDividendSyncOwned(existing.broker))) {
+  if (isDividendSyncOwned(parsed.input) || (existing && isDividendSyncOwned(existing))) {
     return res.status(409).json({ error: SYNC_OWNED_ERROR });
   }
 
@@ -213,7 +213,7 @@ export async function importDividendsRecords(
     .map(({ row, error }) => ({ row, error }));
 
   // API 동기화 계좌(토스·한국투자증권)의 배당은 API가 원천이라 가져오기가 쓰지 않는다(이름 조회 전에 거름).
-  const importable = validRows.filter((r) => !isDividendSyncOwned(r.input.broker));
+  const importable = validRows.filter((r) => !isDividendSyncOwned(r.input));
   const skipped = validRows.length - importable.length;
 
   const uniqueSymbols = Array.from(new Set(importable.map((r) => r.input.symbol)));
@@ -241,7 +241,7 @@ export async function importDividendsRecords(
     // 전체 교체라 한 행이라도 실패하면(예: 종목명 조회 일부 실패) 아무것도 안
     // 바꾼다 — 일부만 반영하면 실패한 기록이 경고 없이 로컬에서 지워진다.
     if (failed.length > 0) return { added: 0, failed, skipped, aborted: true };
-    const replaced = replaceAllDividends(resolved, (r) => isDividendSyncOwned(r.broker));
+    const replaced = replaceAllDividends(resolved, (r) => isDividendSyncOwned(r));
     return { added: replaced.length, failed, skipped };
   }
 
@@ -286,7 +286,7 @@ dividendsRouter.post('/import', async (req, res) => {
 
 dividendsRouter.delete('/:id', (req, res) => {
   const existing = listDividends().find((d) => d.id === req.params.id);
-  if (existing && isDividendSyncOwned(existing.broker)) return res.status(409).json({ error: SYNC_OWNED_ERROR });
+  if (existing && isDividendSyncOwned(existing)) return res.status(409).json({ error: SYNC_OWNED_ERROR });
   const removed = deleteDividend(req.params.id);
   if (!removed) return res.status(404).json({ error: '해당 배당 기록을 찾을 수 없습니다.' });
   res.status(204).end();

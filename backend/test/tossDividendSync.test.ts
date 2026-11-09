@@ -7,6 +7,7 @@ import type { TossTransaction } from '../src/brokers/toss/tossClient';
 import type { KisPeriodRight } from '../src/brokers/kis/kisClient';
 import { addDividend, listDividends, replaceSyncedDividends } from '../src/db/dividends';
 import { setCredentialFields } from '../src/credentials';
+import { isDividendSyncOwned } from '../src/brokers/rowOwnership';
 import { importDividendsRecords } from '../src/routes/dividends';
 import { cacheStockName } from '../src/db/stockNames';
 
@@ -116,7 +117,7 @@ test('replaceSyncedDividends: 그 계좌 기록만 API 내용으로 교체하고
   addDividend({ broker: 'kis', accountId: '11111111-01', symbol: 'TYPO', name: 't', currency: 'KRW', amount: 5, paidDate: '2026-01-02' });
   const other = addDividend({ broker: 'kb', accountId: 'K', symbol: 'Y', name: 'y', currency: 'KRW', amount: 7, paidDate: '2026-01-03' });
 
-  const r = replaceSyncedDividends('kis', (id) => id === '11111111-01', [
+  const r = replaceSyncedDividends('kis', ({ accountId }) => accountId === '11111111-01', [
     { broker: 'kis', accountId: '11111111-01', symbol: 'X', name: 'x', currency: 'KRW', amount: 100, tax: 0, paidDate: '2026-01-01' },
     { broker: 'kis', accountId: '11111111-01', symbol: 'Z', name: 'z', currency: 'KRW', amount: 50, tax: 10, paidDate: '2026-02-01' },
   ]);
@@ -128,11 +129,29 @@ test('replaceSyncedDividends: 그 계좌 기록만 API 내용으로 교체하고
   assert.equal(all.find((d) => d.symbol === 'Z')?.tax, 10);
 
   // 두 번 돌려도 바뀌는 것이 없다
-  const again = replaceSyncedDividends('kis', (id) => id === '11111111-01', [
+  const again = replaceSyncedDividends('kis', ({ accountId }) => accountId === '11111111-01', [
     { broker: 'kis', accountId: '11111111-01', symbol: 'X', name: 'x', currency: 'KRW', amount: 100, tax: 0, paidDate: '2026-01-01' },
     { broker: 'kis', accountId: '11111111-01', symbol: 'Z', name: 'z', currency: 'KRW', amount: 50, tax: 10, paidDate: '2026-02-01' },
   ]);
   assert.deepEqual(again, { added: 0, removed: 0, unchanged: 2 });
+});
+
+test('KIS 동기화 소유는 원화 기록만 — 직접 적은 달러(미국 주식) 배당은 교체·가져오기 대상이 아니다', () => {
+  setCredentialFields('kis', { appKey: 'k', appSecret: 's', accountNumber: '11111111', accountProductCode: '01' });
+  assert.equal(isDividendSyncOwned({ broker: 'kis', currency: 'KRW' }), true);
+  assert.equal(isDividendSyncOwned({ broker: 'kis', currency: 'USD' }), false);
+
+  const usd = addDividend({ broker: 'kis', accountId: '11111111-01', symbol: 'USX', name: 'u', currency: 'USD', amount: 3, paidDate: '2026-01-01' });
+  addDividend({ broker: 'kis', accountId: '11111111-01', symbol: 'OLD', name: 'o', currency: 'KRW', amount: 9, paidDate: '2026-01-01' });
+  const r = replaceSyncedDividends(
+    'kis',
+    (rec) => rec.currency !== 'USD' && rec.accountId === '11111111-01',
+    [{ broker: 'kis', accountId: '11111111-01', symbol: 'K', name: 'k', currency: 'KRW', amount: 10, tax: 0, paidDate: '2026-02-01' }]
+  );
+  assert.deepEqual(r, { added: 1, removed: 1, unchanged: 0 });
+  const all = listDividends();
+  assert.ok(all.some((d) => d.id === usd.id), '달러 기록은 남는다');
+  assert.ok(!all.some((d) => d.symbol === 'OLD'), '원화 기록은 API 내용으로 교체');
 });
 
 test('가져오기: API 동기화 증권사(키가 있는 토스)의 배당 행은 건너뛰고, 전체 교체에서도 남긴다', async () => {

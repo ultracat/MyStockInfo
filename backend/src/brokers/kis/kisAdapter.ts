@@ -7,7 +7,35 @@ import type {
   TradeRecord,
 } from '../types';
 import { getCredentialFields } from '../../credentials';
-import { fetchKisBalance, fetchKisTradeHistory, isKisConfigured, type KisDailyCcldItem } from './kisClient';
+import {
+  fetchKisBalance,
+  fetchKisOverseasBalance,
+  fetchKisOverseasTrades,
+  fetchKisTradeHistory,
+  isKisConfigured,
+  type KisDailyCcldItem,
+  type KisOverseasPosition,
+} from './kisClient';
+
+// 해외주식(미국)은 국내 조회와 독립이다 — 해외 조회가 실패해도 국내 보유·매매내역은 그대로 보여준다(경고 로그만).
+// ⚠ 연동 계좌에 해외 자료가 없어 실데이터 필드 검증은 아직 못 했다(kisClient.ts의 "해외주식" 절).
+function mapOverseasPosition(p: KisOverseasPosition): HoldingPosition {
+  return {
+    symbol: p.symbol,
+    name: p.name,
+    market: 'US',
+    currency: 'USD',
+    quantity: p.quantity,
+    lastPrice: p.lastPrice,
+    averagePurchasePrice: p.averagePurchasePrice,
+    purchaseAmount: p.purchaseAmount,
+    marketValue: p.marketValue,
+    profitLossAmount: p.profitLossAmount,
+    profitLossRate: p.profitLossRate,
+    commission: null,
+    tax: null,
+  };
+}
 
 function num(value: unknown): number {
   const n = Number(value);
@@ -78,7 +106,19 @@ export const kisAdapter: BrokerAdapter = {
   },
 
   async getPortfolio(accountId: string, opts?: FetchOpts): Promise<PortfolioOverview> {
-    const { items, summary } = await fetchKisBalance(opts);
+    const [{ items, summary }, overseasResult] = await Promise.all([
+      fetchKisBalance(opts),
+      fetchKisOverseasBalance(opts).then(
+        (v) => v,
+        (err) => {
+          console.warn('[kis] 해외 잔고 조회 실패 — 국내만 표시:', (err as Error).message);
+          return null;
+        }
+      ),
+    ]);
+    const overseas = overseasResult?.positions ?? [];
+    const sumUsd = (k: 'purchaseAmount' | 'marketValue' | 'profitLossAmount') =>
+      overseas.length > 0 ? overseas.reduce((s, p) => s + p[k], 0) : null;
 
     try {
       const totalPurchaseAmountKrw = num(summary.pchs_amt_smtl_amt);
@@ -89,20 +129,20 @@ export const kisAdapter: BrokerAdapter = {
         broker: 'kis',
         accountId,
         totalPurchaseAmountKrw,
-        totalPurchaseAmountUsd: null,
+        totalPurchaseAmountUsd: sumUsd('purchaseAmount'),
         totalMarketValueKrw,
-        totalMarketValueUsd: null,
+        totalMarketValueUsd: sumUsd('marketValue'),
         totalProfitLossKrw,
-        totalProfitLossUsd: null,
+        totalProfitLossUsd: sumUsd('profitLossAmount'),
         // KIS's output2 doesn't publish an aggregate P/L rate field (only
         // asst_icdc_erng_rt, a broader day-over-day asset-change metric) —
         // derived here instead of guessing a field that isn't there.
         profitLossRate: totalPurchaseAmountKrw > 0 ? totalProfitLossKrw / totalPurchaseAmountKrw : null,
         // dnca_tot_amt(예수금총금액) — KIS 공식 필드명이 곧 "예수금"이라 별도 API
-        // 호출 없이 이미 받아온 summary에서 그대로 뽑는다. 국내 계좌라 USD는 없음.
+        // 호출 없이 이미 받아온 summary에서 그대로 뽑는다. 달러 예수금은 해외 체결기준현재잔고의 외화예수금액.
         cashBalanceKrw: num(summary.dnca_tot_amt),
-        cashBalanceUsd: null,
-        positions: items.map(mapPosition),
+        cashBalanceUsd: overseasResult?.cashUsd ?? null,
+        positions: [...items.map(mapPosition), ...overseas.map(mapOverseasPosition)],
       };
     } catch (err) {
       console.error(
@@ -121,9 +161,33 @@ export const kisAdapter: BrokerAdapter = {
     range: { from: string; to: string },
     opts?: FetchOpts
   ): Promise<TradeRecord[]> {
-    const items = await fetchKisTradeHistory(range.from, range.to, opts);
+    const [items, overseas] = await Promise.all([
+      fetchKisTradeHistory(range.from, range.to, opts),
+      fetchKisOverseasTrades(range.from, range.to, opts).catch((err) => {
+        console.warn('[kis] 해외 체결내역 조회 실패 — 국내만 표시:', (err as Error).message);
+        return [];
+      }),
+    ]);
     // CCLD_DVSN='01' already asks for filled-only, but a cancelled order can
     // still surface with 0 filled quantity — drop those defensively.
-    return items.filter((item) => num(item.tot_ccld_qty) > 0).map(mapTrade);
+    const domestic = items.filter((item) => num(item.tot_ccld_qty) > 0).map(mapTrade);
+    return [
+      ...domestic,
+      ...overseas.map(
+        (t): TradeRecord => ({
+          id: t.id,
+          symbol: t.symbol,
+          name: t.name,
+          side: t.side,
+          quantity: t.quantity,
+          price: t.price,
+          amount: t.amount,
+          currency: 'USD',
+          commission: null,
+          tax: null,
+          executedAt: t.date,
+        })
+      ),
+    ];
   },
 };

@@ -383,6 +383,9 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 - `last_alct_amt`(세전) − `tax_amt` = 세후, 날짜는 `cash_dfrm_dt`(현금지급일). **지급일이 오늘 이후면 지급 예정이라 넣지 않는다.**
 - `rght_type_cd` 실측: `03` 주식 배당, `32` ETF 분배금(코드표는 문서에 없음). 현금 배정이 없는 권리는 걸러진다.
 - **국내만** — 해외 배당을 계좌 기준으로 주는 KIS API는 없다(2026-11-09 조사). 계좌는 자격증명의 `CANO-상품코드`.
+  그래서 **KIS의 동기화 소유는 원화 기록만**이다(`isDividendSyncOwned({broker, currency})`) — 미국 주식 배당은 사용자가 달러로
+  직접 적고, 동기화(`replaceSyncedDividends`의 `inScope`가 기록 전체를 받아 `currency !== 'USD'`로 거름)·가져오기가 그 기록을
+  건드리지 않는다. 테스트: `test/tossDividendSync.test.ts`.
 - KB는 `SRQM3051`(계좌권리발생내역)·`SWQA2301` 입금 필터가 호출은 되지만(권한 오류 없음), 연동 계좌에 배당이 없어
   필드를 실측할 수 없었고, 배당이 나오는 IRP·연금저축·예전 종합계좌는 API로 연동할 수 없다 — 그래서 KB 배당은 수동.
 
@@ -399,7 +402,8 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
     빼면 시장 전체 100건씩 오는데 배당이 기준일 무렵에야 등록돼 앞 90일 일정이 거의 없다(2026-11-09 실측). 지급일 필드도 없다.
 - `GET /kis/realized?from&to` — 기간별매매손익현황조회(`TTTC8715R`, `fetchKisPeriodTradeProfit`, 국내만, `CTX_AREA_FK100/NK100`
   연속조회, 1tps 리미터) 중 `sll_qty > 0`인 매도 줄. `rlzt_pfls`는 수수료·세금 차감 손익. KIS 키 없으면 409.
-  해외(`TTTS3039R`)는 사용자 계좌에 자료가 없어(실측) 붙이지 않았다.
+  같은 응답의 `overseasRows`는 해외 기간손익(`TTTS3039R`, 원화 기준) — 실패하면 null. 두 TR 다 10분 캐시
+  (국내·해외 비교 카드가 같은 기간으로 두 번 부른다).
 - `GET /kis/stock-detail/:symbol` — 국내 6자리(`[0-9A-Z]{6}`)만. 먼저 ETF 현재가(`FHPST02400000`)를 불러
   **`etf_cnfg_issu_cnt > 0`이면 ETF**(주식이면 NAV 등이 전부 0으로 온다, 실측). ETF → NAV·괴리율(`dprt`)·추적오차
   (`trc_errt`)·순자산(`etf_ntas_ttam`, 억원)·분배주기(`etf_dvdn_cycl`, 코드표 없음 — KODEX 200이 `3`=분기)·구성종목
@@ -419,8 +423,19 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   첫 입금일보다 거래가 훨씬 이르다 — 화면이 "수익이 부풀 수 있음"을 알린다.
 - KIS는 입출금 내역 API가 없어 토스만. 테스트: `test/tossCashFlows.test.ts`.
 
-**KIS 해외주식(계획했던 #2)은 붙이지 않았다** — 해외 기간손익(`TTTS3039R`)·해외 기간별권리 모두 사용자 계좌에 자료가 없었다
-(2026-11-09 실측, KIS 계좌에 해외 보유·거래 없음). 해외 보유가 생기면 잔고(`inquire-balance` 해외판)부터 붙일 것.
+## KIS 해외주식(미국) (`kisClient.ts`의 "해외주식" 절, `kisAdapter.ts`)
+
+**⚠ 실데이터 미검증** — 연동 계좌에 해외 보유·거래가 없어(2026-11-09) 요청 형식(`rt_cd 0`, 빈 결과)까지만 확인했다. 필드는 공식
+예제 `examples_llm/overseas_stock/*`의 COLUMN_MAPPING 그대로다. 해외 거래가 생기면 숫자를 증권사 앱과 대조할 것.
+- **미국(USD)만** — 앱 통화 모델이 KRW/USD뿐. 거래소 `NASD`(=미국 전체), 다른 통화 줄은 걸러낸다.
+- 잔고: 체결기준현재잔고(`CTRP6504R`, `WCRC_FRCR_DVSN_CD=02` 외화, `NATN_CD=840`) — output1 보유(`cblc_qty13`·`avg_unpr3`·
+  `ovrs_now_pric1`·`frcr_pchs_amt`·`frcr_evlu_amt2`·`evlu_pfls_amt2`·`evlu_pfls_rt1`), output2의 USD 줄 `frcr_dncl_amt_2`가 달러
+  예수금. `TTTS3012R`(잔고)는 예수금이 없어 안 썼다. 30초 캐시(`PORTFOLIO_TTL_MS`).
+- 체결: 주문체결내역(`TTTS3035R`, `PDNO=%`, `CCLD_NCCS_DVSN=01` 체결만, `FK200/NK200` 연속조회, 1tps 리미터). 날짜는 현지 주문일.
+  id는 `ovrs-{ord_dt}-{odno}` — 국내 주문번호와 겹치지 않게(매매내역 저장소가 id로 upsert).
+- `kisAdapter`는 국내 조회와 **독립**으로 부른다 — 해외가 실패해도 국내 보유·매매내역은 그대로(경고 로그만). 해외 보유가 있으면
+  `totalXxxUsd`가 채워지고, 없으면 예전처럼 null.
+- 해외 배당은 여전히 없다(계좌 기준 API 없음, 위 "배당 동기화" 절).
 
 ## 토스 시장 정보 보조 기능 (`src/marketInsights.ts`, `routes/marketInfo.ts`)
 

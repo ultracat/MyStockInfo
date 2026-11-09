@@ -5,11 +5,13 @@ import {
   fetchKisFinancialRatio,
   fetchKisInvestOpinion,
   fetchKisNewsTitles,
+  fetchKisOverseasPeriodProfit,
   fetchKisPeriodTradeProfit,
   getKisAccountId,
   isKisConfigured,
 } from '../brokers/kis/kisClient';
 import { todayKst } from '../marketInsights';
+import { withCache } from '../brokers/responseCache';
 import { handleBrokerApiError } from '../brokers/errors';
 
 export const kisReportsRouter = Router();
@@ -25,10 +27,37 @@ kisReportsRouter.get('/realized', async (req, res) => {
     return res.status(400).json({ error: 'from/to(YYYY-MM-DD)가 필요합니다.' });
   }
   try {
-    const rows = await fetchKisPeriodTradeProfit(from, to);
-    const n = (v: string) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    // 국내·해외 비교 카드 둘이 같은 기간으로 부르므로 10분 캐시(1tps TR이라 중복 호출이 느리다).
+    const rows = await withCache(`kis:realized:${from}:${to}`, 600_000, () => fetchKisPeriodTradeProfit(from, to));
+    const n = (v: string | undefined) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    // 해외(미국) 기간손익 — 원화 기준(WCRC_FRCR_DVSN_CD=02). 실패해도 국내는 보여준다(null).
+    // ⚠ 연동 계좌에 해외 매도가 없어 필드 실측 전(공식 예제 COLUMN_MAPPING 기준).
+    const overseas = await withCache(`kis:realized-ovrs:${from}:${to}`, 600_000, () =>
+      fetchKisOverseasPeriodProfit(from, to)
+    ).catch((err) => {
+      console.warn('[kis] 해외 기간손익 조회 실패:', (err as Error).message);
+      return null;
+    });
+    const overseasRows =
+      overseas
+        ?.filter((r) => n(r.slcl_qty) > 0)
+        .map((r) => {
+          const d = String(r.trad_day ?? '');
+          return {
+            date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+            symbol: String(r.ovrs_pdno ?? '').trim(),
+            name: String(r.ovrs_item_name ?? r.ovrs_pdno ?? '').trim(),
+            quantity: n(r.slcl_qty),
+            sellAmount: n(r.frcr_sll_amt_smtl1),
+            buyAmount: n(r.frcr_pchs_amt1),
+            realized: n(r.ovrs_rlzt_pfls_amt),
+            fee: n(r.stck_sll_tlex),
+            tax: 0,
+          };
+        }) ?? null;
     res.json({
       accountId: getKisAccountId(),
+      overseasRows,
       rows: rows
         .filter((r) => n(r.sll_qty) > 0)
         .map((r) => ({

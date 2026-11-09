@@ -159,14 +159,15 @@ export interface SyncReplaceResult {
  *  내용(종목·통화·날짜·세후·세금)이 같은 기존 기록의 id는 이어받아 화면의 행이 흔들리지 않게 한다. */
 export function replaceSyncedDividends(
   broker: BrokerId,
-  inScope: (accountId: string | null) => boolean,
+  /** 이번 동기화가 교체할 기존 기록 — 범위 밖 기록(다른 계좌, KIS의 달러 기록 등)은 그대로 남는다. */
+  inScope: (record: { accountId: string | null; currency: string }) => boolean,
   rows: NewDividendInput[]
 ): SyncReplaceResult {
   const result: SyncReplaceResult = { added: 0, removed: 0, unchanged: 0 };
   store().update((current) => {
     const all = current.map(normalize);
-    const scoped = all.filter((r) => r.broker === broker && inScope(r.accountId));
-    const others = all.filter((r) => !(r.broker === broker && inScope(r.accountId)));
+    const scoped = all.filter((r) => r.broker === broker && inScope(r));
+    const others = all.filter((r) => !(r.broker === broker && inScope(r)));
     const pool = new Map<string, DividendRecord[]>();
     for (const r of scoped) pool.set(syncKey(r), [...(pool.get(syncKey(r)) ?? []), r]);
     const next: DividendRecord[] = rows.map((input) => {

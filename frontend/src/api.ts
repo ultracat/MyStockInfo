@@ -240,7 +240,15 @@ export const api = {
   getIndexMonthly: (months: number) =>
     request<Record<string, Array<{ month: string; close: number }>>>(`/market-info/index-monthly?months=${months}`),
   getSectors: (symbols: string[]) =>
-    request<{ bySymbol: Record<string, string[]>; date: string | null }>(
+    request<{
+      bySymbol: Record<string, string[]>;
+      /** 종목별 섹터 배분(합 1, sector null = 분류 못 한 몫) — ETF는 구성종목·토스 ETF 분류로 채운다. */
+      weights: Record<string, Array<{ sector: string | null; weight: number }>>;
+      sources: Record<string, 'stock' | 'preferred' | 'etf-components' | 'etf-sector'>;
+      date: string | null;
+      /** 토스 ETF 분류표를 백그라운드로 만드는 중(약 2분) — 잠시 뒤 다시 부르면 채워진다. */
+      etfPending: boolean;
+    }>(
       `/market-info/sectors?symbols=${encodeURIComponent(symbols.join(','))}`
     ),
   // 한국투자증권 키가 있어야 한다 — 없으면 upcoming은 available:false, realized는 409.

@@ -327,34 +327,57 @@ export default function Overview() {
 
   // ---- 1-2) 섹터 비중(토스 섹터 분류) ----
   // 종목 → 토스 대분류 섹터는 백엔드가 하루 한 번 만들어 둔다(첫 호출은 수십 초 — 화면을 막지 않고 따로 받는다).
-  // 섹터 구성 종목은 보통주만이라 ETF·우선주는 "ETF·기타"로 묶는다. 한 종목이 여러 섹터면 평가금액을 똑같이 나눈다.
-  const [sectorBySymbol, setSectorBySymbol] = useState<Record<string, string[]> | null>(null);
+  // 백엔드가 종목마다 섹터 배분(weights, 합 1)을 준다: 보통주는 토스 섹터(여러 섹터면 균등), 우선주는 보통주 섹터,
+  // 국내 ETF는 한투 구성종목(상위 30)으로 쪼개고, 그게 안 되면 토스 ETF 섹터 분류. 못 나눈 몫은 "분류 안 됨".
+  const [sectorWeights, setSectorWeights] = useState<Record<string, Array<{ sector: string | null; weight: number }>> | null>(
+    null
+  );
+  const [sectorSources, setSectorSources] = useState<Record<string, string>>({});
+  const [sectorEtfPending, setSectorEtfPending] = useState(false);
   const holdingSymbolsKey = [...new Set(holdings.map((h) => h.symbol))].sort().join(',');
   useEffect(() => {
     if (!holdingSymbolsKey) return;
     let cancelled = false;
-    setSectorBySymbol(null);
-    api
-      .getSectors(holdingSymbolsKey.split(','))
-      .then((r) => !cancelled && setSectorBySymbol(r.date ? r.bySymbol : {}))
-      .catch(() => !cancelled && setSectorBySymbol({}));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    setSectorWeights(null);
+    // 토스 ETF 분류표는 백엔드가 백그라운드로 만든다(첫 생성 약 2분) — 만드는 중이면 30초마다 최대 6번 다시 받는다.
+    const load = (attempt: number) =>
+      api
+        .getSectors(holdingSymbolsKey.split(','))
+        .then((r) => {
+          if (cancelled) return;
+          setSectorWeights(r.date ? (r.weights ?? {}) : {});
+          setSectorSources(r.sources ?? {});
+          setSectorEtfPending(!!r.etfPending && attempt < 6);
+          if (r.etfPending && attempt < 6) timer = setTimeout(() => void load(attempt + 1), 30_000);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setSectorWeights((prev) => prev ?? {});
+          setSectorEtfPending(false);
+        });
+    void load(0);
     return () => {
       cancelled = true;
+      if (timer) clearTimeout(timer);
     };
   }, [holdingSymbolsKey]);
 
   const sectorSlices = useMemo<DonutSlice[]>(() => {
-    if (!sectorBySymbol) return [];
+    if (!sectorWeights) return [];
     const bySector = new Map<string, number>();
     for (const h of holdings) {
       const v = toKrw(h.quantity * h.lastPrice, h.currency);
       if (v === null || v <= 0) continue;
-      const sectors = sectorBySymbol[h.symbol];
-      if (!sectors || sectors.length === 0) {
+      const parts = sectorWeights[h.symbol];
+      if (!parts || parts.length === 0) {
         bySector.set('ETF·기타', (bySector.get('ETF·기타') ?? 0) + v);
         continue;
       }
-      for (const s of sectors) bySector.set(s, (bySector.get(s) ?? 0) + v / sectors.length);
+      for (const p of parts) {
+        const key = p.sector ?? 'ETF·기타';
+        bySector.set(key, (bySector.get(key) ?? 0) + v * p.weight);
+      }
     }
     const sorted = [...bySector.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
     // "ETF·기타"는 순위와 상관없이 회색 마지막 조각으로 — 섹터가 아니라 "분류 없음"이라서.
@@ -364,10 +387,21 @@ export default function Overview() {
     const rest = named.slice(TOP_N).reduce((s, [, v]) => s + v, 0);
     const slices: DonutSlice[] = top.map(([label, value], i) => ({ label, value, color: SERIES_COLORS[i] }));
     if (rest > 0) slices.push({ label: `기타 섹터 ${named.length - TOP_N}개`, value: rest, color: OTHER_COLOR });
-    if (other) slices.push({ label: 'ETF·기타(섹터 없음)', value: other[1], color: OTHER_COLOR });
+    if (other) slices.push({ label: '분류 안 됨', value: other[1], color: OTHER_COLOR });
     return slices;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [holdings, sectorBySymbol, effectiveFxRate]);
+  }, [holdings, sectorWeights, effectiveFxRate]);
+
+  const sectorEtfCounts = useMemo(() => {
+    const held = new Set(holdings.map((h) => h.symbol));
+    const c = { components: 0, sector: 0 };
+    for (const [s, src] of Object.entries(sectorSources)) {
+      if (!held.has(s)) continue;
+      if (src === 'etf-components') c.components++;
+      else if (src === 'etf-sector') c.sector++;
+    }
+    return c;
+  }, [holdings, sectorSources]);
 
   // ---- 1-1) 보유종목 비중 도넛의 가운데 숫자를 눌렀을 때 보여줄 종목별 상세 ----
   // holdingSlices는 상위 5종목 + "기타"로 접지만, 여기선 보유 중인 전 종목을
@@ -933,7 +967,7 @@ export default function Overview() {
         />
       </div>
 
-      {sectorBySymbol === null && holdings.length > 0 ? (
+      {sectorWeights === null && holdings.length > 0 ? (
         <div className="card">
           <h3 style={{ marginTop: 0 }}>섹터 비중</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
@@ -945,8 +979,12 @@ export default function Overview() {
           <div className="card">
             <h3 style={{ marginTop: 0 }}>섹터 비중</h3>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
-              토스증권 섹터 분류(대분류) 기준입니다. 섹터 분류에는 보통주만 들어 있어 ETF·우선주는 "ETF·기타"로
-              묶이고, 여러 섹터에 속한 종목은 평가금액을 똑같이 나눴습니다.
+              토스증권 섹터 분류(대분류) 기준입니다. 여러 섹터에 속한 종목은 평가금액을 똑같이 나누고, 우선주는 보통주의
+              섹터를 따릅니다. <strong>ETF</strong>는 국내 ETF면 한국투자증권 구성종목(비중 상위 30개)대로 쪼개고
+              {sectorEtfCounts.components > 0 && ` (${sectorEtfCounts.components}개)`}, 안 되면 토스가 분류한 섹터에
+              넣습니다{sectorEtfCounts.sector > 0 && ` (${sectorEtfCounts.sector}개)`}. 상위 30개 밖 비중, 채권·현금, 분류가 없는
+              ETF(미국 지수·커버드콜 등)는 "분류 안 됨"입니다.
+              {sectorEtfPending && ' 토스 ETF 섹터 분류를 받는 중이라(하루 한 번, 약 2분) 끝나면 자동으로 다시 그립니다.'}
             </p>
             <DonutChart
               slices={sectorSlices}

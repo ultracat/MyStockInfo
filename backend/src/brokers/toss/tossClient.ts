@@ -528,6 +528,17 @@ export async function fetchTossSectorStocks(sectorId: string, marketCountry: 'KR
   return Array.isArray(data?.stocks) ? (data.stocks as Array<{ symbol: string }>).map((s) => s.symbol) : [];
 }
 
+/** 섹터 관련 ETF(`GET /api/v1/sectors/{sectorId}/etfs`, `SECTOR`) — 그 섹터로 분류된 ETF. **하위 섹터 미포함**이라
+ *  대분류만 부르면 중·소분류에 들어간 ETF를 놓친다(공식 스펙 v1.2.28). */
+export async function fetchTossSectorEtfs(sectorId: string, marketCountry: 'KR' | 'US'): Promise<string[]> {
+  const raw = await tossFetch<any>(
+    `/api/v1/sectors/${encodeURIComponent(sectorId)}/etfs?marketCountry=${marketCountry}`,
+    'SECTOR'
+  );
+  const data = raw?.result ?? raw;
+  return Array.isArray(data?.etfs) ? (data.etfs as Array<{ symbol: string }>).map((s) => s.symbol) : [];
+}
+
 /** `from`/`to` are inclusive YYYY-MM-DD (`orderedAt`-based, per docs). */
 export async function fetchTossOrders(
   accountSeq: number,

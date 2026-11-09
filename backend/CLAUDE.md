@@ -451,11 +451,20 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   (`startDate ≤ 오늘 ≤ endDate`, endDate null=진행 중)만. 문서대로 모르는 유형도 코드 그대로 라벨로 둔다.
 - `GET /market-info/index-monthly?months=` — 시장 지표 일봉(`MARKET_INDICATOR_CHART`, 4시간 캐시)에서 코스피·
   코스닥 월말 종가. **지원 심볼은 국내 지수 2개 + 국채 6개뿐 — 미국 지수 없음.**
-- `GET /market-info/sectors?symbols=` — 대분류(depth 0, 실측 39개) × 국내·미국 구성 주식으로 "종목 → 섹터" 표를
-  만들어 `toss-sector-cache.json`에 **하루 한 번** 저장(약 80회 호출, 5tps에 실측 34초, 이후 즉시). 구성 주식은
-  **보통주만**이라 ETF·우선주는 표에 없다(화면이 "ETF·기타"로). 한 종목이 여러 섹터일 수 있다. 새로 못 만들면
-  어제 표를 쓴다.
-- 테스트: `test/marketInsights.test.ts`(세션 판정·자정 넘김, 활성 경고, 월말 종가).
+- `GET /market-info/sectors?symbols=` — 종목마다 **섹터 배분 `weights`**(합 1, `sector: null` = 분류 못 한 몫)와 출처
+  `sources`를 준다(`bySymbol`은 보통주만, 예전 호환). 표 두 개를 **하루 한 번** 만든다:
+  - **종목 표** `toss-sector-cache.json`: 대분류(depth 0, 39개) × 국내·미국 구성 주식(하위 섹터 포함, **보통주만**) — 약 80회,
+    실측 18초. 요청 때 기다린다(새로 못 만들면 어제 표).
+  - **ETF 표** `toss-sector-etf-cache.json`: **모든 섹터**(대 39·중 158·소 103) × 국내·미국 관련 ETF(`/sectors/{id}/etfs` —
+    **하위 섹터 미포함**이라 전부 돌아야 함)를 `parentSectorId`로 대분류에 올린다 — 약 600회, 실측 2분. **백그라운드**로 만들고
+    응답에 `etfPending: true`(화면이 30초마다 다시 부름). **종목 표를 다 받은 뒤에 시작한다** — 같은 SECTOR 리미터라 먼저
+    시작하면 종목 80건이 ETF 600건 뒤에 줄 서서 첫 화면이 2분 넘게 걸렸다(실측).
+  - 두 빌드 모두 호출을 `Promise.all`로 한꺼번에 던지고 페이싱은 리미터에 맡긴다 — 하나씩 await하면 지연 때문에 5tps의
+    절반도 못 써서 ETF 표가 5분 걸렸다(실측).
+  - 배분 순서: ① 종목 표(여러 섹터면 균등) ② 우선주 → 보통주(앞 5자리+`0`) ③ 국내 ETF → 한투 구성종목(`fetchKisEtfComponents`,
+    상위 30, `lookThroughEtf` — 표에 없는 구성종목·상위 30 밖은 null, 100% 넘으면 정규화, 하나도 분류 못 하면 다음 단계)
+    ④ 토스 ETF 표(균등).
+- 테스트: `test/marketInsights.test.ts`(세션 판정·자정 넘김, 활성 경고, 월말 종가, ETF 구성종목 쪼개기).
 
 ## 일별 자산 스냅샷 (`src/db/portfolioSnapshots.ts`, `src/routes/portfolioSnapshots.ts`)
 

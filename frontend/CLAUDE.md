@@ -161,7 +161,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `useMarketStatus()`(10분마다), `anyMarketOpen()`(둘 다 모르면 true — 토스 미연동이면 예전처럼 새로고침),
   `describeMarket()`. Dashboard.tsx는 `marketOpenRef`로 인터벌 콜백이 최신 장 상태를 보게 해서, 국내·미국이 모두
   `closed`면 1분 자동 새로고침 호출을 건너뛴다(수동 새로고침은 그대로). Overview.tsx는 "섹터 비중" 도넛
-  (`sectorSlices` — 섹터 없는 종목은 "ETF·기타" 회색, 여러 섹터면 평가금액 균등 분배, 첫 로딩 수십 초라 별도 상태)과
+  (`sectorSlices` — 백엔드 `weights`대로 평가금액을 섹터에 배분, `sector: null`·응답 없는 종목은 회색 "분류 안 됨", 첫 로딩
+  수십 초라 별도 상태, `etfPending`이면 30초마다 최대 6번 다시 받아 ETF 분류를 채움)과
   월별 수익률 카드 아래 "지수와 비교" 표(`indexComparisonRows` — 내 보유종목은 `monthlyAmountRows`로 단순 Dietz 근사:
   (평가 변화 − 투자금 변화) ÷ 전월 평가)를 둔다.
 - `src/components/UpcomingDividends.tsx`(배당금 화면, 월별 카드 아래) / `src/components/KisRealizedCompare.tsx`(실현손익

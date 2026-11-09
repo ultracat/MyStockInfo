@@ -22,6 +22,8 @@ import type {
   DividendSyncResult,
   MarketStatus,
   ActiveWarning,
+  KisRealizedRow,
+  UpcomingDividend,
   TradeRecord,
   WatchlistEntry,
 } from './types';
@@ -239,6 +241,10 @@ export const api = {
     request<{ bySymbol: Record<string, string[]>; date: string | null }>(
       `/market-info/sectors?symbols=${encodeURIComponent(symbols.join(','))}`
     ),
+  // 한국투자증권 키가 있어야 한다 — 없으면 upcoming은 available:false, realized는 409.
+  getUpcomingDividends: () => request<{ items: UpcomingDividend[]; available: boolean }>('/dividends/upcoming'),
+  getKisRealized: (from: string, to: string) =>
+    request<{ accountId: string; rows: KisRealizedRow[] }>(`/kis/realized?from=${from}&to=${to}`),
   syncKbHoldings: (accountId?: string) =>
     request<{ synced: number; accountId: string }>('/kb/sync-holdings', {
       method: 'POST',

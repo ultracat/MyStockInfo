@@ -4,6 +4,7 @@ import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, Divid
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
 import { krw } from '../format';
+import KisRealizedCompare from '../components/KisRealizedCompare';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
@@ -472,6 +473,13 @@ export default function RealizedGains() {
           </div>
           {renderSalesTable(domesticSales)}
         </div>
+      )}
+
+      {(broker === 'ALL' || broker === 'kis') && (
+        <KisRealizedCompare
+          year={year}
+          kisSales={yearSales.filter((s) => s.broker === 'kis' && s.currency === 'KRW')}
+        />
       )}
 
       <div className="card">

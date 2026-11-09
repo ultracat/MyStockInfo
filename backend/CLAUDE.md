@@ -388,6 +388,19 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 
 테스트: `test/tossDividendSync.test.ts`(토스·KIS 분류, 우선주, 교체·id 이어받기·멱등, 가져오기 건너뜀).
 
+## 다가오는 배당·공식 실현손익 (한국투자증권, `src/upcomingDividends.ts`, `routes/kisReports.ts`)
+
+- `GET /dividends/upcoming` — `{items, available}`(KIS 키 없으면 `available:false`), 6시간 캐시. 앞으로 120일.
+  - **확정**: `fetchKisPeriodRights`(CTRGA011R)에서 현금지급일이 오늘 이후인 건 — 세전·세금 정확, KIS 계좌만.
+  - **예상**: 예탁원 배당일정(`fetchKisDividendSchedule`, `HHKDB669102C0`, 시장 전체 한 번 호출, `GB1=0`)의
+    `per_sto_divi_amt` × 로컬 보유종목 저장소의 수량 — **모든 증권사의 KRW 보유 종목**. KIS 계좌에 확정 건이 있는
+    종목은 그 계좌엔 예상을 안 만든다. 지급일(`divi_pay_dt`)은 미정이면 빈 값.
+  - **해외는 없다**: 해외 기간별권리(`CTRGT011R`)는 `PDNO`에 종목(AAPL 등)을 넣으면 `KIER2520 조회된 자료가 없습니다`,
+    빼면 시장 전체 100건씩 오는데 배당이 기준일 무렵에야 등록돼 앞 90일 일정이 거의 없다(2026-11-09 실측). 지급일 필드도 없다.
+- `GET /kis/realized?from&to` — 기간별매매손익현황조회(`TTTC8715R`, `fetchKisPeriodTradeProfit`, 국내만, `CTX_AREA_FK100/NK100`
+  연속조회, 1tps 리미터) 중 `sll_qty > 0`인 매도 줄. `rlzt_pfls`는 수수료·세금 차감 손익. KIS 키 없으면 409.
+  해외(`TTTS3039R`)는 사용자 계좌에 자료가 없어(실측) 붙이지 않았다.
+
 ## 토스 시장 정보 보조 기능 (`src/marketInsights.ts`, `routes/marketInfo.ts`)
 
 계좌와 무관한 토스 시장 정보로 만드는 기능 넷 — 토스 키만 있으면 **어느 증권사 보유 종목에든** 적용된다(종목

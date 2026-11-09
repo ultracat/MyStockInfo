@@ -4,6 +4,7 @@ import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlyS
 import DividendsChart from '../components/DividendsChart';
 import DonutDetailModal from '../components/DonutDetailModal';
 import CollapseToggle from '../components/CollapseToggle';
+import UpcomingDividends from '../components/UpcomingDividends';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { formatImportResult } from '../importResult';
@@ -1144,6 +1145,8 @@ export default function Dividends() {
           </div>
         )}
       </div>
+
+      <UpcomingDividends accountLabels={accountLabels} />
 
       {selectedDividendMonth && (
         <DonutDetailModal

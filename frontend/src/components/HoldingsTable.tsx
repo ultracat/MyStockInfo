@@ -1,6 +1,8 @@
 import type { HoldingPosition } from '../types';
 import { krw2dp } from '../format';
 import StockNameLink from './StockNameLink';
+import WarningBadges from './WarningBadges';
+import type { ActiveWarning } from '../types';
 
 function formatMoney(value: number, currency: string | null) {
   const formatted = krw2dp.format(value);
@@ -24,6 +26,8 @@ interface Row extends HoldingPosition {
    *  같은 종목 배당은 포함하지 않는다(Dashboard.tsx의 dividendFor). null이면 배당
    *  통화가 포지션 통화와 달라 환산이 필요한데 환율이 없는 경우. */
   dividendAmount: number | null;
+  /** 토스 매수 유의사항(정리매매·투자경고·VI 등) — 활성인 것만, 없으면 undefined. */
+  warnings?: ActiveWarning[];
 }
 
 export default function HoldingsTable({ rows }: { rows: Row[] }) {
@@ -57,6 +61,7 @@ export default function HoldingsTable({ rows }: { rows: Row[] }) {
                 <StockNameLink name={r.name} url={r.externalUrl} />{' '}
                 <span style={{ color: 'var(--text-muted)' }}>({r.symbol})</span>
                 {r.memo && <span style={{ color: 'var(--text-muted)' }}> · {r.memo}</span>}
+                <WarningBadges warnings={r.warnings} />
               </td>
               <td>{r.market ?? '-'}</td>
               <td>{r.quantity}</td>

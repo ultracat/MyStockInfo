@@ -33,6 +33,8 @@ const TOSS_RATE_LIMIT_GROUPS = {
   CONDITIONAL_ORDER_HISTORY: { tps: 10 },
   // 거래내역 조회(GET /api/v1/transactions) — 2026-11-09 overview.md Rate Limits 표 기준 초당 5회.
   TRANSACTION: { tps: 5 },
+  // 섹터(목록·구성 주식) — 2026-11-09 overview.md 기준 초당 5회.
+  SECTOR: { tps: 5 },
 } as const satisfies Record<string, RateLimitGroupConfig>;
 
 export type TossRateLimitGroup = keyof typeof TOSS_RATE_LIMIT_GROUPS;

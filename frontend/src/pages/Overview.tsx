@@ -325,6 +325,50 @@ export default function Overview() {
     return topNSlices(bySymbol);
   }, [holdings, effectiveFxRate]);
 
+  // ---- 1-2) 섹터 비중(토스 섹터 분류) ----
+  // 종목 → 토스 대분류 섹터는 백엔드가 하루 한 번 만들어 둔다(첫 호출은 수십 초 — 화면을 막지 않고 따로 받는다).
+  // 섹터 구성 종목은 보통주만이라 ETF·우선주는 "ETF·기타"로 묶는다. 한 종목이 여러 섹터면 평가금액을 똑같이 나눈다.
+  const [sectorBySymbol, setSectorBySymbol] = useState<Record<string, string[]> | null>(null);
+  const holdingSymbolsKey = [...new Set(holdings.map((h) => h.symbol))].sort().join(',');
+  useEffect(() => {
+    if (!holdingSymbolsKey) return;
+    let cancelled = false;
+    setSectorBySymbol(null);
+    api
+      .getSectors(holdingSymbolsKey.split(','))
+      .then((r) => !cancelled && setSectorBySymbol(r.date ? r.bySymbol : {}))
+      .catch(() => !cancelled && setSectorBySymbol({}));
+    return () => {
+      cancelled = true;
+    };
+  }, [holdingSymbolsKey]);
+
+  const sectorSlices = useMemo<DonutSlice[]>(() => {
+    if (!sectorBySymbol) return [];
+    const bySector = new Map<string, number>();
+    for (const h of holdings) {
+      const v = toKrw(h.quantity * h.lastPrice, h.currency);
+      if (v === null || v <= 0) continue;
+      const sectors = sectorBySymbol[h.symbol];
+      if (!sectors || sectors.length === 0) {
+        bySector.set('ETF·기타', (bySector.get('ETF·기타') ?? 0) + v);
+        continue;
+      }
+      for (const s of sectors) bySector.set(s, (bySector.get(s) ?? 0) + v / sectors.length);
+    }
+    const sorted = [...bySector.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    // "ETF·기타"는 순위와 상관없이 회색 마지막 조각으로 — 섹터가 아니라 "분류 없음"이라서.
+    const other = sorted.find(([k]) => k === 'ETF·기타');
+    const named = sorted.filter(([k]) => k !== 'ETF·기타');
+    const top = named.slice(0, TOP_N);
+    const rest = named.slice(TOP_N).reduce((s, [, v]) => s + v, 0);
+    const slices: DonutSlice[] = top.map(([label, value], i) => ({ label, value, color: SERIES_COLORS[i] }));
+    if (rest > 0) slices.push({ label: `기타 섹터 ${named.length - TOP_N}개`, value: rest, color: OTHER_COLOR });
+    if (other) slices.push({ label: 'ETF·기타(섹터 없음)', value: other[1], color: OTHER_COLOR });
+    return slices;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdings, sectorBySymbol, effectiveFxRate]);
+
   // ---- 1-1) 보유종목 비중 도넛의 가운데 숫자를 눌렀을 때 보여줄 종목별 상세 ----
   // holdingSlices는 상위 5종목 + "기타"로 접지만, 여기선 보유 중인 전 종목을
   // 보유수량까지 포함해 그대로 보여준다.
@@ -739,6 +783,38 @@ export default function Overview() {
     [monthlyAmountRows]
   );
 
+  // ---- 4-1) 지수와 비교(토스 시장 지표: 코스피·코스닥 월말 종가) ----
+  // 내 보유종목의 월간 수익률은 "그 달 평가금액 변화에서 새로 넣은 투자금 변화를 뺀 것 ÷ 전월 평가금액"
+  // (단순 Dietz 근사) — 신규 매수만으로 수익률이 부풀지 않게 한다. 지수는 월말 종가 대비.
+  const [indexCloses, setIndexCloses] = useState<Record<string, Array<{ month: string; close: number }>>>({});
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getIndexMonthly(13)
+      .then((r) => !cancelled && setIndexCloses(r))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const indexComparisonRows = useMemo(() => {
+    const idxReturn = (symbol: string, month: string): number | null => {
+      const list = indexCloses[symbol] ?? [];
+      const i = list.findIndex((x) => x.month === month);
+      return i > 0 ? list[i].close / list[i - 1].close - 1 : null;
+    };
+    return monthlyAmountRows.map((r, i) => {
+      const prev = i > 0 ? monthlyAmountRows[i - 1] : null;
+      const mine =
+        prev && prev.currentKrw > 0
+          ? (r.currentKrw - prev.currentKrw - (r.investedKrw - prev.investedKrw)) / prev.currentKrw
+          : null;
+      return { month: r.month, mine, kospi: idxReturn('KOSPI', r.month), kosdaq: idxReturn('KOSDAQ', r.month) };
+    });
+  }, [monthlyAmountRows, indexCloses]);
+  const hasIndexData = Object.values(indexCloses).some((l) => l.length > 0);
+
   const totalDividendKrwThisYear = dividendMonthlyRows.reduce((sum, r) => {
     const rate = dividendFxRateFor(r.month);
     return sum + r.totalKrw + (rate ? r.totalUsd * rate : 0);
@@ -856,6 +932,31 @@ export default function Overview() {
           onCenterClick={() => setShowHoldingDetail(true)}
         />
       </div>
+
+      {sectorBySymbol === null && holdings.length > 0 ? (
+        <div className="card">
+          <h3 style={{ marginTop: 0 }}>섹터 비중</h3>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+            토스증권 섹터 분류를 불러오는 중입니다(하루에 한 번, 처음엔 수십 초 걸립니다).
+          </p>
+        </div>
+      ) : (
+        sectorSlices.length > 0 && (
+          <div className="card">
+            <h3 style={{ marginTop: 0 }}>섹터 비중</h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+              토스증권 섹터 분류(대분류) 기준입니다. 섹터 분류에는 보통주만 들어 있어 ETF·우선주는 "ETF·기타"로
+              묶이고, 여러 섹터에 속한 종목은 평가금액을 똑같이 나눴습니다.
+            </p>
+            <DonutChart
+              slices={sectorSlices}
+              centerLabel="총 평가금액"
+              centerValue={formatKrwValue(totalMarketKrw)}
+              formatValue={formatKrwValue}
+            />
+          </div>
+        )
+      )}
 
       {showHoldingDetail && (
         <DonutDetailModal
@@ -986,6 +1087,39 @@ export default function Overview() {
           {loadingClosePrices && ' 실제 월별 종가를 불러오는 중 — 그동안 오늘 현재가로 표시됩니다.'}
         </p>
         <MonthlyReturnChart rows={monthlyReturnRows} />
+        {hasIndexData && indexComparisonRows.length > 1 && (
+          <>
+            <h4 style={{ margin: '16px 0 4px' }}>지수와 비교 (월간 수익률)</h4>
+            <p style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 0 }}>
+              내 보유종목은 그 달 평가금액 변화에서 새로 넣은 투자금을 뺀 값을 전월 평가금액으로 나눈 근사치입니다(위 그래프와
+              같은 월말 기준). 지수는 토스증권 시장 지표의 월말 종가 대비이며, 미국 지수는 토스 API가 제공하지 않습니다.
+            </p>
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>월</th>
+                    <th>내 보유종목</th>
+                    <th>코스피</th>
+                    <th>코스닥</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {indexComparisonRows.slice(1).map((r) => (
+                    <tr key={r.month}>
+                      <td>{r.month}</td>
+                      {[r.mine, r.kospi, r.kosdaq].map((v, i) => (
+                        <td key={i} className={v === null ? undefined : v >= 0 ? 'text-good' : 'text-critical'}>
+                          {v === null ? '-' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="card">

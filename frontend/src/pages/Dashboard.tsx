@@ -20,6 +20,7 @@ import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import { groupDividendsByAccountSymbol } from '../dividendMatch';
 import { useStockLinkResolver } from '../components/StockNameLink';
 import { getKbLinkStatus, type KbLinkStatus } from '../kbSync';
+import { anyMarketOpen, describeMarket, useMarketStatus, useStockWarnings } from '../marketInsights';
 
 const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-muted)', marginTop: 2 };
 
@@ -307,6 +308,12 @@ export default function Dashboard() {
   // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
   const stockLinkFor = useStockLinkResolver();
 
+  // 국내·미국 장 상태(토스 장 운영 정보) — 둘 다 닫혀 있으면 1분 자동 새로고침을 쉰다(시세가 안 움직여서
+  // 호출만 낭비). 인터벌 콜백이 최신 값을 보도록 ref로 들고 있는다. 토스 미연동이면 anyMarketOpen이 true라 예전과 같다.
+  const marketStatus = useMarketStatus();
+  const marketOpenRef = useRef(true);
+  marketOpenRef.current = anyMarketOpen(marketStatus);
+
   const configuredBrokers = brokers.filter((b) => b.configured);
 
   // 계좌 별칭은 Settings.tsx에서만 관리하고 여기선 읽기만 한다 — 마운트 시 한 번만
@@ -584,7 +591,9 @@ export default function Dashboard() {
     }
 
     fetchPortfolio();
-    const interval = setInterval(() => fetchPortfolio(), AUTO_REFRESH_MS);
+    const interval = setInterval(() => {
+      if (marketOpenRef.current) fetchPortfolio();
+    }, AUTO_REFRESH_MS);
 
     return () => {
       cancelled = true;
@@ -824,6 +833,9 @@ export default function Dashboard() {
   // 예수금엔 소액 달러가 남아있는 경우) 별도로 판단한다.
   const hasUsdCash = !!portfolio?.cashBalanceUsd;
 
+  // 보유 종목의 매수 유의사항(토스) — 종목 목록이 바뀔 때만 다시 묻는다.
+  const warningsBySymbol = useStockWarnings(portfolio?.positions.map((p) => p.symbol) ?? []);
+
   const rows = useMemo(() => {
     if (!portfolio) return [];
 
@@ -901,8 +913,9 @@ export default function Dashboard() {
           )
         : undefined,
       externalUrl: stockLinkFor(p.symbol, p.currency) ?? undefined,
+      warnings: warningsBySymbol[p.symbol],
     }));
-  }, [portfolio, effectiveFxRate, accountLabels, selectedBroker, stockLinkFor, dividends, accounts, accountId]);
+  }, [portfolio, effectiveFxRate, accountLabels, selectedBroker, stockLinkFor, dividends, accounts, accountId, warningsBySymbol]);
 
   // "총 손익금액(배당 포함)" 카드 — 표의 "배당 포함 손익금액" 열과 같은 값(rows의
   // dividendAmount, 포지션 통화 기준)을 통화별로 더한다. 카드와 표 합계가 어긋나지
@@ -973,6 +986,14 @@ export default function Dashboard() {
           >
             {googleSyncing ? '처리 중...' : 'Google Sheets에서 가져오기'}
           </button>
+          {isCurrentBrokerApi && (marketStatus.kr || marketStatus.us) && (
+            <span
+              style={{ fontSize: 12, color: 'var(--text-muted)' }}
+              title={anyMarketOpen(marketStatus) ? '1분마다 자동 새로고침합니다' : '장이 모두 닫혀 있어 자동 새로고침을 쉽니다'}
+            >
+              {[describeMarket('국내', marketStatus.kr), describeMarket('미국', marketStatus.us)].filter(Boolean).join(' · ')}
+            </span>
+          )}
           {isCurrentBrokerApi && (
             <button className="ghost" onClick={handleRefresh} disabled={refreshing}>
               {refreshing ? '새로고침 중...' : '새로고침'}

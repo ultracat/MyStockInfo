@@ -370,8 +370,8 @@ MyStock의 데이터는 이 컴퓨터에만 저장됩니다. PC를 바꾸거나 
 > 🧪 **실험적 기능(Experimental)입니다.** Google Sheets 가져오기/내보내기는 아직 일반 사용자에게 열려 있지
 > 않아서, 그냥 설치한 앱에서는 Google 계정 연결이 되지 않습니다. 사용하려면 아래 둘 중 하나가 필요합니다.
 >
-> - **Maintainer에게 이메일로 등록을 요청**: 사용할 Google 계정(이메일 주소)을 보내 테스트 사용자로
->   등록받은 뒤 사용합니다.
+> - **Maintainer에게 이메일로 등록을 요청**: 사용할 Google 계정(이메일 주소)을 [ultracat.lcw@gmail.com](mailto:ultracat.lcw@gmail.com)으로
+>   보내 테스트 사용자로 등록받은 뒤 사용합니다.
 > - **저장소를 fork해서 직접 관리**: 본인의 Google Cloud 프로젝트에서 OAuth 클라이언트(데스크톱 앱 유형)를
 >   만들고, 그 Client ID/Secret을 `backend/src/google/clientConfig.ts`(템플릿: `clientConfig.example.ts`)에 넣거나
 >   fork한 저장소의 GitHub Secrets(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`)에 등록해 직접 빌드합니다.

@@ -169,3 +169,17 @@ npm run package:mac
 - KIS 모의투자(paper trading) 지원
 - 배포용 빌드 코드 서명/공증 (Apple Developer ID 필요 — 현재는 본인 Mac 실행 전용)
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작
+
+## 라이선스
+
+MyStock은 **이중 라이선스**로 배포됩니다.
+
+- **AGPL-3.0 (오픈소스)** — [`LICENSE`](LICENSE) 조건을 지키면 누구나 사용·수정·배포할 수 있습니다.
+  수정한 버전을 배포하거나 **네트워크 서비스로 다른 사람이 쓰게 하면, 그 전체 소스를 같은 AGPL-3.0으로 공개**해야 합니다.
+- **상업 라이선스** — 소스를 공개하지 않고 제품·서비스에 포함하는 등 AGPL-3.0 조건을 따를 수 없는 상업적 이용은
+  저작권자의 허락(별도 상업 라이선스)이 필요합니다. 이메일 [ultracat.lcw@gmail.com](mailto:ultracat.lcw@gmail.com)으로 문의해 주세요.
+
+기여는 fork → Pull Request로 받으며, 기여 코드도 두 라이선스로 배포할 수 있도록
+[기여자 라이선스 동의서(CLA)](CLA.md)에 동의해 주셔야 합니다 — [CONTRIBUTING.md](CONTRIBUTING.md) 참고.
+
+Copyright © 2026 ChangWoo Lee

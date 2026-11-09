@@ -1,4 +1,5 @@
 import {
+  fetchKisBusinessDays,
   fetchKisDividendSchedule,
   fetchKisPeriodRights,
   getKisAccountId,
@@ -18,8 +19,11 @@ import type { BrokerId } from './brokers/types';
 //    조회 기간은 기준일 기준이라, 기준일은 지났고 지급만 남은 건은 지급일(> 오늘)로 거른다.
 // 3) **추정(지난 일정)**: 예탁원에 아직 없는 다음 배당을 지난 일정으로 만든다 — 기준일 간격이 매달·분기·반기·연 단위로
 //    일정하면 마지막 기준일에 그 주기를 더하고, 주당 금액은 **최근 12회의 중간값**(사용자 결정 — 가끔 두 배로 나오는
-//    달이 있어 최근 1회는 튄다), 지급일은 지난 "기준일→지급일" 간격의 중간값. 예탁원에 일정은 있는데 금액이 미정(0)인
-//    건도 같은 중간값으로 추정한다. 주말·휴일로 밀리는 날짜는 반영하지 않는다.
+//    달이 있어 최근 1회는 튄다). 예탁원에 일정은 있는데 금액이 미정(0)인 건도 같은 중간값으로 추정한다.
+//    **휴일 반영**(국내휴장일조회 `CTCA0903R`, 하루 1회 저장): 기준일은 그 종목의 "매달 며칠"(지난 기준일의 일자 중간값,
+//    전부 말일 무렵이면 말일)이 휴일이면 **직전 영업일**(실측: 15일이 토요일이면 14일), 지급일은 기준일에서 지난 일정의
+//    **영업일 간격 중간값**만큼 뒤(실측: 매달 분배 ETF는 2영업일 — 설 연휴엔 달력상 7일). 휴장일 정보가 없는 날짜(과거·
+//    조회 실패)는 주말만 쉬는 날로 본다.
 //    KIS 계좌에 이미 확정 건이 있는 종목·달은 그 계좌에 대해서는 예상·추정을 만들지 않는다.
 // 해외 배당 예상은 만들지 않는다 — 해외 기간별권리(`CTRGT011R`)는 종목을 지정하면 자료가 없다고 하고(AAPL 등,
 // 2026-11-09 실측), 종목 없이 받으면 배당이 기준일 무렵에야 등록돼 앞으로 90일 일정이 거의 없다(1건). 지급일 필드도 없다.
@@ -69,6 +73,41 @@ function addMonths(date: string, months: number): string {
   return first.toISOString().slice(0, 10);
 }
 
+/** 날짜 → 영업일 여부(국내휴장일조회 결과). 없는 날짜는 주말만 쉬는 날로 본다. */
+export type BusinessDays = Record<string, boolean>;
+
+function isBusinessDay(date: string, cal: BusinessDays): boolean {
+  if (date in cal) return cal[date];
+  const w = new Date(`${date}T00:00:00Z`).getUTCDay();
+  return w !== 0 && w !== 6;
+}
+
+function previousBusinessDay(date: string, cal: BusinessDays): string {
+  let d = date;
+  for (let i = 0; i < 15 && !isBusinessDay(d, cal); i++) d = addDays(d, -1);
+  return d;
+}
+
+function addBusinessDays(date: string, n: number, cal: BusinessDays): string {
+  let d = date;
+  for (let c = 0, i = 0; c < n && i < n * 3 + 30; i++) {
+    d = addDays(d, 1);
+    if (isBusinessDay(d, cal)) c++;
+  }
+  return d;
+}
+
+/** a 다음 날부터 b까지의 영업일 수. */
+function businessDaysBetween(a: string, b: string, cal: BusinessDays): number {
+  let n = 0;
+  for (let d = addDays(a, 1), i = 0; d <= b && i < 400; d = addDays(d, 1), i++) if (isBusinessDay(d, cal)) n++;
+  return n;
+}
+
+function lastDayOfMonth(monthStart: string): string {
+  return addDays(addMonths(monthStart, 1), -1);
+}
+
 function median(xs: number[]): number | null {
   if (!xs.length) return null;
   const s = [...xs].sort((a, b) => a - b);
@@ -100,7 +139,8 @@ export interface PlannedDividend {
 export function planSymbolDividends(
   rows: Array<{ record_date: string; per_sto_divi_amt: string; divi_pay_dt: string }>,
   today: string,
-  until: string
+  until: string,
+  cal: BusinessDays = {}
 ): PlannedDividend[] {
   const byRecord = new Map<string, { recordDate: string; payDate: string | null; perShare: number }>();
   for (const r of rows) {
@@ -114,7 +154,7 @@ export function planSymbolDividends(
   const events = [...byRecord.values()].sort((a, b) => (a.recordDate < b.recordDate ? -1 : 1));
   const known = events.filter((e) => e.perShare > 0);
   const medianPer = median(known.slice(-12).map((e) => e.perShare));
-  const payGapRaw = median(events.filter((e) => e.payDate).map((e) => daysBetween(e.recordDate, e.payDate!)));
+  const payGapRaw = median(events.filter((e) => e.payDate).map((e) => businessDaysBetween(e.recordDate, e.payDate!, cal)));
   const payGap = payGapRaw === null ? null : Math.round(payGapRaw);
   const upcoming = (recordDate: string, payDate: string | null) =>
     (payDate ? payDate > today : recordDate >= today) && (payDate ?? recordDate) <= until;
@@ -132,11 +172,18 @@ export function planSymbolDividends(
     : null;
   if (step !== null && (step >= 6 || known.length >= 3) && events.length) {
     const last = events[events.length - 1].recordDate; // 금액 미정 일정까지 포함한 마지막 기준일
+    // "매달 며칠" — 휴일로 앞당겨진 날이 섞여도 중간값은 원래 일자. 최근 기준일이 전부 말일 3일 안이면 말일 기준.
+    const recent = known.slice(-12).map((e) => e.recordDate);
+    const monthEndAnchored = recent.every((d) => daysBetween(d, lastDayOfMonth(`${d.slice(0, 7)}-01`)) <= 3);
+    const anchorDay = Math.round(median(recent.map((d) => Number(d.slice(8, 10))))!);
     if (last >= addMonths(today, -2 * step)) {
       for (let k = 1; k <= 24; k++) {
-        const recordDate = addMonths(last, k * step);
+        const monthStart = addMonths(`${last.slice(0, 7)}-01`, k * step);
+        const monthLast = lastDayOfMonth(monthStart);
+        const nominal = monthEndAnchored ? monthLast : `${monthStart.slice(0, 8)}${String(Math.min(anchorDay, Number(monthLast.slice(8)))).padStart(2, '0')}`;
+        const recordDate = previousBusinessDay(nominal, cal);
         if (recordDate > until) break;
-        const payDate = payGap !== null ? addDays(recordDate, payGap) : null;
+        const payDate = payGap !== null ? addBusinessDays(recordDate, payGap, cal) : null;
         if (upcoming(recordDate, payDate)) out.push({ status: 'projected', source: 'history', recordDate, payDate, perShare: medianPer! });
       }
     }
@@ -179,6 +226,13 @@ async function build(): Promise<UpcomingDividend[]> {
 
   // 2)·3) 예상·추정 — 보유 종목마다 예탁원 일정을 지난 400일~앞으로 120일(기준일 기준)로 조회
   const symbols = [...new Set(holdings.map((h) => h.symbol))];
+  // 추정 날짜의 휴일 보정용 — 이번 달 1일부터 다음 달 10일 무렵까지(한 페이지 24일). 실패하면 주말만 반영.
+  const cal = symbols.length
+    ? await fetchKisBusinessDays(`${today.slice(0, 7)}-01`, addDays(monthEnd, 10)).catch((e) => {
+        console.warn(`[upcoming-dividends] 휴장일 조회 실패 — 주말만 반영: ${(e as Error).message}`);
+        return {} as BusinessDays;
+      })
+    : {};
   const plans = new Map<string, PlannedDividend[]>();
   await Promise.all(
     symbols.map(async (symbol) => {
@@ -186,7 +240,7 @@ async function build(): Promise<UpcomingDividend[]> {
         console.warn(`[upcoming-dividends] ${symbol} 배당일정 조회 실패: ${(e as Error).message}`);
         return [];
       });
-      plans.set(symbol, planSymbolDividends(rows, today, monthEnd));
+      plans.set(symbol, planSymbolDividends(rows, today, monthEnd, cal));
     })
   );
   for (const h of holdings) {

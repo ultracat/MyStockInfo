@@ -85,6 +85,13 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - **API 자격증명은 절대 커밋하지 않는다.** 실제 저장 위치는 Electron의 userData
   디렉터리(`app.getPath('userData')`)이고, `backend/data/`는 Electron 밖에서 백엔드를
   단독 실행할 때(dev/테스트)만 쓰는 로컬 폴백 경로다 — `.gitignore`에서 제외됨.
+- **커밋 작성자는 저장소 소유자 한 사람**(`ultracat <ultracat.lcw@gmail.com>`)이다 — Claude 공동작성자
+  트레일러를 넣지 않는다. 쓰기 권한도 소유자만 있고 외부 변경은 fork → PR로 받는다
+  (`.github/CODEOWNERS`가 리뷰어를 자동 지정). `main`/`v*` 태그 보호 규칙은
+  `.github/rulesets/*.json`에 있고, 무료 계정 비공개 저장소에선 켤 수 없어 **공개 직후**
+  `gh api -X POST repos/ultracat/MyStockInfo/rulesets --input <json>`으로 적용한다.
+- **실제 계좌번호·금액·보유 종목 같은 개인 데이터를 코드·문서·예시값에 쓰지 않는다** — 예시는
+  `123-45-678901`처럼 가짜 값으로(2026-11 공개 준비 때 이력에서 실제 계좌번호를 지웠다).
 - 배당금은 두 증권사 모두 "계좌에 실제 입금된 배당금" 조회 API가 없어 수동 입력 방식이다.
 - 브로커별 상세(인증 방식, Rate Limit, 알려진 제약)는 `README.md`와
   `backend/CLAUDE.md`를 참고.

@@ -19,6 +19,8 @@
 - **설치 파일**: [GitHub Releases](https://github.com/ultracat/MyStockInfo/releases)에서 OS에 맞는 파일을 받습니다.
   - macOS(Apple 칩) `.dmg`, Windows `.exe`, Linux `.AppImage`
 - **사용자 매뉴얼**: [`doc/user-manual.md`](doc/user-manual.md) — 화면별 사용법, 증권사 API 키 발급 안내, 백업/복원, 문제 해결.
+- **변경 내역**: [`CHANGELOG.md`](CHANGELOG.md) — 버전별 새 기능과 수정(최신 v1.0.1). 새 버전으로 바꿔 설치해도 데이터와 API 키는 그대로 남습니다
+  ([매뉴얼의 "새 버전으로 업데이트"](doc/user-manual.md#새-버전으로-업데이트)).
 - ⚠ 설치 파일은 **OS별 코드 서명 인증서로 서명되어 있지 않아** 처음 실행할 때 macOS·Windows가 막습니다.
   OS별 허용 방법(macOS 15부터는 우클릭 → 열기가 통하지 않음)은
   [매뉴얼의 "서명하지 않은 앱 처음 실행하기"](doc/user-manual.md#서명하지-않은-앱-처음-실행하기)를 보세요.
@@ -159,9 +161,12 @@ npm run package:win     # .exe (NSIS)
 ### 릴리스
 
 1. 루트 `version.json`의 버전을 올립니다(단일 원천 — `package.json`은 빌드 스크립트가 맞추고,
-   `package-lock.json`은 같이 고칩니다).
+   `package-lock.json`은 같이 고칩니다). `CHANGELOG.md` 맨 위에 새 버전 절을 쓰고, 정보 화면 스크린샷
+   (`doc/images/10-about.png`)의 버전도 다시 찍습니다.
 2. 커밋 후 `git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`
-3. Actions가 세 OS 러너에서 산출물을 만들고 **초안** 릴리스를 올립니다. 내용을 확인하고 직접 공개하세요.
+3. Actions가 세 OS 러너에서 산출물을 만들고 **초안** 릴리스를 올립니다(본문은 자동 생성이라 거의 비어 있음).
+   `CHANGELOG.md`의 그 버전 절을 릴리스 노트로 넣고 공개합니다:
+   `gh release edit vX.Y.Z --notes-file <노트.md> --draft=false --latest`
 
 필요한 OS만 빌드하려면 Actions 탭에서 수동 실행 후 플랫폼을 고르면 됩니다(릴리스는 만들지 않음).
 Google Sheets·실시간 환율용 키는 저장소 Secrets(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EXIMBANK_AUTH_KEY`)로

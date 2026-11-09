@@ -499,6 +499,24 @@ export default function RealizedGains() {
         />
       )}
 
+      {(broker === 'ALL' || broker === 'kiwoom') && (
+        <>
+          <OfficialRealizedCompare
+            year={year}
+            broker="kiwoom"
+            kisSales={yearSales.filter((s) => s.broker === 'kiwoom' && s.currency === 'KRW')}
+          />
+          {yearSales.some((s) => s.broker === 'kiwoom' && s.currency !== 'KRW') && (
+            <OfficialRealizedCompare
+              year={year}
+              broker="kiwoom"
+              market="overseas"
+              kisSales={yearSales.filter((s) => s.broker === 'kiwoom' && s.currency !== 'KRW')}
+            />
+          )}
+        </>
+      )}
+
       <div className="card">
         <h3 style={{ marginTop: 0 }}>배당소득</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>

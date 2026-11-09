@@ -573,6 +573,14 @@ export default function Settings() {
             보안 알림을 보내므로, 토큰은 24시간 동안 저장해 재사용합니다.
           </p>
         )}
+        {broker === 'kiwoom' && (
+          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+            키움증권 REST API 포털(openapi.kiwoom.com)에서 발급받은 앱키/시크릿키를 입력하세요. 키움은 앱키가 계좌 하나에
+            묶여 있어, 그 계좌를 API로 찾아 보여줍니다(계좌번호 입력 불필요). <strong>포털에 MyStock을 실행하는 PC의 IP를
+            등록해야 하고</strong>, IP가 바뀌면 다시 등록해야 조회됩니다. 실전투자 키만 지원합니다(모의투자 키는 미지원).
+            ⚠ 이 연동은 아직 실제 키움 계좌로 확인하지 못했습니다 — 값이 키움 앱과 다르면 알려 주세요.
+          </p>
+        )}
         {broker === 'kb' && (
           <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
             KB증권 Open API 포털(developer.kbsec.com)에서 발급받은 appKey/appSecret을 입력하세요. KB Open

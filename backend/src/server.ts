@@ -21,6 +21,7 @@ import { accountTaxTypesRouter } from './routes/accountTaxTypes';
 import { kisReportsRouter } from './routes/kisReports';
 import { tossReportsRouter } from './routes/tossReports';
 import { nhReportsRouter } from './routes/nhReports';
+import { kiwoomReportsRouter } from './routes/kiwoomReports';
 import { stockLinksRouter } from './routes/stockLinks';
 
 // 127.0.0.1에만 리슨해도 **같은 머신의 브라우저에서 열린 아무 웹페이지**가 이 서버로
@@ -72,6 +73,7 @@ export function createApp(options: { apiToken: string; requestRestart?: () => vo
   app.use('/api/kis', kisReportsRouter);
   app.use('/api/toss', tossReportsRouter);
   app.use('/api/nh', nhReportsRouter);
+  app.use('/api/kiwoom', kiwoomReportsRouter);
   app.use('/api/trades', tradesRouter);
   app.use('/api/trades-store', tradesStoreRouter);
   app.use('/api/stock-info', stockInfoRouter);

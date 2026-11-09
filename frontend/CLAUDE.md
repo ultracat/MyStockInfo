@@ -41,7 +41,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/brokers.ts` — `BROKER_LABELS`/`BROKER_ORDER`/`API_BROKER_IDS`/`CSV_ONLY_BROKER_IDS`.
   브로커 표시 이름/순서의 단일 소스(백엔드 `brokers/knownBrokers.ts`와 짝) —
   Dividends.tsx/Settings.tsx/Dashboard.tsx/Trades.tsx가 전부 여기서 가져다 쓴다.
-  `API_BROKER_IDS`(토스/KIS/NH)에 없는 브로커는 CSV 전용(KB/삼성/미래에셋) — 실시간
+  `API_BROKER_IDS`(토스/KIS/NH/키움)에 없는 브로커는 CSV 전용(KB/삼성/미래에셋) — 실시간
   조회 없이 로컬 저장소로만 동작한다, 아래 "CSV 전용 브로커" 참고. `CSV_ONLY_BROKER_IDS`는
   `API_BROKER_IDS`의 여집합(`BROKER_ORDER.filter`) — Settings.tsx의 계좌 별칭 등록
   대상, Trades.tsx의 매매내역 수동 입력 대상 브로커 선택지가 이걸 쓴다(각 파일에서
@@ -166,13 +166,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   월별 수익률 카드 아래 "지수와 비교" 표(`indexComparisonRows` — 내 보유종목은 `monthlyAmountRows`로 단순 Dietz 근사:
   (평가 변화 − 투자금 변화) ÷ 전월 평가)를 둔다.
 - `src/components/UpcomingDividends.tsx`(배당금 화면, 월별 카드 아래) / `src/components/OfficialRealizedCompare.tsx`(실현손익
-  화면, `broker` kis|nh — 증권사 필터가 전체이거나 그 증권사일 때) — 키가 없으면 카드 자체를 안 그린다(`available:false` / 409).
+  화면, `broker` kis|nh|kiwoom — 증권사 필터가 전체이거나 그 증권사일 때) — 키가 없으면 카드 자체를 안 그린다(`available:false` / 409).
   비교 카드는 응답의 계좌(KIS `accountId`=`CANO-상품코드` 하나, NH `accountIds`=실전 계좌 전부)와 같은 계좌의 **KRW 매도 전부**
   (세금 유형 무관)를 앱 쪽 값으로 쓴다. NH 증권사 값은 종목별 기간 합계라 카드가 종목별로 합치는 방식과 그대로 맞는다.
   해외 카드는 KIS만(NH 해외 기간손익엔 종목코드가 없음).
 - `src/components/KisStockInsights.tsx` — 관심종목 상세(통화 KRW일 때) 아래 "종목 정보 (한국투자증권)". `kind`로
   ETF(NAV·괴리율·구성 종목 상위 30)와 주식(재무비율·투자의견)을 가르고 뉴스 제목은 둘 다. 키 없음(409)·해외(400)면 안 그린다.
-- `src/components/PrincipalCard.tsx`(`broker` toss|nh) — 보유 종목 화면(토스·NH, API 계좌)의 "입금 기준 투자원금과 수익". 자산 =
+- `src/components/PrincipalCard.tsx`(`broker` toss|nh|kiwoom) — 보유 종목 화면(토스·NH, API 계좌)의 "입금 기준 투자원금과 수익". 자산 =
   평가금액 + 예수금(달러는 `effectiveFxRate`), 원금 = 백엔드 순입금(달러 입출금은 그때 환율). "전체 계좌"면 실전 계좌 전부를 합친다
   (모의투자 계좌를 고르면 카드를 안 그린다). 증권사를 바꿀 때 상태가 섞이지 않게 `key={broker}`로 다시 마운트한다.
 - **모의투자 계좌(NH, `BrokerAccount.paper`)** — `api.listAccounts(b, { includePaper: true })`는 보유 종목(Dashboard.tsx)·

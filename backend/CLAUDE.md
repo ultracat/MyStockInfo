@@ -358,7 +358,7 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 
 ### 배당 동기화(토스·한국투자증권·NH) (`POST /api/dividends/sync`)
 
-(NH투자증권도 같은 원칙 — 국내·달러 배당 모두 API 소유, 상세는 "NH투자증권(나무) Open API" 절.)
+(NH투자증권·키움증권도 같은 원칙 — 국내·달러 배당 모두 API 소유, 상세는 각 증권사 절.)
 **토스·한국투자증권 계좌의 배당은 API가 유일한 원천이다**(2026-11-09 사용자 결정: "항상 API 우선으로 로컬을
 덮어쓴다"). 동기화할 때마다 그 계좌의 배당 기록을 API 결과로 **통째로 교체**한다(`db/dividends.ts`의
 `replaceSyncedDividends` — 같은 내용의 기존 기록은 id를 이어받는다). 그래서 이 두 증권사(키가 있을 때)의 배당
@@ -441,6 +441,41 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 - `kisAdapter`는 국내 조회와 **독립**으로 부른다 — 해외가 실패해도 국내 보유·매매내역은 그대로(경고 로그만). 해외 보유가 있으면
   `totalXxxUsd`가 채워지고, 없으면 예전처럼 null.
 - 해외 배당은 여전히 없다(계좌 기준 API 없음, 위 "배당 동기화" 절).
+
+## 키움증권 REST API (`brokers/kiwoom/`, `routes/kiwoomReports.ts`)
+
+**⚠⚠ 실제 키로 한 번도 호출하지 않았다**(2026-11-09 — 개발자에게 키움 계좌가 없음, 사용자 요청: "명세와 GitHub만 보고 구현하고
+실제 API Key로 연동 확인을 해야 한다는 점을 남겨 놓을 것"). **키를 받으면 `npm run check:kiwoom`부터** 돌려 FAIL·WARN을 고친다
+(배당 세후 가정·실현손익 계산식·매매 줄 해석까지 자동 판정하게 만들어 뒀다).
+정본: 공식 저장소 `github.com/Kiwoom-Securities/Kiwoom-REST-API`의 `kiwoom/_data/kiwoom_api_spec.json`(337개 API 명세 +
+요청/응답 예시) + 공식 SDK `kiwoom/core/client.py`·`auth.py`. 포털 가이드 화면엔 토큰 발급 정보뿐이다.
+- **규약**: 모든 API가 `POST` + JSON, 헤더 `api-id`(TR, 예 `kt00018`) + `authorization: Bearer`. 국내 계좌 TR은 `/api/dostk/acnt`,
+  미국은 `/api/us/acnt`. **업무 오류도 HTTP 200**이라 본문 `return_code`(0=정상)로 판정(SDK와 같음). 연속조회는 응답 **헤더**
+  `cont-yn`(Y)/`next-key` → 다음 요청 헤더로(NH와 같은 헤더 방식), 같은 next-key가 다시 오면 멈춘다.
+- **토큰**: `POST /oauth2/token` JSON(`grant_type`·`appkey`·`secretkey`) → `token`·`expires_dt`(YYYYMMDDHHmmss, KST로 해석 —
+  ⚠ 실키로 시간대 확인). `kiwoom-token.json`(앱키 해시) 재사용. 재발급: 8005(토큰 무효 — SDK: `return_code=3` + 메시지 "[8005:"로도
+  온다)·**8010(토큰 발급 IP ≠ 요청 IP)**·401. 한도 초과 1700/1701/1702·429는 백오프 재시도.
+- **IP 등록**: 포털에 쓸 PC의 IP를 등록해야 한다(최대 10개, 외부 글 기준). IP가 바뀌면 8010 → 새 토큰으로도 안 되면 포털 등록 문제.
+- **앱키 = 계좌 하나**: 계좌번호조회(`ka00001`)가 `acctNo` 하나만 주고, 잔고·거래 TR 요청에 계좌번호 칸이 없다. 계좌가 하나라
+  `getPortfolio`/`getTradeHistory`는 accountId를 쓰지 않는다. 키움 계좌 여럿 = 키 여러 벌 → 지금 구조(증권사당 키 한 벌)로는 미지원.
+  실전 키만(모의투자는 키가 따로 발급되고 도메인 `mockapi.kiwoom.com` — 미지원).
+- **숫자**: "000000017598258"·"-00000000196888"·"+61.28"·"56,900"·"156464.6701" — `kwNum` 하나로 읽는다. 국내 종목코드는
+  "A005930"(접두어 A 주식/J ELW/Q ETN) → `kwSymbol`로 6자리. 가격 필드는 전일 대비 부호가 붙을 수 있어 절댓값.
+- **보유**: `kt00018`(`qry_tp=1` 합산, `dmst_stex_tp=KRX`) — 요약은 본문 최상위, 종목은 `acnt_evlt_remn_indv_tot`. **공식 예시에도
+  같은 종목이 두 줄**(현금·신용 등)이라 종목별로 합치고 평균가·수익률을 다시 구한다. 예수금 `kt00001.entr`, 미국 `ust21070`
+  `result_list`(USD만), 달러 예수금 `ust21110`의 USD 줄 `fc_entra`. 예수금·미국은 실패해도 국내와 격리.
+- **위탁종합거래내역 `kt00015`가 매매·배당·입출금의 원천**: `tp` 4 매수·5 매도(방향을 요청 코드로 — 적요 해석 불필요)·6 입금·1 입출금·
+  2 입출고, `gds_tp=0` 전체. 고유 거래번호 `trde_no` → id `kw-{trde_dt}-{trde_no}`. 원화 줄 = 국내, USD 줄 = 미국. 조회 기간 제한이
+  명세에 없어 **1년 단위로 나눠** 부른다(`yearWindows`, ⚠ 실키로 제한 확인). 미국 줄 단가는 `trde_unit`("거래단가/환율")이 애매해
+  외화 거래금액 ÷ 수량.
+- **배당**(`kiwoomDividendSync.ts`): 입금(6) 중 배당·분배 적요(⚠ 가정) — 원화 `exct_amt`(정산금액)=세후·`incm_resi_tax`=세금,
+  달러 `fc_exct_amt`=세후·`frgn_pay_txam`(외국납부세액)=세금. 원화·달러 모두 동기화 소유(`isDividendSyncOwned`). 시작일 2015-01-01.
+  `check:kiwoom`이 "거래금액 = 정산금액 + 소득/주민세"로 세후 가정을 판정한다.
+- **공식 실현손익**(`GET /api/kiwoom/realized`): 국내 `ka10073`(매도 건별) — 공식 예시로 `tdy_sel_pl` = 매도 − 매입 − 수수료 − 세금
+  (158200 − 97602.96 − 500 − 284 = 59813.04, 테스트로 고정). 미국 `ust21530`(`fc_krw_tp=1` 원화) `pl_amt`.
+- **입금 기준 원금**(`GET /api/kiwoom/cash-flows`): 입출금(1)의 입금/출금(입출구분명·적요), 배당·이자·환전 등 제외, 원화만. 입고 건수는 입출고(2).
+- 테스트: `test/kiwoomClient.test.ts` — 응답은 **명세의 공식 응답 예시**(`test/fixtures/kiwoom-spec-examples.json`, 예시 JSON의 빠진
+  쉼표만 보정)로 돈다. 배당·입출금 줄은 명세에 예시가 없어 지어낸 값.
 
 ## NH투자증권(나무) Open API (`brokers/nh/`, `routes/nhReports.ts`)
 

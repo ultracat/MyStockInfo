@@ -283,7 +283,7 @@ Sheets 연동과 실시간 환율 조회만 동작하지 않고 `::warning::`을
    **태그 push로는 빌드가 돌지 않는다**(2026-11-09 사용자 요청 — 태그와 릴리스 빌드를 따로 하려고 `on: push: tags`를 뺐다).
 3. **`npm run release:build [-- vX.Y.Z]`** — `gh workflow run release.yml --ref vX.Y.Z`. 태그 ref로 돌면
    `github.ref`가 `refs/tags/v…`라 release 잡까지 가서 **초안** 릴리스를 만든다. 노트는 워크플로가 `CHANGELOG.md`의
-   `## vX.Y.Z` 절을 awk로 잘라 넣는다(없으면 `--generate-notes`로 폴백 + 경고 — 그건 PR 기준이라 Full Changelog 한 줄뿐).
+   `## vX.Y.Z` 절을 awk로 잘라 넣는다(없으면 `--generate-notes`로 폴백 + 경고 — 그건 PR 기준이라 Full Changelog 한 줄뿐). 맨 아래 Full Changelog는 CHANGELOG에서 바로 다음 `## v` 제목을 이전 버전으로 보고 `compare/<이전>...<태그>` 링크를 단다(첫 버전이거나 그 태그가 원격에 없으면 `commits/<태그>`).
    - 수동 실행은 **그 ref의 워크플로 파일**로 돈다 — 이 변경 전에 단 태그(v1.0.x)를 다시 빌드하면 옛 워크플로가 쓰인다.
    - 같은 태그의 릴리스(초안 포함)가 이미 있으면 스크립트가 멈춘다 — 지우고 다시.
 4. 초안을 확인하고 공개: `gh release edit vX.Y.Z --draft=false --latest`.

@@ -151,8 +151,17 @@ jobs:
             on && /^## v/ { exit }
             on { print }
           ' CHANGELOG.md > notes.md
+          # 이전 버전 = CHANGELOG에서 이 절 바로 다음 "## vX.Y.Z" 제목 → compare 링크. 없으면(첫 버전) commits 링크.
+          prev=$(awk -v tag="$tag" '
+            index($0, "## " tag " ") == 1 || $0 == "## " tag { on = 1; next }
+            on && /^## v/ { sub(/^## /, ""); sub(/ .*/, ""); print; exit }
+          ' CHANGELOG.md)
           echo "" >> notes.md
-          echo "**Full Changelog**: https://github.com/${{ github.repository }}/commits/$tag" >> notes.md
+          if [ -n "$prev" ] && git ls-remote --exit-code --tags origin "refs/tags/$prev" > /dev/null; then
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$prev...$tag" >> notes.md
+          else
+            echo "**Full Changelog**: https://github.com/${{ github.repository }}/commits/$tag" >> notes.md
+          fi
           if [ "$(grep -c . notes.md)" -le 1 ]; then echo "::warning::CHANGELOG.md에 $tag 절이 없어 자동 생성 노트를 씁니다"; rm notes.md; fi
           [ -f notes.md ] && head -20 notes.md || true
 

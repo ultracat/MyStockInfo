@@ -398,11 +398,18 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 
 ## 다가오는 배당·공식 실현손익 (한국투자증권, `src/upcomingDividends.ts`, `routes/kisReports.ts`)
 
-- `GET /dividends/upcoming` — `{items, available}`(KIS 키 없으면 `available:false`), 6시간 캐시. 앞으로 120일.
+- `GET /dividends/upcoming` — `{items, available}`(KIS 키 없으면 `available:false`), 6시간 캐시. 확정은 앞으로 120일,
+  **예상·추정은 이번 달 지급분까지만**(사용자 결정 2026-11-10 — 120일을 다 보이면 매달 지급 종목 × 계좌 수만큼 줄이 너무 많았다).
   - **확정**: `fetchKisPeriodRights`(CTRGA011R)에서 현금지급일이 오늘 이후인 건 — 세전·세금 정확, KIS 계좌만.
-  - **예상**: 예탁원 배당일정(`fetchKisDividendSchedule`, `HHKDB669102C0`, 시장 전체 한 번 호출, `GB1=0`)의
-    `per_sto_divi_amt` × 로컬 보유종목 저장소의 수량 — **모든 증권사의 KRW 보유 종목**. KIS 계좌에 확정 건이 있는
-    종목은 그 계좌엔 예상을 안 만든다. 지급일(`divi_pay_dt`)은 미정이면 빈 값.
+  - **예상**: 예탁원 배당일정(`fetchKisDividendSchedule`, `HHKDB669102C0`, `GB1=0`)의 `per_sto_divi_amt` × 로컬 보유종목
+    저장소의 수량 — **모든 증권사의 KRW 보유 종목**. **보유 종목마다 `SHT_CD`로** 지난 400일~앞으로 120일을 조회한다.
+    2026-11-10 실측: 시장 전체(예전 방식)는 120일에 57건뿐(27건 금액 0) — 매달 분배 ETF는 기준일 3일 전에도 없었다.
+    - **`F_DT`/`T_DT`는 기준일 범위**다 → 기준일이 지났어도 지급일 > 오늘이면 넣는다.
+    - **`divi_pay_dt`는 `YYYY/MM/DD`(빗금)**, `record_date`는 `YYYYMMDD` — 예전엔 8자리만 읽어 예상 지급일이 늘 비었다(`parseKsdDate`).
+  - **추정**(`status: 'projected'`, `source: 'history'`, `planSymbolDividends`): 예탁원에 아직 없는 다음 배당 — 기준일 간격 중간값이
+    매달(25~35일)·분기·반기·연이고 최근까지 이어진 종목만(매달·분기 3회, 반기·연 2회 이상). 주당 = **최근 12회 중간값**(사용자 결정 —
+    한 달만 두 배인 분배가 실제로 있다), 지급일 = 기준일→지급일 간격 중간값, 휴일 미반영. 금액 미정(0) 일정도 같은 중간값으로 추정.
+  - KIS 계좌에 확정 건이 있는 종목·기준월은 그 계좌엔 예상·추정을 안 만든다. 테스트: `test/upcomingDividends.test.ts`.
   - **해외는 없다**: 해외 기간별권리(`CTRGT011R`)는 `PDNO`에 종목(AAPL 등)을 넣으면 `KIER2520 조회된 자료가 없습니다`,
     빼면 시장 전체 100건씩 오는데 배당이 기준일 무렵에야 등록돼 앞 90일 일정이 거의 없다(2026-11-09 실측). 지급일 필드도 없다.
 - `GET /kis/realized?from&to` — 기간별매매손익현황조회(`TTTC8715R`, `fetchKisPeriodTradeProfit`, 국내만, `CTX_AREA_FK100/NK100`

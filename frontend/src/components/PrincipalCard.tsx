@@ -4,7 +4,8 @@ import type { PortfolioOverview, TossAccountCashFlows } from '../types';
 import { krw, usdFmt } from '../format';
 import CollapseToggle from './CollapseToggle';
 
-// 보유 종목 화면(토스증권) — 은행에서 넣고 뺀 돈(거래내역의 입금·출금, 백엔드 tossCashFlows.ts)으로
+// 보유 종목 화면(토스증권·NH투자증권) — 은행에서 넣고 뺀 돈(토스: 거래내역의 입금·출금, 백엔드 tossCashFlows.ts /
+// NH: 입출금내역, nhCashFlows.ts)으로
 // "실제 투자원금"을 잡고, 지금 계좌 자산(평가금액 + 예수금)과 비교한다. 매입금액 기준 손익과 달리 매도해서
 // 확정된 손익·배당·이자·세금·수수료가 전부 반영된다. 타사에서 옮겨 온 주식(입고)은 금액이 없어 원금에
 // 못 넣으므로, 입고가 있으면 수익이 그만큼 부풀 수 있다고 알린다.
@@ -12,13 +13,15 @@ import CollapseToggle from './CollapseToggle';
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 const signedWon = (v: number) => `${v >= 0 ? '+' : ''}${won(v)}`;
 
-export default function TossPrincipalCard({
+export default function PrincipalCard({
+  broker = 'toss',
   portfolio,
   accountSeqs,
   fxRate,
 }: {
+  broker?: 'toss' | 'nh';
   portfolio: PortfolioOverview;
-  /** 대상 토스 계좌(accountSeq) — "전체 계좌"면 전부. */
+  /** 대상 계좌(토스 accountSeq / NH 계좌번호) — "전체 계좌"면 실전 계좌 전부. */
   accountSeqs: string[];
   fxRate: number | null;
 }) {
@@ -28,14 +31,13 @@ export default function TossPrincipalCard({
 
   useEffect(() => {
     let cancelled = false;
-    api
-      .getTossCashFlows()
+    (broker === 'nh' ? api.getNhCashFlows() : api.getTossCashFlows())
       .then((f) => !cancelled && setFlows(f))
       .catch((e) => !cancelled && setError((e as Error).message));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [broker]);
 
   const picked = (flows ?? []).filter((f) => accountSeqs.includes(f.accountSeq));
   const sum = (k: 'depositKrw' | 'withdrawalKrw' | 'depositUsd' | 'withdrawalUsd' | 'transferIn') =>

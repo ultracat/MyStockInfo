@@ -235,6 +235,18 @@ async function run() {
       log('FAIL', `${label} 입출금내역`, `${e.message} ${String(e.body || '').slice(0, 200)}`);
     }
 
+    // 8-1) 입금 기준 원금(보유 종목 화면 카드) — 화면이 받는 요약을 그대로 만든다
+    try {
+      const { getNhCashFlows } = require(path.join(DIST, 'brokers/nh/nhCashFlows.js'));
+      const flows = await getNhCashFlows({ forceRefresh: true });
+      const mine = flows.find((f) => f.accountSeq === acct.id);
+      if (!mine) log('FAIL', `${label} 입금 기준 원금 요약`, '이 계좌 요약이 없음');
+      else if (!mine.firstDate) log('SKIP', `${label} 입금 기준 원금 요약`, '원금으로 셀 입출금 0건');
+      else log('PASS', `${label} 입금 기준 원금 요약`, `연도 ${mine.byYear.length}개, 타사 입고 ${mine.transferIn}건`);
+    } catch (e) {
+      log('FAIL', `${label} 입금 기준 원금 요약`, e.message);
+    }
+
     // 9) 공식 실현손익
     const yearAgo = new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10);
     try {

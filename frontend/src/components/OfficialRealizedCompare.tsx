@@ -4,9 +4,11 @@ import type { KisRealizedRow } from '../types';
 import { krw } from '../format';
 import CollapseToggle from './CollapseToggle';
 
-// 한국투자증권이 직접 계산한 국내 매도 실현손익(기간별매매손익현황 TTTC8715R)과 이 앱의 이동평균 추정치를
-// 종목별로 나란히 보여준다. KIS 키가 없으면(409) 카드를 안 그린다. 증권사 값은 수수료·세금을 뺀 손익이고
-// 매입원가도 증권사 장부 기준이라, 앱 매매내역이 다 모이지 않았거나 원가 기준이 다르면 차이가 난다.
+// 증권사가 직접 계산한 매도 실현손익과 이 앱의 이동평균 추정치를 종목별로 나란히 보여준다.
+// - 한국투자증권: 국내 기간별매매손익현황(TTTC8715R, 매도 건별), 해외 기간손익(TTTS3039R, 원화 기준)
+// - NH투자증권: 국내 종목별실현손익현황(tradingPnl, 종목별 기간 합계 — 실전 계좌 전부). 해외는 종목별 값이 없어 없음.
+// 키가 없으면(409) 카드를 안 그린다. 증권사 값은 수수료·세금을 뺀 손익이고 매입원가도 증권사 장부 기준이라,
+// 앱 매매내역이 다 모이지 않았거나 원가 기준이 다르면 차이가 난다.
 
 export interface AppSaleLite {
   date: string;
@@ -28,19 +30,26 @@ interface Line {
 
 const signed = (v: number) => `${v >= 0 ? '+' : ''}${krw.format(Math.round(v))}원`;
 
-export default function KisRealizedCompare({
+const BROKER_NAME = { kis: '한국투자증권', nh: 'NH투자증권' } as const;
+
+export default function OfficialRealizedCompare({
   year,
+  broker = 'kis',
   kisSales,
   market = 'domestic',
 }: {
   year: number;
+  broker?: 'kis' | 'nh';
+  /** 그 증권사의 앱 추정 매도(이름은 처음 KIS 전용일 때 그대로). */
   kisSales: AppSaleLite[];
-  /** domestic = 국내 매도(TTTC8715R), overseas = 미국 매도(TTTS3039R, 원화 기준). */
+  /** domestic = 국내 매도, overseas = 미국 매도(원화 기준, KIS만). */
   market?: 'domestic' | 'overseas';
 }) {
   const overseas = market === 'overseas';
+  const brokerName = BROKER_NAME[broker];
   const [rows, setRows] = useState<KisRealizedRow[] | null>(null);
-  const [accountId, setAccountId] = useState<string | null>(null);
+  // 증권사 값이 나온 계좌 — 앱 매도도 이 계좌들 것만 비교한다(KIS는 하나, NH는 실전 계좌 전부).
+  const [accountIds, setAccountIds] = useState<string[] | null>(null);
   const [hidden, setHidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -51,13 +60,16 @@ export default function KisRealizedCompare({
     setError(null);
     const today = new Date().toISOString().slice(0, 10);
     const to = `${year}-12-31` < today ? `${year}-12-31` : today;
-    api
-      .getKisRealized(`${year}-01-01`, to)
+    const load =
+      broker === 'nh'
+        ? api.getNhRealized(`${year}-01-01`, to)
+        : api.getKisRealized(`${year}-01-01`, to).then((r) => ({ ...r, accountIds: [r.accountId] }));
+    load
       .then((r) => {
         if (cancelled) return;
         if (overseas && r.overseasRows === null) setError('해외 기간손익을 불러오지 못했습니다.');
         setRows(overseas ? (r.overseasRows ?? []) : r.rows);
-        setAccountId(r.accountId);
+        setAccountIds(r.accountIds);
       })
       .catch((e) => {
         if (cancelled) return;
@@ -68,7 +80,7 @@ export default function KisRealizedCompare({
     return () => {
       cancelled = true;
     };
-  }, [year, overseas]);
+  }, [year, overseas, broker]);
 
   const lines = useMemo<Line[]>(() => {
     if (!rows) return [];
@@ -95,13 +107,13 @@ export default function KisRealizedCompare({
       l.official = (l.official ?? 0) + r.realized;
     }
     for (const s of kisSales) {
-      if (accountId && s.accountId !== accountId) continue;
+      if (accountIds && !accountIds.includes(s.accountId)) continue;
       const l = get(s.symbol, s.name ?? s.symbol);
       l.appQty += s.quantity;
       l.app = (l.app ?? 0) + s.gainKrw;
     }
     return [...map.values()].sort((a, b) => a.symbol.localeCompare(b.symbol));
-  }, [rows, kisSales, accountId]);
+  }, [rows, kisSales, accountIds]);
 
   if (hidden) return null;
   const officialTotal = lines.reduce((s, l) => s + (l.official ?? 0), 0);
@@ -118,14 +130,14 @@ export default function KisRealizedCompare({
         }}
       >
         <h3 style={{ margin: 0 }}>
-          한국투자증권 공식 실현손익과 비교 ({year}년, {overseas ? '해외·원화 환산' : '국내'})
+          {brokerName} 공식 실현손익과 비교 ({year}년, {overseas ? '해외·원화 환산' : '국내'})
         </h3>
         <CollapseToggle collapsed={collapsed} onClick={() => setCollapsed((c) => !c)} />
       </div>
       {!collapsed && (
         <>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-            증권사 값은 한국투자증권이 계좌 장부로 계산한 매도 손익(수수료·세금 차감)이고, 앱 값은 이 화면이
+            증권사 값은 {brokerName}이 계좌 장부로 계산한 매도 손익(수수료·세금 차감)이고, 앱 값은 이 화면이
             매매내역으로 추정한 값입니다(계좌 세금 유형과 무관하게 이 계좌의 매도 전부). 매매내역이 다 모이지 않았거나
             원가 기준이 다르면 차이가 납니다 — 다르면 증권사 값을 기준으로 보세요.
           </p>
@@ -134,7 +146,7 @@ export default function KisRealizedCompare({
           ) : rows === null ? (
             <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>
           ) : lines.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{year}년 한국투자증권 계좌의 {overseas ? '해외' : '국내'} 매도 기록이 없습니다.</p>
+            <p style={{ color: 'var(--text-muted)' }}>{year}년 {brokerName} 계좌의 {overseas ? '해외' : '국내'} 매도 기록이 없습니다.</p>
           ) : (
             <div className="table-scroll">
               <table>

@@ -314,14 +314,14 @@ export function fetchNhOverseasBalance(accountNo: string, opts: FetchOpts = {}) 
 }
 
 // ── 거래내역 ───────────────────────────────────────────────────────────────────
-/** 종합거래내역(`/common/inquiry/v1/totalTransaction`, HTS 8203). `kind`: 01 입출금 · 03 매매.
+/** 종합거래내역(`/common/inquiry/v1/totalTransaction`, HTS 8203). `kind`: 01 입출금 · 02 입출고 · 03 매매.
  *  국내 매매내역은 `dailyOrderExecution`이 아니라 이걸 쓴다 — 그쪽은 주문일자 **하루씩만** 조회돼 기간을 받으려면
  *  날짜마다 호출해야 한다(초당 4건으로 1년이면 1분 넘게 걸림). */
 export function fetchNhTotalTransactions(
   accountNo: string,
   from: string,
   to: string,
-  kind: '01' | '03',
+  kind: '01' | '02' | '03',
   opts: FetchOpts = {}
 ): Promise<Record<string, unknown>[]> {
   return withCache(

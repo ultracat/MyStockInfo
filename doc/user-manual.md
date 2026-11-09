@@ -19,6 +19,7 @@ MyStock은 여러 증권사 계좌의 보유 종목, 손익, 배당금, 매매�
 10. [종목 링크](#10-종목-링크)
 11. [데이터 백업·복원과 Google Sheets](#11-데이터-백업복원과-google-sheets)
 12. [편의 기능과 문제 해결](#12-편의-기능과-문제-해결)
+- [부록. 증권사 API 키 발급 안내](#부록-증권사-api-키-발급-안내)
 
 ---
 
@@ -417,3 +418,25 @@ MyStock의 데이터는 이 컴퓨터에만 저장됩니다. PC를 바꾸거나 
 ![정보 화면 — 버전과 오픈소스 패키지](images/10-about.png)
 
 사이드바 맨 아래 **정보**에서 앱 버전, Electron/Chromium/Node 버전, 사용 중인 오픈소스 패키지와 라이선스를 볼 수 있습니다.
+
+---
+
+## 부록. 증권사 API 키 발급 안내
+
+API 키 발급 절차는 증권사가 수시로 바꿀 수 있어서, 이 매뉴얼에는 **어디를 보면 되는지**만 적습니다.
+발급받은 값은 [설정 → API 키 등록](#2-증권사-연결하기-설정)에 입력합니다.
+삼성증권·미래에셋증권처럼 API 연동이 없는 증권사는 키 없이 CSV로 씁니다.
+
+| 증권사 | 어디서 발급하나 | MyStock에 넣을 값 | 알아둘 것 |
+|---|---|---|---|
+| **토스증권** | 토스증권 WTS(웹) 로그인 → **설정 > Open API** | Client ID, Client Secret | 같은 화면 아래 **허용 IP 관리**에 MyStock을 실행하는 PC의 공인 IP를 등록해야 합니다. 등록하지 않은 IP에서는 조회가 막힙니다. 집 인터넷처럼 IP가 바뀌는 환경이면 바뀔 때마다 다시 등록하세요. |
+| **한국투자증권** | [KIS Developers](https://apiportal.koreainvestment.com) 위쪽 **API신청**(한국투자증권 홈페이지·앱의 Open API 서비스 신청) | 앱키, 앱시크릿, 계좌번호 앞 8자리, 상품코드 뒤 2자리 | 계좌 개설과 ID 연결이 먼저 필요합니다. MyStock은 **실전투자용** 앱키만 지원합니다(모의투자 미지원). 상품코드는 종합계좌면 보통 `01`입니다. |
+| **KB증권** | [KB증권 홈페이지](https://www.kbsec.com)의 Open API 메뉴에서 본인 인증 후 신청(2026년 개인 고객 대상 오픈베타) | appKey, appSecret, API를 연동한 계좌번호 | 키가 **계좌 하나에 묶여** 발급됩니다. 그 계좌만 자동 동기화되고 나머지 KB 계좌는 CSV로 관리합니다. IRP·연금저축 계좌는 API 연동이 안 되고, 종합계좌도 새로 만든 계좌만 연동되는 것으로 확인했습니다. |
+
+공식 안내:
+- 토스증권: [토스증권 Open API 가이드](https://developers.tossinvest.com/docs) — "시작하기"에 클라이언트 등록과 허용 IP 등록 순서가 있습니다.
+- 한국투자증권: [KIS Developers 서비스 이용안내](https://apiportal.koreainvestment.com/about-howto), [공식 GitHub 저장소](https://github.com/koreainvestment/open-trading-api)
+- KB증권: [KB증권 홈페이지](https://www.kbsec.com)의 Open API 안내와 고객센터. 메뉴 이름은 바뀔 수 있으니 홈페이지에서 "Open API"를 찾아 주세요.
+
+> ⚠ API 키(Client Secret, 앱시크릿, appSecret)는 비밀번호와 같습니다. 다른 사람에게 보내거나 화면을 공유하지 마세요.
+> MyStock은 키를 이 PC의 OS 키체인 기반 암호화로만 저장하고 외부로 보내지 않습니다.

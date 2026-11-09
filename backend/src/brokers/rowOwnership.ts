@@ -26,8 +26,10 @@ export function isSyncOwned(broker: BrokerId, accountId: string): boolean {
  *  (2026-11-09 사용자 결정: "항상 API 우선으로 로컬을 덮어쓴다"). 동기화가 그 계좌 기록을 통째로 교체하므로
  *  CSV·Sheets 가져오기와 화면 직접 입력은 그 행을 쓰지 않는다. KB는 배당 API로 가져올 수 있는 계좌가 없어
  *  (연동 계좌 하나뿐, IRP·연금저축 불가) 보유종목·매매내역과 달리 배당은 수동 소유다. */
-export function isDividendSyncOwned(broker: BrokerId): boolean {
-  if (broker === 'toss') return isTossConfigured();
-  if (broker === 'kis') return isKisConfigured();
+export function isDividendSyncOwned(row: { broker: BrokerId; currency?: string | null }): boolean {
+  if (row.broker === 'toss') return isTossConfigured();
+  // 한국투자증권 API(CTRGA011R)는 **국내(원화) 배당만** 준다 — 미국 주식 배당(USD)은 계좌 기준 API가 없어
+  // 사용자가 직접 적는다. 그래서 KIS는 원화 기록만 동기화 소유이고, 달러 기록은 수동 소유다(동기화가 안 지운다).
+  if (row.broker === 'kis') return isKisConfigured() && row.currency !== 'USD';
   return false;
 }

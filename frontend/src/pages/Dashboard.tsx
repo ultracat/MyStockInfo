@@ -419,10 +419,10 @@ export default function Dashboard() {
         setAccounts(accs);
         if (accs.length > 0) setAccountId(accs[0].id);
 
-        // USD 보유분이 있을 수 있는 건 지금은 토스뿐이라(다른 브로커는 KRW만) 그
-        // 화면에서만 환율을 조회한다 — 환율 조회 자체는 토스 연동 여부와 무관하게
-        // getUsdKrwRate가 토스→수출입은행 순으로 처리한다(아래).
-        if (selectedBroker === 'toss') {
+        // 달러 보유분은 토스뿐 아니라 한국투자증권(미국 주식)·CSV 계좌(통화 컬럼 USD)에도 있을 수 있어서
+        // 모든 증권사에서 환율을 조회한다(예전엔 토스만 — 다른 증권사의 달러 종목이 "환율 미적용"이 됐다).
+        // 환율 조회 자체는 토스 연동 여부와 무관하게 getUsdKrwRate가 토스→수출입은행 순으로 처리한다(아래).
+        {
           const fx = await api.getFxRate();
           if (cancelled) return;
           setManualFxRate(fx.usdKrwRate);

@@ -77,7 +77,12 @@ async function runSync(): Promise<DividendSyncResult> {
     memo: null,
   }));
   // 이 앱의 KIS 연동은 계좌 하나(자격증명의 CANO+상품코드)다. 계좌 칸이 빈 KIS 기록도 그 계좌 것으로 본다.
-  const r = replaceSyncedDividends('kis', (id) => id === null || id === accountId, inputs);
+  // 달러 기록(미국 주식 배당, 직접 입력)은 API가 모르는 것이라 교체 범위에서 뺀다.
+  const r = replaceSyncedDividends(
+    'kis',
+    (rec) => rec.currency !== 'USD' && (rec.accountId === null || rec.accountId === accountId),
+    inputs
+  );
   const byKind: Record<DividendSyncKind, number> = { dividend: 0, etfDistribution: 0, taxRefund: 0 };
   for (const c of candidates) byKind[c.kind]++;
   return { broker: 'kis', ...r, total: inputs.length, byKind, skipped: upcoming };

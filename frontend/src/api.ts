@@ -246,7 +246,7 @@ export const api = {
   // 한국투자증권 키가 있어야 한다 — 없으면 upcoming은 available:false, realized는 409.
   getUpcomingDividends: () => request<{ items: UpcomingDividend[]; available: boolean }>('/dividends/upcoming'),
   getKisRealized: (from: string, to: string) =>
-    request<{ accountId: string; rows: KisRealizedRow[] }>(`/kis/realized?from=${from}&to=${to}`),
+    request<{ accountId: string; rows: KisRealizedRow[]; overseasRows: KisRealizedRow[] | null }>(`/kis/realized?from=${from}&to=${to}`),
   getKisStockDetail: (symbol: string) => request<KisStockDetail>(`/kis/stock-detail/${encodeURIComponent(symbol)}`),
   getTossCashFlows: (opts?: { forceRefresh?: boolean }) =>
     request<TossAccountCashFlows[]>(`/toss/cash-flows${opts?.forceRefresh ? '?refresh=true' : ''}`),

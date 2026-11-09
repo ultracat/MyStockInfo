@@ -460,7 +460,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   USD는 `effectiveFxRate` 있을 때만 곱하고 없으면 `null` 반환해 그 항목을 집계에서
   뺀 뒤 배너로 안내).
 - `src/pages/Dashboard.tsx` — 보유 종목. 브로커 선택 → 계좌/환율 조회 → 포트폴리오
-  조회, 3단계 `useEffect` 체인(환율은 토스일 때만). 네 스탯 타일(`AmountTile`/
+  조회, 3단계 `useEffect` 체인(환율은 모든 증권사 — 한투 미국 주식·CSV 달러 종목도 있어서, 예전엔 토스만). 네 스탯 타일(`AmountTile`/
   `RateTile`)은 달러 보유분이 있으면(`hasUsdHoldings`) 원화/달러/합계(환산) 3줄,
   없으면 한 줄만 보여준다 — **굵은 글씨는 항상 합계(환산) 한 줄에만** 쓴다.
   `hasUsd` 판단은 개별 타일 값이 아니라 포트폴리오 전체의 달러 투자금 여부로 넘겨서,
@@ -532,7 +532,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   — 표 열과 카드가 절대 어긋나지 않게.
 - `src/pages/Dividends.tsx` — 배당 기록 입력/조회. **토스·한국투자증권은 API가 원천**(`syncOwnedBrokers` — `listBrokers`에서
   둘 중 `configured`인 것): 마운트 시 `api.syncDividends()`(`POST /dividends/sync`, 그 계좌 기록을 API 내용으로 통째로
-  교체)를 백그라운드로 한 번 부르고, 바뀐 게 있으면 `refresh()` + 안내 문구(`dividendSyncNotice`, 증권사별 추가/삭제
+  교체)를 백그라운드로 한 번 부르고(**한국투자증권은 원화 기록만 동기화 소유** — 미국 주식 배당은 API가 없어 달러로 직접
+  입력한다: `isRowSyncOwned`, 입력 폼에 "한국투자증권 (달러 배당만)" 선택지, 고르면 통화가 USD로 고정), 바뀐 게 있으면 `refresh()` + 안내 문구(`dividendSyncNotice`, 증권사별 추가/삭제
   건수와 실패). "배당 동기화" 버튼이 같은 함수를 수동으로 부른다. 그 증권사 행은 "API 연동" 표시로 수정·삭제
   버튼을 숨기고, 직접 입력 폼의 증권사 선택지에서도 뺀다(백엔드도 409로 막는다). **`amount`는 세후, `tax`(선택)는
   원천징수 세금** — 표에 "세금" 열, 추가 폼·인라인 수정에 세금 칸, CSV에 선택 컬럼 `tax`가 있다. `currency`(KRW/USD) 기준 `amount`를 원본 통화

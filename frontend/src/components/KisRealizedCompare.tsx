@@ -28,7 +28,17 @@ interface Line {
 
 const signed = (v: number) => `${v >= 0 ? '+' : ''}${krw.format(Math.round(v))}원`;
 
-export default function KisRealizedCompare({ year, kisSales }: { year: number; kisSales: AppSaleLite[] }) {
+export default function KisRealizedCompare({
+  year,
+  kisSales,
+  market = 'domestic',
+}: {
+  year: number;
+  kisSales: AppSaleLite[];
+  /** domestic = 국내 매도(TTTC8715R), overseas = 미국 매도(TTTS3039R, 원화 기준). */
+  market?: 'domestic' | 'overseas';
+}) {
+  const overseas = market === 'overseas';
   const [rows, setRows] = useState<KisRealizedRow[] | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
@@ -45,7 +55,8 @@ export default function KisRealizedCompare({ year, kisSales }: { year: number; k
       .getKisRealized(`${year}-01-01`, to)
       .then((r) => {
         if (cancelled) return;
-        setRows(r.rows);
+        if (overseas && r.overseasRows === null) setError('해외 기간손익을 불러오지 못했습니다.');
+        setRows(overseas ? (r.overseasRows ?? []) : r.rows);
         setAccountId(r.accountId);
       })
       .catch((e) => {
@@ -57,14 +68,25 @@ export default function KisRealizedCompare({ year, kisSales }: { year: number; k
     return () => {
       cancelled = true;
     };
-  }, [year]);
+  }, [year, overseas]);
 
   const lines = useMemo<Line[]>(() => {
     if (!rows) return [];
     const map = new Map<string, Line>();
     const get = (symbol: string, name: string) => {
       let l = map.get(symbol);
-      if (!l) map.set(symbol, (l = { symbol, name, officialQty: 0, official: null, appQty: 0, app: null }));
+      if (!l)
+        map.set(
+          symbol,
+          (l = {
+            symbol,
+            name,
+            officialQty: 0,
+            official: null,
+            appQty: 0,
+            app: null,
+          }),
+        );
       return l;
     };
     for (const r of rows) {
@@ -87,23 +109,32 @@ export default function KisRealizedCompare({ year, kisSales }: { year: number; k
 
   return (
     <div className="card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-        <h3 style={{ margin: 0 }}>한국투자증권 공식 실현손익과 비교 ({year}년, 국내)</h3>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: 12,
+        }}
+      >
+        <h3 style={{ margin: 0 }}>
+          한국투자증권 공식 실현손익과 비교 ({year}년, {overseas ? '해외·원화 환산' : '국내'})
+        </h3>
         <CollapseToggle collapsed={collapsed} onClick={() => setCollapsed((c) => !c)} />
       </div>
       {!collapsed && (
         <>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
             증권사 값은 한국투자증권이 계좌 장부로 계산한 매도 손익(수수료·세금 차감)이고, 앱 값은 이 화면이
-            매매내역으로 추정한 값입니다(계좌 세금 유형과 무관하게 이 계좌의 매도 전부). 매매내역이 다 모이지
-            않았거나 원가 기준이 다르면 차이가 납니다 — 다르면 증권사 값을 기준으로 보세요.
+            매매내역으로 추정한 값입니다(계좌 세금 유형과 무관하게 이 계좌의 매도 전부). 매매내역이 다 모이지 않았거나
+            원가 기준이 다르면 차이가 납니다 — 다르면 증권사 값을 기준으로 보세요.
           </p>
           {error ? (
             <p className="text-critical">{error}</p>
           ) : rows === null ? (
             <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>
           ) : lines.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)' }}>{year}년 한국투자증권 계좌의 국내 매도 기록이 없습니다.</p>
+            <p style={{ color: 'var(--text-muted)' }}>{year}년 한국투자증권 계좌의 {overseas ? '해외' : '국내'} 매도 기록이 없습니다.</p>
           ) : (
             <div className="table-scroll">
               <table>
@@ -119,8 +150,10 @@ export default function KisRealizedCompare({ year, kisSales }: { year: number; k
                 <tbody>
                   {lines.map((l) => (
                     <tr key={l.symbol}>
-                      <td className="cell-name-truncate">
-                        {l.name} <span style={{ color: 'var(--text-muted)' }}>{l.symbol}</span>
+                      <td style={{ textAlign: 'left' }}>
+                        <span className="cell-name-truncate">
+                          {l.name} <span style={{ color: 'var(--text-muted)' }}>{l.symbol}</span>
+                        </span>
                       </td>
                       <td>
                         {krw.format(l.officialQty)} / {krw.format(l.appQty)}

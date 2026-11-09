@@ -169,7 +169,7 @@ async function runSync(): Promise<DividendSyncResult> {
     const r = replaceSyncedDividends(
       'toss',
       // 계좌 칸이 빈 토스 기록은 토스 계좌가 하나뿐일 때만 그 계좌 것으로 본다.
-      (accountId) => (accountId ? aliases.has(accountId) : accounts.length === 1),
+      ({ accountId }) => (accountId ? aliases.has(accountId) : accounts.length === 1),
       rows.map(({ kind: _kind, ...row }) => ({ ...row, name: knownNames.get(row.symbol.toUpperCase()) ?? row.symbol }))
     );
     result.added += r.added;

@@ -247,7 +247,7 @@ Wine(x86_64)을 타고, Linux AppImage는 `mksquashfs`가 x86_64 바이너리라
 ```
 plan (ubuntu)   고른 플랫폼만 담은 matrix JSON 출력
   └ package     각 OS 러너에서 npm ci → 패키징 → upload-artifact
-      └ release 태그 push일 때만. 산출물을 모아 **초안** 릴리스 생성
+      └ release 태그 ref로 수동 실행했을 때만(npm run release:build). 산출물을 모아 **초안** 릴리스 생성
 ```
 
 - **릴리스 주체는 release 잡 하나뿐**이다. electron-builder가 `GH_TOKEN`을 보면
@@ -256,8 +256,8 @@ plan (ubuntu)   고른 플랫폼만 담은 matrix JSON 출력
   --mac --publish never`) electron-builder가 받는다.
 - **`plan` 잡이 따로 있는 이유**: 잡 단위 `if`는 matrix가 펼쳐지기 전에 평가돼서
   `matrix`를 읽을 수 없다. "어떤 OS를 돌릴지"를 앞 잡에서 JSON으로 만들어 넘긴다.
-- 태그 push로 깨어나면 `inputs`가 비어 있어 `inputs.platforms || 'all'`이 `all`이 된다
-  — 같은 워크플로를 수동 실행과 태그 양쪽에서 쓴다.
+- `inputs.platforms`가 비면 `all` — `release:build`는 `-f platforms=all`을 명시한다
+  — 같은 워크플로를 빌드만(브랜치 ref)과 릴리스(태그 ref) 양쪽에 쓴다.
 - 기본 권한은 `contents: read`, 릴리스 잡만 `write`. `if-no-files-found: error`로
   산출물 없이 "성공"하는 것을 막고, `fail-fast: false`로 한 OS가 실패해도 나머지는 받는다.
 - 릴리스는 **초안(draft)**이다 — 되돌리기 어려운 공개 배포만 사람이 눌러서 확정한다.
@@ -278,13 +278,18 @@ Sheets 연동과 실시간 환율 조회만 동작하지 않고 `::warning::`을
    스크린샷은 **빈 `--user-data-dir`** 인스턴스로 찍으면 자격증명·보유 데이터가 없어 토스 토큰 충돌도 없다
    (메인 앱을 안 닫아도 됨). 작성자·저작권 줄만 가리고, 시스템이 다크 모드면 CDP
    `Emulation.setEmulatedMedia`로 `prefers-color-scheme: light`를 강제해 다른 스크린샷과 맞춘다.
-2. 커밋 → push → `git tag -a vX.Y.Z` → **태그 push가 빌드를 깨운다.**
-3. Actions가 세 산출물을 만들고 초안 릴리스를 올리면, 본문(`--generate-notes`라 Full Changelog 한 줄뿐)을
-   `CHANGELOG.md`의 그 버전 절로 바꿔 사람이 공개한다 —
-   `gh release edit vX.Y.Z --notes-file <노트.md> --draft=false --latest`.
+2. 커밋 → main push → **`npm run release:tag`**(`scripts/release.cjs tag`) — main·변경 없음·HEAD=origin/main·
+   CHANGELOG에 그 버전 절·package.json 버전 일치·태그 중복 없음을 확인하고 `vX.Y.Z` 태그를 만들어 push한다.
+   **태그 push로는 빌드가 돌지 않는다**(2026-11-09 사용자 요청 — 태그와 릴리스 빌드를 따로 하려고 `on: push: tags`를 뺐다).
+3. **`npm run release:build [-- vX.Y.Z]`** — `gh workflow run release.yml --ref vX.Y.Z`. 태그 ref로 돌면
+   `github.ref`가 `refs/tags/v…`라 release 잡까지 가서 **초안** 릴리스를 만든다. 노트는 워크플로가 `CHANGELOG.md`의
+   `## vX.Y.Z` 절을 awk로 잘라 넣는다(없으면 `--generate-notes`로 폴백 + 경고 — 그건 PR 기준이라 Full Changelog 한 줄뿐).
+   - 수동 실행은 **그 ref의 워크플로 파일**로 돈다 — 이 변경 전에 단 태그(v1.0.x)를 다시 빌드하면 옛 워크플로가 쓰인다.
+   - 같은 태그의 릴리스(초안 포함)가 이미 있으면 스크립트가 멈춘다 — 지우고 다시.
+4. 초안을 확인하고 공개: `gh release edit vX.Y.Z --draft=false --latest`.
 
-필요한 OS만 돌리려면 Actions 탭에서 수동 실행(`workflow_dispatch`)하고 플랫폼을
-고른다 — 이때는 빌드만 하고 릴리스는 만들지 않는다.
+필요한 OS만 돌리려면 Actions 탭에서 **main(브랜치)으로** 수동 실행(`workflow_dispatch`)하고 플랫폼을
+고른다 — 브랜치 ref라 빌드만 하고 릴리스는 만들지 않는다.
 
 ## 앱 아이콘
 

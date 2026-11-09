@@ -963,7 +963,7 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
 아래)가 `GET /api/about`로 SW 이름/버전과 사용 중인 오픈소스 패키지 목록(이름/
 버전/라이선스)을 받아 보여준다.
 
-- **버전의 단일 소스는 루트 `version.json`**(예: `{"version": "1.0.1"}`)이다 —
+- **버전의 단일 소스는 루트 `version.json`**(예: `{"version": "1.1.0"}`)이다 —
   앱 버전을 올릴 땐 이 파일 하나만 고치면 된다. `npm run build`/`npm run dev`가
   둘 다 `backend` 빌드 전에 `scripts/generate-app-info.cjs`를 먼저 돌리는데
   (루트 `package.json`의 `build:backend`), 이 스크립트가 (1) `version.json`을

@@ -371,8 +371,8 @@ export default function StockReturns() {
             <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
               전체 증권사·계좌의 보유종목을 종목 단위로 합치고, 같은 종목의 배당 기록을 전부 더한 누적배당금을 함께
               보여줍니다. 모든 금액은 원화 환산값입니다 — 달러 보유분은 지금 환율, 달러 배당금은 지급월 평균 환율로
-              환산합니다. 배당금은 증권사 API로 조회할 수 없어 배당금 화면에 직접 기록한 내역이 전부입니다(기록하지
-              않은 배당은 0으로 나옵니다).
+              환산합니다. 배당금은 배당금 화면의 기록(세후)이 전부입니다 — 토스증권·한국투자증권은 API로 자동 동기화되고, 그
+              밖의 증권사는 직접 기록한 내역만 반영됩니다(기록하지 않은 배당은 0으로 나옵니다).
             </p>
             {totals.unconverted && (
               <p className="text-critical" style={{ fontSize: 13 }}>

@@ -1,5 +1,7 @@
 import { KNOWN_BROKERS } from './knownBrokers';
 import { getKbLinkedAccountId, isKbConfigured } from './kb/kbClient';
+import { isTossConfigured } from './toss/tossClient';
+import { isKisConfigured } from './kis/kisClient';
 import type { BrokerId } from './types';
 
 /** holdings.json/trades.json의 행은 두 종류다 — (1) 실시간 조회(write-through)와
@@ -17,5 +19,15 @@ import type { BrokerId } from './types';
 export function isSyncOwned(broker: BrokerId, accountId: string): boolean {
   if (KNOWN_BROKERS.some((b) => b.id === broker && b.hasApiIntegration)) return true;
   if (broker === 'kb') return isKbConfigured() && getKbLinkedAccountId() === accountId;
+  return false;
+}
+
+/** 배당 기록의 소유권 — 토스증권·한국투자증권은 API 키가 있으면 **모든 계좌의 배당이 API 동기화 소유**다
+ *  (2026-11-09 사용자 결정: "항상 API 우선으로 로컬을 덮어쓴다"). 동기화가 그 계좌 기록을 통째로 교체하므로
+ *  CSV·Sheets 가져오기와 화면 직접 입력은 그 행을 쓰지 않는다. KB는 배당 API로 가져올 수 있는 계좌가 없어
+ *  (연동 계좌 하나뿐, IRP·연금저축 불가) 보유종목·매매내역과 달리 배당은 수동 소유다. */
+export function isDividendSyncOwned(broker: BrokerId): boolean {
+  if (broker === 'toss') return isTossConfigured();
+  if (broker === 'kis') return isKisConfigured();
   return false;
 }

@@ -511,8 +511,12 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   (배당 제외)"/"(배당 포함)" 두 카드다(사용자 요청, 2026-11-04). 배당 포함 카드는 배당을
   따로 다시 집계하지 않고 표 행의 `dividendAmount`를 통화별로 더한 값(`dividendTotals`)
   — 표 열과 카드가 절대 어긋나지 않게.
-- `src/pages/Dividends.tsx` — 배당 기록 수동 입력/조회(두 브로커 다 개인 배당 지급
-  내역 API가 없음 — 안내 문구 유지). `currency`(KRW/USD) 기준 `amount`를 원본 통화
+- `src/pages/Dividends.tsx` — 배당 기록 입력/조회. **토스·한국투자증권은 API가 원천**(`syncOwnedBrokers` — `listBrokers`에서
+  둘 중 `configured`인 것): 마운트 시 `api.syncDividends()`(`POST /dividends/sync`, 그 계좌 기록을 API 내용으로 통째로
+  교체)를 백그라운드로 한 번 부르고, 바뀐 게 있으면 `refresh()` + 안내 문구(`dividendSyncNotice`, 증권사별 추가/삭제
+  건수와 실패). "배당 동기화" 버튼이 같은 함수를 수동으로 부른다. 그 증권사 행은 "API 연동" 표시로 수정·삭제
+  버튼을 숨기고, 직접 입력 폼의 증권사 선택지에서도 뺀다(백엔드도 409로 막는다). **`amount`는 세후, `tax`(선택)는
+  원천징수 세금** — 표에 "세금" 열, 추가 폼·인라인 수정에 세금 칸, CSV에 선택 컬럼 `tax`가 있다. `currency`(KRW/USD) 기준 `amount`를 원본 통화
   그대로 저장(backend/CLAUDE.md 참고). `accountId`(선택, `string | null`)로 한 증권사
   안의 여러 계좌를 구분할 수 있다 — "배당 기록 추가" 폼의 "계좌 (선택)" 입력칸(브로커
   종류와 무관하게 항상 노출 — CSV 전용 브로커뿐 아니라 토스/KIS도 계좌가 여러 개일 수

@@ -33,6 +33,12 @@ export const CREDENTIAL_FIELDS: Record<BrokerId, CredentialFieldSpec[]> = {
     { key: 'appKey', label: '앱키 (App Key)', secret: false },
     { key: 'appSecret', label: '앱시크릿 (App Secret)', secret: true },
   ],
+  // 키움증권 — 앱키가 계좌 하나에 묶이고 계좌번호조회(ka00001)가 그 번호를 알려줘서 계좌번호는 받지 않는다.
+  // 포털의 시크릿키(secretkey)를 다른 증권사와 같은 appSecret 키로 저장한다.
+  kiwoom: [
+    { key: 'appKey', label: '앱키 (App Key)', secret: false },
+    { key: 'appSecret', label: '시크릿키 (Secret Key)', secret: true },
+  ],
   kb: [
     { key: 'appKey', label: 'appKey', secret: false },
     { key: 'appSecret', label: 'appSecret', secret: true },

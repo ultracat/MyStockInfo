@@ -3,6 +3,7 @@ import { getKbLinkedAccountId, isKbConfigured } from './kb/kbClient';
 import { isTossConfigured } from './toss/tossClient';
 import { isKisConfigured } from './kis/kisClient';
 import { isNhConfigured } from './nh/nhClient';
+import { isKiwoomConfigured } from './kiwoom/kiwoomClient';
 import type { BrokerId } from './types';
 
 /** holdings.json/trades.json의 행은 두 종류다 — (1) 실시간 조회(write-through)와
@@ -34,5 +35,7 @@ export function isDividendSyncOwned(row: { broker: BrokerId; currency?: string |
   if (row.broker === 'kis') return isKisConfigured() && row.currency !== 'USD';
   // NH투자증권은 국내(종합거래내역)·해외(해외 일별거래내역) 배당을 모두 계좌 기준으로 준다 — 원화·달러 모두 동기화 소유.
   if (row.broker === 'nh') return isNhConfigured();
+  // 키움증권도 위탁종합거래내역 입금에서 원화·달러 배당을 모두 받는다(실키 미검증).
+  if (row.broker === 'kiwoom') return isKiwoomConfigured();
   return false;
 }

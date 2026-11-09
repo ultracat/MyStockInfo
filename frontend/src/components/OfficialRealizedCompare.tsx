@@ -7,6 +7,7 @@ import CollapseToggle from './CollapseToggle';
 // 증권사가 직접 계산한 매도 실현손익과 이 앱의 이동평균 추정치를 종목별로 나란히 보여준다.
 // - 한국투자증권: 국내 기간별매매손익현황(TTTC8715R, 매도 건별), 해외 기간손익(TTTS3039R, 원화 기준)
 // - NH투자증권: 국내 종목별실현손익현황(tradingPnl, 종목별 기간 합계 — 실전 계좌 전부). 해외는 종목별 값이 없어 없음.
+// - 키움증권: 국내 일자별종목별실현손익(ka10073, 매도 건별), 미국 실현손익(ust21530, 원화 기준) — 실키 미검증.
 // 키가 없으면(409) 카드를 안 그린다. 증권사 값은 수수료·세금을 뺀 손익이고 매입원가도 증권사 장부 기준이라,
 // 앱 매매내역이 다 모이지 않았거나 원가 기준이 다르면 차이가 난다.
 
@@ -30,7 +31,7 @@ interface Line {
 
 const signed = (v: number) => `${v >= 0 ? '+' : ''}${krw.format(Math.round(v))}원`;
 
-const BROKER_NAME = { kis: '한국투자증권', nh: 'NH투자증권' } as const;
+const BROKER_NAME = { kis: '한국투자증권', nh: 'NH투자증권', kiwoom: '키움증권' } as const;
 
 export default function OfficialRealizedCompare({
   year,
@@ -39,7 +40,7 @@ export default function OfficialRealizedCompare({
   market = 'domestic',
 }: {
   year: number;
-  broker?: 'kis' | 'nh';
+  broker?: 'kis' | 'nh' | 'kiwoom';
   /** 그 증권사의 앱 추정 매도(이름은 처음 KIS 전용일 때 그대로). */
   kisSales: AppSaleLite[];
   /** domestic = 국내 매도, overseas = 미국 매도(원화 기준, KIS만). */
@@ -63,7 +64,9 @@ export default function OfficialRealizedCompare({
     const load =
       broker === 'nh'
         ? api.getNhRealized(`${year}-01-01`, to)
-        : api.getKisRealized(`${year}-01-01`, to).then((r) => ({ ...r, accountIds: [r.accountId] }));
+        : broker === 'kiwoom'
+          ? api.getKiwoomRealized(`${year}-01-01`, to)
+          : api.getKisRealized(`${year}-01-01`, to).then((r) => ({ ...r, accountIds: [r.accountId] }));
     load
       .then((r) => {
         if (cancelled) return;

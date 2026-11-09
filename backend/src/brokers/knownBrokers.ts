@@ -16,6 +16,7 @@ export const KNOWN_BROKERS: KnownBrokerInfo[] = [
   { id: 'toss', displayName: '토스증권', hasApiIntegration: true },
   { id: 'kis', displayName: '한국투자증권', hasApiIntegration: true },
   { id: 'nh', displayName: 'NH투자증권', hasApiIntegration: true },
+  { id: 'kiwoom', displayName: '키움증권', hasApiIntegration: true },
   { id: 'kb', displayName: 'KB증권', hasApiIntegration: false },
   { id: 'samsung', displayName: '삼성증권', hasApiIntegration: false },
   { id: 'mirae', displayName: '미래에셋증권', hasApiIntegration: false },

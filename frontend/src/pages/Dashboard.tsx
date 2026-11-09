@@ -1187,9 +1187,9 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* 입금 기준 원금 — 입출금 내역 API가 있는 토스·NH만(한투·KB는 없음). 모의투자 계좌는 원금 개념이 없어 뺀다. */}
+          {/* 입금 기준 원금 — 입출금 내역 API가 있는 토스·NH·키움만(한투·KB는 없음). 모의투자 계좌는 원금 개념이 없어 뺀다. */}
           {isCurrentBrokerApi &&
-            (selectedBroker === 'toss' || selectedBroker === 'nh') &&
+            (selectedBroker === 'toss' || selectedBroker === 'nh' || selectedBroker === 'kiwoom') &&
             accountId &&
             !accounts.find((a) => a.id === accountId)?.paper && (
             <PrincipalCard

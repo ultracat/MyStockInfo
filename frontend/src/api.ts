@@ -270,6 +270,11 @@ export const api = {
     request<{ accountIds: string[]; rows: KisRealizedRow[]; overseasRows: KisRealizedRow[] | null }>(`/nh/realized?from=${from}&to=${to}`),
   getNhCashFlows: (opts?: { forceRefresh?: boolean }) =>
     request<TossAccountCashFlows[]>(`/nh/cash-flows${opts?.forceRefresh ? '?refresh=true' : ''}`),
+  // 키움증권 — 공식 실현손익(국내 매도 건별 + 미국 원화 기준)과 입금 기준 원금. 실키 미검증.
+  getKiwoomRealized: (from: string, to: string) =>
+    request<{ accountIds: string[]; rows: KisRealizedRow[]; overseasRows: KisRealizedRow[] | null }>(`/kiwoom/realized?from=${from}&to=${to}`),
+  getKiwoomCashFlows: (opts?: { forceRefresh?: boolean }) =>
+    request<TossAccountCashFlows[]>(`/kiwoom/cash-flows${opts?.forceRefresh ? '?refresh=true' : ''}`),
   syncKbHoldings: (accountId?: string) =>
     request<{ synced: number; accountId: string }>('/kb/sync-holdings', {
       method: 'POST',

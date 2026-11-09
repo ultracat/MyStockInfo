@@ -19,7 +19,7 @@ export default function PrincipalCard({
   accountSeqs,
   fxRate,
 }: {
-  broker?: 'toss' | 'nh';
+  broker?: 'toss' | 'nh' | 'kiwoom';
   portfolio: PortfolioOverview;
   /** 대상 계좌(토스 accountSeq / NH 계좌번호) — "전체 계좌"면 실전 계좌 전부. */
   accountSeqs: string[];
@@ -31,7 +31,7 @@ export default function PrincipalCard({
 
   useEffect(() => {
     let cancelled = false;
-    (broker === 'nh' ? api.getNhCashFlows() : api.getTossCashFlows())
+    (broker === 'nh' ? api.getNhCashFlows() : broker === 'kiwoom' ? api.getKiwoomCashFlows() : api.getTossCashFlows())
       .then((f) => !cancelled && setFlows(f))
       .catch((e) => !cancelled && setError((e as Error).message));
     return () => {

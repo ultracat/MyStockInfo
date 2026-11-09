@@ -24,6 +24,7 @@ import type {
   ActiveWarning,
   KisRealizedRow,
   KisStockDetail,
+  TossAccountCashFlows,
   UpcomingDividend,
   TradeRecord,
   WatchlistEntry,
@@ -247,6 +248,8 @@ export const api = {
   getKisRealized: (from: string, to: string) =>
     request<{ accountId: string; rows: KisRealizedRow[] }>(`/kis/realized?from=${from}&to=${to}`),
   getKisStockDetail: (symbol: string) => request<KisStockDetail>(`/kis/stock-detail/${encodeURIComponent(symbol)}`),
+  getTossCashFlows: (opts?: { forceRefresh?: boolean }) =>
+    request<TossAccountCashFlows[]>(`/toss/cash-flows${opts?.forceRefresh ? '?refresh=true' : ''}`),
   syncKbHoldings: (accountId?: string) =>
     request<{ synced: number; accountId: string }>('/kb/sync-holdings', {
       method: 'POST',

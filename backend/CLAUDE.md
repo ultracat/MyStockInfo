@@ -408,6 +408,20 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   (`FHKST01011800`) — **`FID_INPUT_ISCD`를 줘도 다른 종목 뉴스가 섞여 온다**(40건 중 ~25건만 해당 종목) →
   `iscd1~10`에 그 코드가 있는 것만 남긴다. 칸별 실패는 null(나머지는 보여줌). 캐시: 재무 1일·의견/구성 6시간·뉴스 10분·ETF 시세 1분.
 
+## 토스 투자원금 (`brokers/toss/tossCashFlows.ts`, `routes/tossReports.ts`)
+
+`GET /toss/cash-flows`(1시간 캐시, `?refresh=true`) — 계좌별 순입금. 2026-11-09 실데이터 분류:
+- **원금**: `DEPOSIT`/`WITHDRAWAL` 중 `assetClass === null`(종목·상품 없음 = 은행 이체)만. 달러는 그 거래 `exchangeRate`로 환산
+  (없으면 `netPrincipalKrw: null`).
+- **원금 아님**: 종목 붙은 `DEPOSIT`(ETF 분배금·외화세금환급), 종목 붙은 `WITHDRAWAL`(실측 전부 tax>0 — 세금 출금),
+  `BOND` 원리금·세금, `INTEREST`/`FEE`, 환전(`EXCHANGE_IN/OUT` — 한 건이 KR/US 두 줄로 옴), 미결제·취소.
+- **`SECURITIES_TRANSFER_IN/OUT`은 `amount`가 null**(타사 이관·주식배당) — 원금에 못 넣어 건수만 준다. 실데이터는 입고가 많아
+  첫 입금일보다 거래가 훨씬 이르다 — 화면이 "수익이 부풀 수 있음"을 알린다.
+- KIS는 입출금 내역 API가 없어 토스만. 테스트: `test/tossCashFlows.test.ts`.
+
+**KIS 해외주식(계획했던 #2)은 붙이지 않았다** — 해외 기간손익(`TTTS3039R`)·해외 기간별권리 모두 사용자 계좌에 자료가 없었다
+(2026-11-09 실측, KIS 계좌에 해외 보유·거래 없음). 해외 보유가 생기면 잔고(`inquire-balance` 해외판)부터 붙일 것.
+
 ## 토스 시장 정보 보조 기능 (`src/marketInsights.ts`, `routes/marketInfo.ts`)
 
 계좌와 무관한 토스 시장 정보로 만드는 기능 넷 — 토스 키만 있으면 **어느 증권사 보유 종목에든** 적용된다(종목

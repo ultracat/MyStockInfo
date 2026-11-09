@@ -311,6 +311,22 @@ export type KisStockDetail =
       news: StockNewsItem[] | null;
     };
 
+/** 토스 계좌 입출금 요약(백엔드 tossCashFlows.ts) — 은행과 오간 현금만. */
+export interface TossAccountCashFlows {
+  accountSeq: string;
+  accountNo: string | null;
+  label: string | null;
+  firstDate: string | null;
+  depositKrw: number;
+  withdrawalKrw: number;
+  depositUsd: number;
+  withdrawalUsd: number;
+  netPrincipalKrw: number | null;
+  byYear: Array<{ year: string; depositKrw: number; withdrawalKrw: number; depositUsd: number; withdrawalUsd: number }>;
+  transferIn: number;
+  transferOut: number;
+}
+
 export interface WatchlistEntry {
   symbol: string;
   name: string;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { WatchlistEntry } from '../types';
 import { krw2dp, usdFmt } from '../format';
 import PriceChart, { type PricePoint } from '../components/PriceChart';
@@ -49,6 +50,9 @@ export default function Watchlist() {
   useEffect(() => {
     refresh();
   }, []);
+
+  // 메뉴를 옮겼다 돌아오면 목록(현재가)을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패하면 이전 값 유지.
+  useResumeRefresh(() => api.listWatchlist().then(setEntries).catch(() => {}), RESUME_REFRESH_MS);
 
   // 선택된 종목이 바뀔 때마다 월별 종가를 **상장 초기까지 전체** 받아온다
   // (months='all') — 기간 선택(최근 12개월/연도/전체)은 이 데이터를 화면에서

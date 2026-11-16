@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, BrokerAccount, BrokerId, BrokerSummary, StoredTrade, TradeRecord } from '../types';
 import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
 import CollapseToggle from '../components/CollapseToggle';
@@ -461,6 +462,26 @@ export default function Trades() {
       cancelled = true;
     };
   }, [selectedBroker, accountId, year]);
+
+  // 메뉴를 옮겼다 돌아오면 지금 화면(선택한 증권사·계좌·연도·표)을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx).
+  // 선택을 초기화하는 위 effect들은 다시 돌리지 않는다. 실패하면 이전 값을 유지한다.
+  useResumeRefresh(async ({ dataChanged }) => {
+    refreshAllTrades().catch(() => {});
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+    if (dataChanged) api.listBrokers().then(setBrokers).catch(() => {});
+    if (!selectedBroker || selectedBroker === 'ALL' || !accountId) return;
+    try {
+      if (API_BROKER_IDS.includes(selectedBroker)) {
+        const today = new Date().toISOString().slice(0, 10);
+        const to = year === CURRENT_YEAR ? today : `${year}-12-31`;
+        setTrades(await api.getTradeHistory(selectedBroker, accountId, `${year}-01-01`, to));
+      } else {
+        setTrades((await api.listTradesStore({ broker: selectedBroker, accountId })).map(mapStoredTrade));
+      }
+    } catch {
+      // 이전 화면 유지
+    }
+  }, RESUME_REFRESH_MS);
 
   // 로컬 저장소(trades-store)는 실시간 조회가 성공할 때마다 write-through로
   // 갱신되고, CSV로도 채울 수 있다(API 연동이 없는 KB증권 등) — 내보내기는 현재

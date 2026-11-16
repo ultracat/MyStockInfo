@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerAccount, BrokerId, CredentialFieldSpec, CredentialStatus, RestoreBackupResult, SecureStorageStatus } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, TAX_TYPE_LABELS, TAX_TYPE_OPTIONS } from '../accountLabels';
@@ -323,6 +324,10 @@ export default function Settings() {
   useEffect(() => {
     refreshAccounts().catch((e) => setError((e as Error).message));
   }, []);
+
+  // 다른 화면에서 CSV를 가져오는 등 데이터가 바뀌었으면 다시 볼 때 계좌 목록을 다시 모은다(pageActivity.tsx).
+  // 시간만 지난 경우엔 안 한다 — 입력 중이던 별칭 칸을 덮어쓰지 않게.
+  useResumeRefresh(() => refreshAccounts().catch(() => {}), Number.POSITIVE_INFINITY);
 
   async function onSaveLabel(b: BrokerId, accountId: string) {
     const key = accountLabelKey(b, accountId);

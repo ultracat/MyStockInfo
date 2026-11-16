@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, useResumeRefresh, useWhenActive } from '../pageActivity';
 import type { AccountLabel, BrokerId, DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
@@ -302,12 +303,27 @@ export default function Overview() {
     setRefreshing(true);
     try {
       await loadAll({ forceRefresh: true });
+      markRefreshed();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setRefreshing(false);
     }
   }
+
+  // 메뉴를 옮겼다 돌아오면 지금 화면을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패해도 이전 값을 유지한다.
+  const markRefreshed = useResumeRefresh(async () => {
+    setRefreshing(true);
+    try {
+      await loadAll();
+      setAccountLabels(await api.listAccountLabels());
+    } catch {
+      // 이전 화면 유지
+    } finally {
+      setRefreshing(false);
+    }
+  }, RESUME_REFRESH_MS);
+  const whenActive = useWhenActive();
 
   // ---- 1) 전체 계좌 보유종목 비중(도넛) ----
   const holdingSlices = useMemo<DonutSlice[]>(() => {
@@ -349,7 +365,8 @@ export default function Overview() {
           setSectorWeights(r.date ? (r.weights ?? {}) : {});
           setSectorSources(r.sources ?? {});
           setSectorEtfPending(!!r.etfPending && attempt < 6);
-          if (r.etfPending && attempt < 6) timer = setTimeout(() => void load(attempt + 1), 30_000);
+          if (r.etfPending && attempt < 6)
+            timer = setTimeout(() => whenActive('sectors', () => !cancelled && void load(attempt + 1)), 30_000); // 숨겨진 동안은 미룸
         })
         .catch(() => {
           if (cancelled) return;
@@ -361,6 +378,7 @@ export default function Overview() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holdingSymbolsKey]);
 
   const sectorSlices = useMemo<DonutSlice[]>(() => {

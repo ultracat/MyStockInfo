@@ -1,3 +1,4 @@
+import { markDataChanged } from './pageActivity';
 import type {
   AccountLabel,
   AccountTaxType,
@@ -41,11 +42,17 @@ const BASE_URL = `http://127.0.0.1:${BACKEND_PORT}/api`;
 const API_TOKEN = HASH_PARAMS.get('token') ?? '';
 const AUTH_HEADER = { Authorization: `Bearer ${API_TOKEN}` };
 
+// 화면이 들어올 때 저절로 부르는 쓰기 요청 — 사용자가 데이터를 바꾼 게 아니라서 다른 화면의 "다시 보일 때 갱신"을 앞당기지 않는다
+// (pageActivity.tsx의 markDataChanged). 배당 동기화는 바뀐 게 있을 때만 Dividends.tsx가 직접 알린다.
+const BACKGROUND_WRITES = [/^\/dividends\/sync$/, /^\/portfolio-snapshots$/, /^\/kb\/sync-/, /^\/google\/(connect|sync\/[a-z]+\/export)$/];
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...AUTH_HEADER },
   });
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method !== 'GET' && !BACKGROUND_WRITES.some((re) => re.test(path.split('?')[0]))) markDataChanged();
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     const message = body.error ?? `요청 실패: ${res.status}`;

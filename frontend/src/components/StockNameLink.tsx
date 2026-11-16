@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { StockLinkEntry } from '../types';
 import { resolveStockLink, stockLinkMap } from '../stockLinks';
 
@@ -42,6 +43,8 @@ export function useStockLinkResolver(): (symbol: string, currency: string | null
   useEffect(() => {
     api.listStockLinks().then(setEntries).catch(() => {});
   }, []);
+  // 화면을 다시 볼 때(종목 링크 화면에서 바꿨을 수 있다) — pageActivity.tsx
+  useResumeRefresh(() => api.listStockLinks().then(setEntries).catch(() => {}), RESUME_REFRESH_MS);
   const saved = useMemo(() => stockLinkMap(entries), [entries]);
   return useCallback((symbol, currency) => resolveStockLink(symbol, currency, saved).url, [saved]);
 }

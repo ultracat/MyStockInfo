@@ -10,6 +10,21 @@ import Watchlist from './pages/Watchlist';
 import StockLinks from './pages/StockLinks';
 import Settings from './pages/Settings';
 import About from './pages/About';
+import { PageActivity } from './pageActivity';
+
+// 페이지 id → 컴포넌트. 한 번 연 페이지는 지우지 않고 숨겨 둔다(아래 `visited`, pageActivity.tsx).
+const PAGES = {
+  overview: Overview,
+  dashboard: Dashboard,
+  stockReturns: StockReturns,
+  dividends: Dividends,
+  trades: Trades,
+  realizedGains: RealizedGains,
+  watchlist: Watchlist,
+  stockLinks: StockLinks,
+  settings: Settings,
+  about: About,
+} as const;
 
 type Page =
   | 'overview'
@@ -258,11 +273,31 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  // 페이지를 옮기면 스크롤이 전 페이지의 위치에 남아 있다 — 스크롤 주체가
-  // `.main`에서 `.zoom-viewport`로 옮겨갔으므로 여기서 맨 위로 되돌린다.
+  // 한 번 연 페이지는 지우지 않고 숨겨 둔다 — 돌아오면 이전 데이터·필터가 그대로 바로 보이고, 페이지가 뒤에서 갱신한다
+  // (pageActivity.tsx). 예전엔 메뉴를 옮길 때마다 페이지를 새로 만들어 매번 "불러오는 중"부터 다시 시작했다.
+  const [visited, setVisited] = useState<Page[]>(['overview']);
+
+  // 스크롤은 `.zoom-viewport` 하나가 맡아서 페이지끼리 공유된다 — 떠날 때 위치를 적어 두고 돌아오면 되돌린다
+  // (처음 여는 페이지는 맨 위). 숨긴 페이지가 빠지면서 높이가 바뀌므로 sizer 높이가 다시 재진 뒤(두 프레임 뒤)에 맞춘다.
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const scrollByPage = useRef<Partial<Record<Page, number>>>({});
+  function goTo(next: Page) {
+    if (next === page) return;
+    scrollByPage.current[page] = viewportRef.current?.scrollTop ?? 0;
+    setVisited((v) => (v.includes(next) ? v : [...v, next]));
+    setPage(next);
+  }
   useEffect(() => {
-    viewportRef.current?.scrollTo(0, 0);
+    const top = scrollByPage.current[page] ?? 0;
+    viewportRef.current?.scrollTo(0, top);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => viewportRef.current?.scrollTo(0, top));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
   }, [page]);
 
   return (
@@ -284,7 +319,7 @@ export default function App() {
             <button
               key={item.id}
               className={`nav-item ${page === item.id ? 'active' : ''}`}
-              onClick={() => setPage(item.id)}
+              onClick={() => goTo(item.id)}
               title={collapsed ? item.label : undefined}
             >
               <Icon />
@@ -301,16 +336,16 @@ export default function App() {
           style={{ height: mainHeight > 0 ? mainHeight * zoom : undefined }}
         >
           <main className="main" ref={mainRef}>
-            {page === 'overview' && <Overview />}
-            {page === 'dashboard' && <Dashboard />}
-            {page === 'stockReturns' && <StockReturns />}
-            {page === 'dividends' && <Dividends />}
-            {page === 'trades' && <Trades />}
-            {page === 'realizedGains' && <RealizedGains />}
-            {page === 'watchlist' && <Watchlist />}
-            {page === 'stockLinks' && <StockLinks />}
-            {page === 'settings' && <Settings />}
-            {page === 'about' && <About />}
+            {visited.map((id) => {
+              const PageComponent = PAGES[id];
+              return (
+                <div key={id} style={id === page ? undefined : { display: 'none' }}>
+                  <PageActivity active={id === page}>
+                    <PageComponent />
+                  </PageActivity>
+                </div>
+              );
+            })}
           </main>
         </div>
       </div>

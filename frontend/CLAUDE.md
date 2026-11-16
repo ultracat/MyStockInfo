@@ -101,7 +101,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   포트폴리오를 펼칠 때 붙인다). IRP처럼 memo로 나뉜 같은 종목은 계좌 안에서 합친다. 행의 선택 필드 `label`(심볼 없는 행의
   제목)·`details`(행 아래에 펼치는 하위 내역)는 계좌별 보기용이다 — 계좌 한 줄
   아래에 그 계좌의 종목별 배당금을 펼친다. 계좌별 묶음은 Overview.tsx의
-  `buildAccountDividendRows(날짜 접두어)`(월별 `2026-10` / 연간 `2026` 공용, 달러는
+  `calc/overview.ts`의 `accountDividendRows(…, 날짜 접두어)`(월별 `2026-10` / 연간 `2026` 공용, 달러는
   기록마다 지급월 평균 환율)가 만들고, 배당 기록의 `accountId`가 토스처럼 표시용 계좌번호
   (별칭의 `accountNumber`)로 적혀 있으면 내부 accountId로 되돌려 같은 계좌로 묶는다.
 - `src/components/MonthlyReturnChart.tsx` — 월별 diverging 막대(0% 기준선 위/아래로
@@ -229,7 +229,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   받은, 저장된 자격증명 중 `kind === 'account'`인 필드(KIS의 계좌번호/상품코드, KB의
   계좌번호)만 보여준다 — appKey/Client ID 같은 나머지 비밀 아닌 필드는 이 표에서도
   안 보여준다(백엔드가 애초에 응답에서 뺌, `backend/CLAUDE.md`의 `credentialFields.ts`
-  참고). 자격증명 저장/해제(`onSaveCredential`/`onClearCredential`)가 성공하면
+  참고). 자격증명 저장/해제(`ApiKeyCard`의 저장 / `Settings.tsx`의 `onClearCredential`)가 성공하면
   `refresh()`를 다시 불러서 이 컬럼도 같이 갱신된다.
   "계좌 별칭 · 세금 유형"
   카드는 `(broker, accountId) → label`(별칭)과 `(broker, accountId) → taxType`
@@ -259,7 +259,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   **"한국수출입은행 환율 인증키" 카드**(2026-11-16 — 다시 사용자 입력으로): 제목 옆 "입력 필요/저장됨", password 입력칸,
   "확인 후 저장"(백엔드가 실제 조회로 키를 확인 — 틀린 키는 400, 한도 마감·연결 실패는 저장 + `warning`), "지우기".
   **키 값은 받아 오지 않는다**(`getEximbankKeyStatus()`는 `{configured}`뿐) — 저장 뒤 입력칸은 비우고 "바꿀 때만 입력".
-  결과 문구는 화면 맨 위 공용 message가 아니라 카드 안(`eximbankNote`)에 — 카드가 아래쪽이라 위 문구는 안 보인다.
+  결과 문구는 화면 맨 위 공용 message가 아니라 카드 안(`EximbankKeyCard`의 `note`)에 — 카드가 아래쪽이라 위 문구는 안 보인다.
   키링 없는 Linux면 저장 버튼을 막는다(`secureStorage.available`). `Dividends.tsx`는 키가 없고 달러 배당이 있으면
   화면 위 `notice`로 알린다(`loadEximbankStatus`, 다시 보일 때도 갱신 — 설정에서 키를 넣고 돌아오면 사라진다).
   ⚠ 이력: 이 칸은 ① 처음엔 여기서 입력(평문 저장) → ② 개발자 키를 빌드에 내장하며 없앴다가 → ③ 다시 생겼다.
@@ -267,8 +267,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   (`backend/CLAUDE.md`의 "환율 조회" 절). 그 아래 "USD/KRW 환율" 카드는 수동 환율(`1 USD = ? KRW`) 입력이다.
   "Google Sheets 연동" 카드는 **먼저 사용자 OAuth 클라이언트(Client ID/Secret)를 넣는다**(2026-11-16 — 예전엔 빌드에 박혀 입력칸이
   없었지만 배포본엔 실제로 들어간 적이 없었다, `backend/CLAUDE.md`의 "Google Sheets 연동" 절). 클라이언트가 없거나 "바꾸기" 중이면
-  입력칸(`googleClientEditing`), 있으면 `clientId`만 보여 주고 "바꾸기/지우기". Secret은 받아 오지 않는다. 클라이언트를 바꾸면 서버가
-  연결을 끊고 `disconnected: true`를 준다 → 카드 안 문구(`googleClientNote`)로 다시 연결하라고 알린다. 그다음 `api.getGoogleStatus()`로 연결 상태(`connectStatus`: `idle`/
+  입력칸(`GoogleSheetsCard`의 `editing`), 있으면 `clientId`만 보여 주고 "바꾸기/지우기". Secret은 받아 오지 않는다. 클라이언트를 바꾸면 서버가
+  연결을 끊고 `disconnected: true`를 준다 → 카드 안 문구(`clientNote`)로 다시 연결하라고 알린다. 그다음 `api.getGoogleStatus()`로 연결 상태(`connectStatus`: `idle`/
   `waiting`/`connected`/`error`)를 1.5초 간격 재귀 `setTimeout`으로 폴링하다가
   `waiting`이 아니게 되면 멈춘다. "Google 계정 연결" 클릭 시 `api.connectGoogle()`이
   시스템 브라우저를 열게 만들고(백엔드가 즉시 응답, 실제 로그인은 그 브라우저에서),
@@ -387,6 +387,24 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   하지 않는 쓰기.
 - 프론트엔드 테스트: `frontend/test/*.test.ts`(`npm run test -w frontend`, 루트 `npm test`가 같이 돈다). `api.ts`는 `window`를 읽으니
   테스트할 로직은 api를 import하지 않는 순수 모듈(`fx.ts`, `csv.ts`)에 둔다.
+
+### 2026-11-17 큰 화면 파일 분할
+큰 화면 파일 다섯 개를 나눴다(동작 그대로 — 실데이터 화면 지문·카드 글자 해시를 분할 전후로 비교해 확인). **화면 본체엔 여러 카드가 같이
+쓰는 상태·선택·배치만** 두고, 데이터 조회는 `use*` 훅, 계산은 `calc/`(테스트), 카드·폼·표는 화면 이름의 하위 폴더에 둔다.
+아래 "페이지" 절의 설명은 기능 기준이라 함수가 지금 어느 파일에 있는지는 이 표를 본다.
+
+| 화면 | 본체 | 하위 폴더 | 계산 |
+|---|---|---|---|
+| 대시보드 | `Overview.tsx` | `overview/`: `useOverviewData`(조회·환율·월별 종가/월평균 환율 지연 로딩, `loadAll`), `HoldingsCards`(보유·섹터 비중 + 상세 팝업), `DividendCards`, `TrendCards` | `calc/overview.ts` — 비중·계좌별 묶음·`accountDividendRows`·`heldDividendTotal`·`monthlyAmountRows`(평단가·월 종가 맵 포함)·`indexComparisonRows` |
+| 보유 종목 | `Dashboard.tsx` | `holdings/`: `useHoldings`(선택·포트폴리오·1분 새로고침·`loadLivePortfolioAll`·KB 동기화), `HoldingsTransfer`(CSV·Sheets), `StatTiles`(`AmountTile`·`RateTile`) | `calc/portfolio.ts` — `holdingRows`(비중·배당 포함 손익), `dividendTotals` |
+| 배당금 | `Dividends.tsx` | `dividends/`: `useUpcomingDividends`, `useDividendSync`(`isRowSyncOwned`), `useInvestedByBroker`, `DividendSummaryCard`, `DividendAddCard`, `DividendListCard`, `DividendTransferBar` | `calc/dividends.ts` — `upcomingMonthlyRows`, `brokerDividendSums`, `brokerLines`, `grandTotal` |
+| 매매내역 | `Trades.tsx` | `trades/`: `useTradesData`(선택·조회·KB 동기화 + 저장소를 바꾼 뒤 화면 맞추기 `refreshAfter*`), `TradesToolbar`, `TradeAddCard`, `TradeListCard` | `calc/trades.ts` — `tradeBuckets`, `tradeTotals`, `toDisplayTrades` |
+| 설정 | `Settings.tsx` | `settings/`: 카드 7개(`BrokerStatusCard`·`ApiKeyCard`·`EximbankKeyCard`·`FxRateCard`·`GoogleSheetsCard`·`AccountLabelsCard`·`BackupCard`), `useSettingsAccounts`(알려진 계좌 목록), `notify.ts`(맨 위 공용 안내) | — |
+
+- **연도·보기를 바꾸면 첫 페이지로**: 페이지 번호는 이제 목록 카드 안에 있어서, 위 화면의 필터 값(`year`·`periodKey`)이 바뀐 걸
+  **렌더 중에** 알아채 `setPage(1)`한다(effect가 아니라 "이전 값을 state로 들고 비교" — React 권장 패턴). 필터 select의 onChange에서 하던 일이다.
+- 대시보드·배당금의 월 팝업 종목별 합계는 같은 `dividendSymbolRows`(calc/overview.ts)를 쓴다 — 예전엔 두 파일에 같은 계산이 복사돼 있었다.
+- 같은 맥락의 백엔드 분할: `kis/kisClient.ts`·`toss/tossClient.ts`(`backend/CLAUDE.md`).
 
 이 프로젝트 화면 대부분(Dashboard/Dividends/Trades)이 아래 패턴을 반복해서 쓴다 —
 페이지별 절에서는 그 패턴을 벗어나는 부분만 적는다.
@@ -611,7 +629,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   있으면 원화/달러/합계(환산) 3행(별도 "구분" 컬럼 없이 첫 컬럼 안에 들여쓴 라벨로
   표현). **"합계(환산)" 행의 배당금은 투자금과 환산 방식이 다르다** —
   투자금(매입원가)은 지금 이 순간의 값이라 `effectiveFxRate`(오늘/수동 환율)
-  하나로 환산하지만, 배당금은 `brokerDividendKrwByBroker`(useMemo)가 기록 하나
+  하나로 환산하지만, 배당금은 `calc/dividends.ts`의 `brokerDividendSums`(`krwTotal`)가 기록 하나
   하나를 그 기록의 지급월 평균 환율로 먼저 환산한 뒤 브로커별로 더한 값이다
   (브로커 합계를 낸 뒤 환율 하나로 한꺼번에 곱하면 서로 다른 달의 환율을 반영할
   수 없어서 — 사용자 요청으로 추가, `backend/CLAUDE.md`의 "배당금 월평균 환율"

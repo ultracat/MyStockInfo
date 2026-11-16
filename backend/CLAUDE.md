@@ -123,6 +123,11 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   "증권사 연동 상태" 표 "계좌 정보" 컬럼에 보여준다.
 - `rateLimiter.ts` — `RateLimiter`(직렬 스케줄링 + `learnFromHeaders` 자가보정 +
   `penalizeUntil`), `withRateLimitRetry`.
+- **`toss/tossClient.ts`·`kis/kisClient.ts`는 2026-11-17부터 다시 내보내기만 하는 진입 파일이다**(둘 다 1,000줄 안팎이라 나눴다).
+  다른 코드는 계속 이 이름으로 import하고, 실제 코드는 같은 폴더의 `tossCore`(응답 타입·숫자 변환·토큰·요청)·`tossAccount`·
+  `tossMarketInfo`·`tossOrders`·`tossQuotes`·`tossMonthlyClose`·`tossNames`, `kisCore`(기본 URL·속도 제한·토큰 파일 캐시·`kisGet`)·
+  `kisDomestic`·`kisStockDetail`·`kisOverseas`에 있다. 토큰 캐시 같은 모듈 상태는 각 `*Core.ts` 한 곳이다. 아래 "`kisClient.ts`의 …"는 그 함수가
+  든 파일로 읽는다. 새 함수는 맞는 파일에 두고 진입 파일엔 손대지 않는다(`export *`라 자동으로 나간다).
 - `toss/tossClient.ts` — OAuth2 client_credentials. **금액/수량/비율 필드는 전부 문자열**
   (`{type:"string",format:"decimal"}`, 공식 OpenAPI 스펙) — `toNum()`/`parsePrice()`가
   이 파일 경계에서 number로 변환하므로, 그 밖 코드는 항상 진짜 number를 받는다는 전제.

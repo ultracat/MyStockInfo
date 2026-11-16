@@ -6,6 +6,9 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 
 ## 진입점
 
+- 비밀 값 저장소 지도(전부 OS 키체인 봉투 = `secureStorage.ts`, 전부 **async**): 증권사 키 `credentials.ts`(브로커별 봉투 맵),
+  Google 토큰 `google/store.ts`, 접속 토큰 `secretJsonStore.ts`(못 쓰면 지움), 사용자 입력 키 `sealedValueStore.ts`
+  (`fx/eximbankKey.ts`·`google/clientCredentials.ts`). 백업은 `backup.ts`의 `KEYCHAIN_FILES`·`secrets.enc.json`.
 - `src/index.ts` — `startServer(port = 4317, apiToken?)`. `app.listen`의 `'error'` 이벤트를 반드시
   처리한다(안 하면 Electron이 "A JavaScript error occurred" 팝업을 띄운다). `apiToken`을
   안 주면(단독 실행) 새로 만들어 콘솔에 찍는다.
@@ -27,7 +30,7 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   `POST /google/connect`가 409, 설정 화면은 `GET /settings/secure-storage`로 미리 경고하고
   저장/연결 버튼을 막는다). 예전엔 경고 로그만 찍고 평문으로 저장했다. ⚠ 키링 없는
   Linux에서 Chromium은 `basic_text`(소스에 박힌 고정 키) 백엔드로 떨어져 사실상 평문이라
-  `isEncryptionAvailable()`만으로는 못 거른다 — `getSelectedStorageBackend()`가
+  암호화 가능 여부(`isAsyncEncryptionAvailable()`)만으로는 못 거른다 — `getSelectedStorageBackend()`가
   `basic_text`/`unknown`이면 거부한다. 평문 저장은 Electron 밖(단독 dev 실행)에서만
   허용된다. 이미 평문으로 저장된 항목은 그대로 읽히고(사용자가 해제할 수 있게),
   나중에 키링이 생기면 다음 읽기 때 암호화해 다시 쓴다(`openJson`의 `reseal`). 토큰이 없는
@@ -71,8 +74,9 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   **`google/store.ts`의 `readState()`도 같은 패턴**으로 Google OAuth 상태(암호화된
   refresh/access token)를 캐시한다 — Sheets API 호출 하나하나가 그 전에 거치는
   `getValidAccessToken()`이 매번 이걸 부르므로, 캐시 없인 내보내기/가져오기 한 번에
-  `safeStorage.decryptString`(OS 키체인 동기 호출)이 여러 번(스프레드시트 확인, 탭
-  생성, 읽기/쓰기 등 호출 수만큼) 반복됐다.
+  키체인 복호화가 여러 번(스프레드시트 확인, 탭 생성, 읽기/쓰기 등 호출 수만큼) 반복됐다(당시엔 동기
+  `decryptString`이라 메인 프로세스를 붙잡았고, 지금은 `decryptStringAsync`라도 키체인 왕복이라 캐시를 유지한다).
+  `SealedValueStore`(환율 키·Google 클라이언트)도 같은 캐시를 쓴다.
 - **브로커 토큰 발급(`toss/tossClient.ts`/`kis/kisClient.ts`/`kb/kbClient.ts`의
   `getToken`/`fetchToken`) 전부 in-flight 프로미스를 공유한다** — 캐시된 토큰이
   만료/부재일 때 두 요청이 동시에 들어오면(예: 화면 두 개가 거의 동시에 API를
@@ -296,7 +300,7 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 (`routes/importResult.ts` — 수동 작성 CSV라 오타가 흔해서, 몇백 건 중 실패한 몇 건만
 골라 고칠 수 있게).
 
-**행 소유권(`brokers/rowOwnership.ts`의 `isSyncOwned`)**: 토스/KIS의 모든 계좌와 KB 연동
+**행 소유권(`brokers/rowOwnership.ts`의 `loadSyncOwnership()` — KB 연동 계좌 id를 한 번 비동기로 읽고 행마다 쓰는 동기 판정 함수를 돌려준다)**: 토스/KIS의 모든 계좌와 KB 연동
 계좌 하나는 **실시간 조회·동기화만 쓴다** — 보유종목/매매내역 가져오기(CSV·Sheets
 둘 다)는 그 행을 이름/시세 조회 전에 걸러 `skipped`로 세고 쓰지 않는다(실패 아님 —
 내보낸 파일을 그대로 다시 가져오면 늘 생긴다). 수동 입력 브로커(삼성/미래에셋)와 KB의
@@ -1125,7 +1129,7 @@ github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포
 
 `npm test`(루트) 또는 `npm run test -w backend` — Node 내장 `node:test`를 `tsx --test`로
 돌린다(별도 테스트 프레임워크 없음). 데이터를 잃거나 중복이 생기는 규칙만 골라 덮는다:
-행 소유권(`isSyncOwned`, 배당은 `isDividendSyncOwned`), Sheets 전체 교체의 전부 취소·API 행 보존, 배당 동기화
+행 소유권(`loadSyncOwnership`, 배당은 `isDividendSyncOwned`), Sheets 전체 교체의 전부 취소·API 행 보존, 배당 동기화
 (토스·KIS 분류, 우선주 코드, API 우선 교체·id 이어받기·멱등), 매매내역 중복
 제거(가져오기 id 이어받기, 실시간 조회의 UUID 사본 제거),
 `normalizeSymbol`, `SAFE_FILENAME_RE`, 백업 비밀번호 암호화·복원(비밀번호가 틀리면 아무것도

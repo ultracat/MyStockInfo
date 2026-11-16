@@ -176,6 +176,9 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
 
 ### Mac (`build.mac`, `npm run package:mac`)
 
+- **macOS 13(Ventura) 이상**이 필요하다 — Electron 44부터 macOS 12 지원이 빠졌다(지금 Electron 45, 2026-11-16).
+  README·매뉴얼 설치 표에 같은 내용이 있다. Electron 메이저를 올릴 땐 공식 breaking-changes에서 최소 OS를 다시 본다.
+
 - **코드 서명/공증 안 함** (`mac.identity: null`). Apple Developer ID 인증서가 없어서
   의도적으로 뺐다 — 만든 사람 본인 Mac에서 실행하는 건 문제없지만(첫 실행 시 우클릭 →
   열기 필요, Gatekeeper 경고), 다른 사람에게 배포하면 "손상되었거나 확인할 수 없는
@@ -413,6 +416,8 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 
 `backend/src/credentials.ts`가 `electron.safeStorage`와 `electron.app.getPath('userData')`를
 쓰기 때문에, 백엔드가 이 프로세스 밖(순수 Node)에서 돌면 자격증명이 암호화되지 않는다.
+safeStorage는 **비동기 API만** 쓴다(Electron 45에서 동기 API 사용 중단 예고, 46에서 제거 — `backend/CLAUDE.md`의
+`secureStorage.ts` 항목). Electron을 46 이상으로 올릴 때 동기 API를 다시 들이지 않았는지 확인한다.
 이 폴더의 존재 이유가 바로 그것 — 절대 백엔드를 별도 자식 프로세스로 스폰하는 방식으로
 바꾸지 않는다.
 

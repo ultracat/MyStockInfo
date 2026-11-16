@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { effectiveRate } from '../fx';
+import { loadUsdKrwRates } from '../fxLoader';
+import { ALL_ACCOUNTS, buildPortfolioFromStored, mergePortfolios } from '../calc/portfolio';
 import { RESUME_REFRESH_MS, usePageActive, useResumeRefresh } from '../pageActivity';
 import type {
   AccountLabel,
@@ -33,10 +36,6 @@ const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-
 const AUTO_REFRESH_MS = 60_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 10_000;
 
-/** 계좌 select의 특수값 — "이 브로커의 계좌를 전부 합쳐서 한 화면에 보여준다"는
- *  뜻이다(KB증권처럼 한 브로커에 계좌가 여러 개인 경우를 위함). 실제 accountId와
- *  충돌하지 않도록 사람이 입력할 리 없는 문자열로 뒀다. */
-const ALL_ACCOUNTS = '__ALL_ACCOUNTS__';
 
 // CSV 전용 브로커(KB/삼성/미래에셋 — API 연동 없이 CSV로만 데이터 관리, frontend/
 // brokers.ts의 API_BROKER_IDS 참고)는 라이브 PortfolioOverview가 없다 — 로컬
@@ -44,113 +43,6 @@ const ALL_ACCOUNTS = '__ALL_ACCOUNTS__';
 // 그대로 합산하기만 하면 되므로(홀딩스토어 자체가 이미 통화별 매입/평가/손익을
 // 갖고 있음), AmountTile/RateTile/HoldingsTable은 API 브로커용과 완전히 동일하게
 // 재사용된다 — 이 함수가 만드는 모양만 맞으면 그 아래 렌더링은 손댈 필요가 없다.
-function buildPortfolioFromStored(broker: BrokerId, accountId: string, rows: StoredHolding[]): PortfolioOverview {
-  let purchaseKrw = 0;
-  let purchaseUsd = 0;
-  let marketKrw = 0;
-  let marketUsd = 0;
-  let plKrw = 0;
-  let plUsd = 0;
-
-  for (const r of rows) {
-    if (r.currency === 'USD') {
-      purchaseUsd += r.purchaseAmount;
-      marketUsd += r.marketValue;
-      plUsd += r.profitLossAmount;
-    } else {
-      purchaseKrw += r.purchaseAmount;
-      marketKrw += r.marketValue;
-      plKrw += r.profitLossAmount;
-    }
-  }
-
-  const hasUsd = purchaseUsd !== 0 || marketUsd !== 0;
-
-  return {
-    broker,
-    accountId,
-    totalPurchaseAmountKrw: purchaseKrw,
-    totalPurchaseAmountUsd: hasUsd ? purchaseUsd : null,
-    totalMarketValueKrw: marketKrw,
-    totalMarketValueUsd: hasUsd ? marketUsd : null,
-    totalProfitLossKrw: plKrw,
-    totalProfitLossUsd: hasUsd ? plUsd : null,
-    profitLossRate: purchaseKrw > 0 ? plKrw / purchaseKrw : null,
-    // CSV/Sheets 전용 브로커는 예수금을 알 방법이 없다 — 항상 null(화면에
-    // "미지원"으로 고정 표시, AmountTile 대신 렌더링 분기 참고).
-    cashBalanceKrw: null,
-    cashBalanceUsd: null,
-    positions: rows.map((r) => ({
-      symbol: r.symbol,
-      name: r.name,
-      market: r.market,
-      currency: r.currency,
-      quantity: r.quantity,
-      lastPrice: r.lastPrice,
-      averagePurchasePrice: r.averagePurchasePrice,
-      purchaseAmount: r.purchaseAmount,
-      marketValue: r.marketValue,
-      profitLossAmount: r.profitLossAmount,
-      profitLossRate: r.profitLossRate,
-      commission: r.commission,
-      tax: r.tax,
-      memo: r.memo,
-    })),
-  };
-}
-
-/** "전체 계좌" 모드 전용 — 계좌별로 이미 만들어진 PortfolioOverview 여러 개를 하나로
- *  합친다. 금액/손익은 통화별로 그대로 더하고(각 overview가 이미 hasUsd 여부를 KRW/USD
- *  로 나눠 갖고 있음), 포지션은 이어붙이되 어느 계좌에서 왔는지 `accountId`를 남겨서
- *  HoldingsTable이 "계좌" 열로 구분해 보여줄 수 있게 한다. */
-function mergePortfolios(
-  broker: BrokerId,
-  parts: { accountId: string; overview: PortfolioOverview }[]
-): PortfolioOverview {
-  let purchaseKrw = 0;
-  let marketKrw = 0;
-  let plKrw = 0;
-  let purchaseUsd = 0;
-  let marketUsd = 0;
-  let plUsd = 0;
-  let hasUsd = false;
-  // 예수금은 계좌마다 있을 수도 없을 수도 있다(CSV 전용 계좌 중 아직 수동
-  // 입력을 안 한 경우) — 하나라도 값이 있으면 나머지는 0으로 취급해 더하고,
-  // 전부 없으면(null) "정보 없음"으로 남겨 사용자가 값이 아예 없다는 걸 알게 한다.
-  let cashKrw: number | null = null;
-  let cashUsd: number | null = null;
-  const positions: HoldingPosition[] = [];
-
-  for (const { accountId, overview } of parts) {
-    purchaseKrw += overview.totalPurchaseAmountKrw;
-    marketKrw += overview.totalMarketValueKrw;
-    plKrw += overview.totalProfitLossKrw;
-    if (overview.totalPurchaseAmountUsd !== null || overview.totalMarketValueUsd !== null) {
-      hasUsd = true;
-      purchaseUsd += overview.totalPurchaseAmountUsd ?? 0;
-      marketUsd += overview.totalMarketValueUsd ?? 0;
-      plUsd += overview.totalProfitLossUsd ?? 0;
-    }
-    if (overview.cashBalanceKrw !== null) cashKrw = (cashKrw ?? 0) + overview.cashBalanceKrw;
-    if (overview.cashBalanceUsd !== null) cashUsd = (cashUsd ?? 0) + overview.cashBalanceUsd;
-    for (const p of overview.positions) positions.push({ ...p, accountId });
-  }
-
-  return {
-    broker,
-    accountId: ALL_ACCOUNTS,
-    totalPurchaseAmountKrw: purchaseKrw,
-    totalPurchaseAmountUsd: hasUsd ? purchaseUsd : null,
-    totalMarketValueKrw: marketKrw,
-    totalMarketValueUsd: hasUsd ? marketUsd : null,
-    totalProfitLossKrw: plKrw,
-    totalProfitLossUsd: hasUsd ? plUsd : null,
-    profitLossRate: purchaseKrw > 0 ? plKrw / purchaseKrw : null,
-    cashBalanceKrw: cashKrw,
-    cashBalanceUsd: cashUsd,
-    positions,
-  };
-}
 
 const HOLDINGS_CSV_HEADER = [
   'broker',
@@ -423,16 +315,11 @@ export default function Dashboard() {
         // 모든 증권사에서 환율을 조회한다(예전엔 토스만 — 다른 증권사의 달러 종목이 "환율 미적용"이 됐다).
         // 환율 조회 자체는 토스 연동 여부와 무관하게 getUsdKrwRate가 토스→수출입은행 순으로 처리한다(아래).
         {
-          const fx = await api.getFxRate();
+          // 수동·실시간을 동시에(fxLoader.ts — 던지지 않음). 실시간이 없으면 수동 환율, 그것도 없으면 달러 종목은 비중에서 빠진다.
+          const { manual, live } = await loadUsdKrwRates();
           if (cancelled) return;
-          setManualFxRate(fx.usdKrwRate);
-
-          // Non-fatal: live rate is a nice-to-have (falls back to the
-          // manual rate above, or to excluding USD positions from weight).
-          // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md
-          // 참고) 실패해도 예외 없이 {rate:null}을 준다.
-          const live = await api.getUsdKrwRate();
-          if (!cancelled && live.rate) setLiveFxRate(live.midRate ?? live.rate);
+          setManualFxRate(manual);
+          if (live !== null) setLiveFxRate(live);
         }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -506,15 +393,22 @@ export default function Dashboard() {
 
   // "전체 계좌"(API 브로커) — 계좌마다 실시간 조회를 병렬로 호출해 합친다. 계좌 수가
   // 몇 개뿐이라(KB증권 기준 3개) 초당 4~5건 한도에 걸릴 걱정은 없다.
-  async function loadLivePortfolioAll(broker: BrokerId, opts?: { forceRefresh?: boolean }): Promise<PortfolioOverview> {
-    // 모의투자 계좌(NH)는 "전체 계좌" 합계에 넣지 않는다 — 실제 자산이 아니다.
-    const parts = await Promise.all(
-      accounts
-        .filter((a) => !a.paper)
-        .map(async (a) => ({ accountId: a.id, overview: await api.getPortfolio(broker, a.id, opts) }))
-    );
-    return mergePortfolios(broker, parts);
-  }
+  // 계좌 목록은 ref로 읽는다 — 1분 자동 새로고침 타이머(아래 effect)가 만들어질 때의 계좌 목록을 붙잡고 있지 않게
+  // (예전엔 함수가 렌더마다 새로 만들어져 타이머가 옛 목록으로 합계를 냈다). 함수는 한 번만 만든다.
+  const accountsRef = useRef(accounts);
+  accountsRef.current = accounts;
+  const loadLivePortfolioAll = useCallback(
+    async (broker: BrokerId, opts?: { forceRefresh?: boolean }): Promise<PortfolioOverview> => {
+      // 모의투자 계좌(NH)는 "전체 계좌" 합계에 넣지 않는다 — 실제 자산이 아니다.
+      const parts = await Promise.all(
+        accountsRef.current
+          .filter((a) => !a.paper)
+          .map(async (a) => ({ accountId: a.id, overview: await api.getPortfolio(broker, a.id, opts) }))
+      );
+      return mergePortfolios(broker, parts);
+    },
+    []
+  );
 
   // KB증권 API 연동 계좌를 백그라운드에서 동기화한다 — 화면은 이미 로컬
   // 저장소로 즉시 그려져 있으므로(위 CSV 전용 브로커 분기), 이건 그 위에
@@ -608,7 +502,7 @@ export default function Dashboard() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [selectedBroker, accountId]);
+  }, [selectedBroker, accountId, loadLivePortfolioAll]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
@@ -882,7 +776,7 @@ export default function Dashboard() {
   // A manually-entered rate (Settings) always overrides the live one, in
   // case the user wants to pin a specific rate; otherwise fall back to
   // Toss's GET /api/v1/exchange-rate (USD->KRW mid rate).
-  const effectiveFxRate = manualFxRate ?? liveFxRate;
+  const effectiveFxRate = effectiveRate(manualFxRate, liveFxRate);
 
   // 개별 타일의 금액(예: 손익금액이 우연히 0)이 아니라 포트폴리오가 실제로 달러
   // 투자금을 갖고 있는지로 판단 — AmountTile/RateTile 문서 주석 참고.

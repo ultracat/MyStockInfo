@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { effectiveRate, toKrw as fxToKrw } from '../fx';
+import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh, useWhenActive } from '../pageActivity';
 import type { AccountLabel, BrokerId, DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
@@ -12,7 +14,7 @@ import MonthlyInvestmentChart, { type MonthlyInvestmentRow } from '../components
 import NetWorthChart from '../components/NetWorthChart';
 import PurchaseMarketTile from '../components/PurchaseMarketTile';
 import { dividendKey, groupDividendsByAccountSymbol } from '../dividendMatch';
-import { krw } from '../format';
+import { formatDividendMeta, formatKrwValue } from '../format';
 
 function todayDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -45,16 +47,6 @@ interface FlatHolding {
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
-
-function formatKrwValue(v: number) {
-  return `${krw.format(Math.round(v))}원`;
-}
-
-/** 배당내역 팝업의 종목별 행 meta — 지금 보유 중이 아닌 종목(전량 매도 등)은
- *  수량 정보가 없어 배당 건수만 보여준다. */
-function formatDividendMeta(count: number, quantity: number | undefined) {
-  return quantity ? `배당 ${count}건 · 보유 ${quantity}주` : `배당 ${count}건`;
-}
 
 /**
  * 대시보드 — 전체 브로커/계좌를 한데 합친 요약 화면. 다른 화면들(보유 종목/배당금/
@@ -89,15 +81,16 @@ export default function Overview() {
   const [refreshing, setRefreshing] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
 
-  const effectiveFxRate = manualFxRate ?? liveFxRate;
+  const effectiveFxRate = effectiveRate(manualFxRate, liveFxRate);
 
   // amount(currency 기준)를 KRW로 환산 — USD인데 환율을 못 구했으면 null(호출부가
   // 그 항목을 집계에서 빼고 "환율 미적용" 안내를 띄운다). Dashboard.tsx/Trades.tsx/
   // Dividends.tsx가 이미 쓰는 것과 같은 1:1(KRW)/환율곱(USD) 규칙.
-  function toKrw(amount: number, currency: string | null): number | null {
-    if (currency === 'USD') return effectiveFxRate ? amount * effectiveFxRate : null;
-    return amount;
-  }
+  // 아래 useMemo들이 의존성으로 쓰므로 useCallback — 환율이 바뀌면 함수도 바뀌어 다시 계산된다(fx.ts의 toKrw).
+  const toKrw = useCallback(
+    (amount: number, currency: string | null): number | null => fxToKrw(amount, currency, effectiveFxRate),
+    [effectiveFxRate]
+  );
 
   // 배당금은 "오늘 환율"이 아니라 그 배당금이 지급된 달("YYYY-MM")의 평균
   // 환율로 환산한다 — 토스/수동 입력은 항상 "지금 이 순간"의 환율 하나뿐이라,
@@ -172,19 +165,15 @@ export default function Overview() {
     // 결과에 의존하지 않으므로 셋 다 병렬로 시작한다(예전엔 fx/brokers를 먼저
     // 기다린 다음에야 getUsdKrwRate를 불렀는데, 서로 독립적이라 직렬화할
     // 이유가 없었다).
-    const [fx, brokers, live] = await Promise.all([
-      api.getFxRate().catch(() => ({ usdKrwRate: null })),
+    // 환율(수동·실시간, fxLoader.ts — 던지지 않음)과 증권사 목록을 동시에 받는다.
+    const [{ manual: manualRate, live: resolvedLiveFxRate }, brokers] = await Promise.all([
+      loadUsdKrwRates(opts),
       api.listBrokers(),
-      // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
-      // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다.
-      api.getUsdKrwRate(opts).catch(() => ({ rate: null })),
     ]);
-    const resolvedLiveFxRate = live.rate ? live.midRate ?? live.rate : null;
-    const resolvedFxRate = fx.usdKrwRate ?? resolvedLiveFxRate;
+    const resolvedFxRate = effectiveRate(manualRate, resolvedLiveFxRate);
 
     function toKrwNow(amount: number, currency: string | null): number | null {
-      if (currency === 'USD') return resolvedFxRate ? amount * resolvedFxRate : null;
-      return amount;
+      return fxToKrw(amount, currency, resolvedFxRate);
     }
 
     const configured = brokers.filter((b) => b.configured);
@@ -247,7 +236,7 @@ export default function Overview() {
     setTotalPurchaseKrw(purchaseKrw);
     setTotalMarketKrw(marketKrw);
     setUnconvertedUsdHoldings(unconverted);
-    setManualFxRate(fx.usdKrwRate);
+    setManualFxRate(manualRate);
     setLiveFxRate(resolvedLiveFxRate);
     setDividends(divs);
     setTrades(allTrades);
@@ -339,7 +328,7 @@ export default function Overview() {
       bySymbol.set(h.symbol, existing);
     }
     return topNSlices(bySymbol);
-  }, [holdings, effectiveFxRate]);
+  }, [holdings, toKrw]);
 
   // ---- 1-2) 섹터 비중(토스 섹터 분류) ----
   // 종목 → 토스 대분류 섹터는 백엔드가 하루 한 번 만들어 둔다(첫 호출은 수십 초 — 화면을 막지 않고 따로 받는다).
@@ -439,7 +428,7 @@ export default function Overview() {
       .map(([symbol, v]) => ({ symbol, ...v }))
       .filter((e) => e.valueKrw > 0)
       .sort((a, b) => b.valueKrw - a.valueKrw);
-  }, [holdings, effectiveFxRate]);
+  }, [holdings, toKrw]);
 
   // ---- 1-2) 같은 팝업의 "계좌별" 보기 — (증권사, 계좌)로 묶어 계좌마다 평가금액·
   // 매입금액·손익률을 보여주고, 그 아래에 종목별 수량·평가금액을 펼친다. 평가금액은
@@ -739,7 +728,7 @@ export default function Overview() {
     }
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [holdings, effectiveFxRate]);
+  }, [holdings, toKrw]);
 
   // 종목별 · 월별 실제 종가(토스 일봉 기반, loadAll이 채움) — 그 달에 해당
   // 종목의 종가를 못 구했으면(토스 미연동, 상장 전이라 그 달 봉이 없음 등)

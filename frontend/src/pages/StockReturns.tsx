@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { effectiveRate } from '../fx';
+import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { BrokerId, DividendRecord } from '../types';
 import { API_BROKER_IDS } from '../brokers';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
-import { krw } from '../format';
+import { formatKrwValue, formatSignedKrw } from '../format';
 
 /** 전체 브로커/계좌의 보유종목 한 줄 — 종목별로 합치기 전의 원본(통화 기준 금액). */
 interface FlatHolding {
@@ -34,14 +36,6 @@ interface SymbolRow {
 }
 
 type SortKey = 'market' | 'purchase' | 'dividend' | 'totalReturn' | 'symbol';
-
-function formatKrwValue(v: number) {
-  return `${krw.format(Math.round(v))}원`;
-}
-
-function formatSignedKrw(v: number) {
-  return `${v >= 0 ? '+' : ''}${krw.format(Math.round(v))}원`;
-}
 
 function formatRate(rate: number | null) {
   if (rate === null) return '-';
@@ -82,7 +76,7 @@ export default function StockReturns() {
   // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
   const stockLinkFor = useStockLinkResolver();
 
-  const effectiveFxRate = manualFxRate ?? liveFxRate;
+  const effectiveFxRate = effectiveRate(manualFxRate, liveFxRate);
 
   function toKrw(amount: number, currency: string | null): number | null {
     if (currency === 'USD') return effectiveFxRate ? amount * effectiveFxRate : null;
@@ -115,12 +109,11 @@ export default function StockReturns() {
   async function loadAll(opts: { forceRefresh?: boolean } = {}) {
     setError(null);
 
-    const [fx, brokers, live] = await Promise.all([
-      api.getFxRate().catch(() => ({ usdKrwRate: null })),
+    // 환율(수동·실시간, fxLoader.ts — 던지지 않음)과 증권사 목록을 동시에 받는다.
+    const [{ manual: manualRate, live: resolvedLiveFxRate }, brokers] = await Promise.all([
+      loadUsdKrwRates(opts),
       api.listBrokers(),
-      api.getUsdKrwRate(opts).catch(() => ({ rate: null })),
     ]);
-    const resolvedLiveFxRate = live.rate ? (live.midRate ?? live.rate) : null;
 
     const configured = brokers.filter((b) => b.configured);
     const flat: FlatHolding[] = [];
@@ -159,7 +152,7 @@ export default function StockReturns() {
 
     setHoldings(flat);
     setDividends(divs);
-    setManualFxRate(fx.usdKrwRate);
+    setManualFxRate(manualRate);
     setLiveFxRate(resolvedLiveFxRate);
     setLastLoadedAt(new Date());
 

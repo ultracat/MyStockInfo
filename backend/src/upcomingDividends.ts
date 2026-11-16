@@ -8,6 +8,7 @@ import {
   isKisConfigured,
 } from './brokers/kis/kisClient';
 import { listHoldings } from './db/holdingsStore';
+import { usMarketClosedDays } from './usMarketCalendar';
 import { withCache } from './brokers/responseCache';
 import { todayKst } from './marketInsights';
 import type { BrokerId } from './brokers/types';
@@ -32,8 +33,8 @@ import type { KisOverseasIceRight, KisOverseasPeriodRight } from './brokers/kis/
 //    - 날짜 = 해외주식 권리종합(`HHDFS78330900`, ICE) — 발표된 미래 배당의 기준일·지급일이 미리 들어온다. 금액은 없다.
 //    - 주당 금액 = 해외 기간별권리(`CTRGT011R`) — **상품유형코드(512/513/529)를 같이 줘야** 종목별로 나온다(예전엔 PDNO만 줘서
 //      "자료 없음"이었다). 배당이 기준일 무렵에야 등록돼, 발표만 된 건은 금액이 없다 → 최근 12회 중간값(추정).
-//    - 둘을 예탁원 일정과 같은 모양으로 바꿔 `planSymbolDividends`에 넣는다(주기 추정까지 같은 규칙). 미국 휴장일은 모르므로
-//      추정 날짜는 주말만 반영한다. 금액은 세전(미국 원천징수 15% 전).
+//    - 둘을 예탁원 일정과 같은 모양으로 바꿔 `planSymbolDividends`에 넣는다(주기 추정까지 같은 규칙). 휴일은 NYSE 정기
+//      휴장일 규칙(`usMarketCalendar.ts`)으로 반영한다 — 임시 휴장은 모른다. 금액은 세전(미국 원천징수 15% 전).
 // 보유 수량은 로컬 보유종목 저장소(토스·KIS는 실시간 조회 때 write-through, CSV 증권사는 가져온 값) 기준이다.
 
 export interface UpcomingDividend {
@@ -296,6 +297,8 @@ async function build(): Promise<UpcomingDividend[]> {
   // 4) 해외(미국) — USD 보유 종목마다 ICE 일정 + 기간별권리 주당 금액. 해외가 실패해도 국내는 그대로 보여 준다.
   const usdHoldings = listHoldings().filter((h) => h.quantity > 0 && h.currency === 'USD');
   const usPlans = new Map<string, PlannedDividend[]>();
+  // 지난 일정의 지급 간격(영업일)과 앞으로의 추정 날짜 모두 NYSE 휴장일로 센다 — 국내휴장일조회(cal)는 국내용이라 안 쓴다.
+  const usCal = usMarketClosedDays(addDays(today, -420), addDays(until, 60));
   await Promise.all(
     [...new Set(usdHoldings.map((h) => h.symbol))].map(async (symbol) => {
       try {
@@ -303,7 +306,7 @@ async function build(): Promise<UpcomingDividend[]> {
         const ice = await fetchKisOverseasIceRights(symbol, addDays(today, -120), until);
         if (!ice.some((e) => (e.ca_title ?? '').includes('배당'))) return; // 배당 없는 종목 — 기간별권리 조회 생략
         const rights = await fetchKisOverseasDividendRights(symbol, addDays(today, -400), until);
-        usPlans.set(symbol, planSymbolDividends(overseasScheduleRows(ice, rights), today, monthEnd));
+        usPlans.set(symbol, planSymbolDividends(overseasScheduleRows(ice, rights), today, monthEnd, usCal));
       } catch (e) {
         console.warn(`[upcoming-dividends] ${symbol} 해외 배당 일정 조회 실패: ${(e as Error).message}`);
       }

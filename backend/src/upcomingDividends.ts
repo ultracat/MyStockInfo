@@ -1,6 +1,8 @@
 import {
   fetchKisBusinessDays,
   fetchKisDividendSchedule,
+  fetchKisOverseasDividendRights,
+  fetchKisOverseasIceRights,
   fetchKisPeriodRights,
   getKisAccountId,
   isKisConfigured,
@@ -9,8 +11,9 @@ import { listHoldings } from './db/holdingsStore';
 import { withCache } from './brokers/responseCache';
 import { todayKst } from './marketInsights';
 import type { BrokerId } from './brokers/types';
+import type { KisOverseasIceRight, KisOverseasPeriodRight } from './brokers/kis/kisClient';
 
-// 다가오는 배당 — 한국투자증권 API로 만든다(토스는 지급 예정 정보를 주지 않는다). 세 종류:
+// 다가오는 배당 — 한국투자증권 API로 만든다(토스는 지급 예정 정보를 주지 않는다). 네 종류:
 // 확정은 앞으로 120일, 예상·추정은 **이번 달 지급분까지만** 보여 준다(사용자 결정 — 줄이 너무 많아서).
 // 1) **확정(KIS 계좌)**: 기간별계좌권리현황(`CTRGA011R`)의 현금지급일이 오늘 이후인 건 — 금액·세금이 정확하다.
 // 2) **예상(국내)**: 모든 증권사의 국내 보유 종목 × 예탁원 배당일정(`HHKDB669102C0`)의 주당 배당금(세전).
@@ -25,8 +28,12 @@ import type { BrokerId } from './brokers/types';
 //    **영업일 간격 중간값**만큼 뒤(실측: 매달 분배 ETF는 2영업일 — 설 연휴엔 달력상 7일). 휴장일 정보가 없는 날짜(과거·
 //    조회 실패)는 주말만 쉬는 날로 본다.
 //    KIS 계좌에 이미 확정 건이 있는 종목·달은 그 계좌에 대해서는 예상·추정을 만들지 않는다.
-// 해외 배당 예상은 만들지 않는다 — 해외 기간별권리(`CTRGT011R`)는 종목을 지정하면 자료가 없다고 하고(AAPL 등,
-// 2026-11-09 실측), 종목 없이 받으면 배당이 기준일 무렵에야 등록돼 앞으로 90일 일정이 거의 없다(1건). 지급일 필드도 없다.
+// 4) **해외(미국, 달러)**: 모든 증권사의 USD 보유 종목마다 두 TR을 합친다(2026-11-16 실측).
+//    - 날짜 = 해외주식 권리종합(`HHDFS78330900`, ICE) — 발표된 미래 배당의 기준일·지급일이 미리 들어온다. 금액은 없다.
+//    - 주당 금액 = 해외 기간별권리(`CTRGT011R`) — **상품유형코드(512/513/529)를 같이 줘야** 종목별로 나온다(예전엔 PDNO만 줘서
+//      "자료 없음"이었다). 배당이 기준일 무렵에야 등록돼, 발표만 된 건은 금액이 없다 → 최근 12회 중간값(추정).
+//    - 둘을 예탁원 일정과 같은 모양으로 바꿔 `planSymbolDividends`에 넣는다(주기 추정까지 같은 규칙). 미국 휴장일은 모르므로
+//      추정 날짜는 주말만 반영한다. 금액은 세전(미국 원천징수 15% 전).
 // 보유 수량은 로컬 보유종목 저장소(토스·KIS는 실시간 조회 때 write-through, CSV 증권사는 가져온 값) 기준이다.
 
 export interface UpcomingDividend {
@@ -47,7 +54,8 @@ export interface UpcomingDividend {
   grossAmount: number;
   /** 확정 건만 — 원천징수 세금. */
   tax: number | null;
-  source: 'kis-account' | 'ksd-schedule' | 'history';
+  /** kis-overseas = ICE 일정 + 해외 기간별권리의 주당 금액(미국). */
+  source: 'kis-account' | 'ksd-schedule' | 'kis-overseas' | 'history';
 }
 
 /** YYYYMMDD · YYYY/MM/DD · YYYY-MM-DD → YYYY-MM-DD. 예탁원 일정은 기준일이 YYYYMMDD, 지급일이 YYYY/MM/DD로 온다(실측). */
@@ -191,6 +199,37 @@ export function planSymbolDividends(
   return out;
 }
 
+/**
+ * 미국 종목의 ICE 일정(`HHDFS78330900`)과 기간별권리(`CTRGT011R`)를 예탁원 일정 모양으로 합친다 — `planSymbolDividends` 입력.
+ * ICE의 현금배당은 기준일(없으면 배당락일)로 기간별권리의 주당 금액(배당 `03`, 0보다 큰 것)을 붙이고(없으면 0 = 금액 미정),
+ * ICE 범위 밖의 지난 권리는 지급일 없이 더한다 — 주당 중간값·주기 추정에 쓰인다.
+ */
+export function overseasScheduleRows(
+  ice: KisOverseasIceRight[],
+  rights: KisOverseasPeriodRight[]
+): Array<{ record_date: string; per_sto_divi_amt: string; divi_pay_dt: string }> {
+  const perByRecord = new Map<string, number>();
+  for (const r of rights) {
+    const record = parseKsdDate(r.acpl_bass_dt);
+    const per = Number(r.alct_frcr_unpr);
+    if (r.rght_type_cd !== '03' || !record || !(per > 0) || (r.crcy_cd && r.crcy_cd !== 'USD')) continue;
+    perByRecord.set(record, per);
+  }
+  const rows: Array<{ record_date: string; per_sto_divi_amt: string; divi_pay_dt: string }> = [];
+  const seen = new Set<string>();
+  for (const e of ice) {
+    if (!(e.ca_title ?? '').includes('배당')) continue;
+    const record = parseKsdDate(e.record_dt) ?? parseKsdDate(e.div_lock_dt);
+    if (!record || seen.has(record)) continue;
+    seen.add(record);
+    rows.push({ record_date: record, per_sto_divi_amt: String(perByRecord.get(record) ?? 0), divi_pay_dt: e.pay_dt ?? '' });
+  }
+  for (const [record, per] of perByRecord) {
+    if (!seen.has(record)) rows.push({ record_date: record, per_sto_divi_amt: String(per), divi_pay_dt: '' });
+  }
+  return rows;
+}
+
 export async function getUpcomingDividends(): Promise<{ items: UpcomingDividend[]; available: boolean }> {
   if (!isKisConfigured()) return { items: [], available: false };
   return withCache('upcoming-dividends', 6 * 3600_000, async () => ({ items: await build(), available: true }));
@@ -250,6 +289,33 @@ async function build(): Promise<UpcomingDividend[]> {
         status: p.status, broker: h.broker, accountId: h.accountId, symbol: h.symbol, name: h.name, currency: 'KRW',
         payDate: p.payDate, recordDate: p.recordDate, quantity: h.quantity, perShare: p.perShare,
         grossAmount: Math.round(p.perShare * h.quantity), tax: null, source: p.source,
+      });
+    }
+  }
+
+  // 4) 해외(미국) — USD 보유 종목마다 ICE 일정 + 기간별권리 주당 금액. 해외가 실패해도 국내는 그대로 보여 준다.
+  const usdHoldings = listHoldings().filter((h) => h.quantity > 0 && h.currency === 'USD');
+  const usPlans = new Map<string, PlannedDividend[]>();
+  await Promise.all(
+    [...new Set(usdHoldings.map((h) => h.symbol))].map(async (symbol) => {
+      try {
+        // ICE는 한 번에 50건까지라 기간을 짧게(지급 간격·발표된 일정용), 주당 중간값·주기는 기간별권리 400일로 본다.
+        const ice = await fetchKisOverseasIceRights(symbol, addDays(today, -120), until);
+        if (!ice.some((e) => (e.ca_title ?? '').includes('배당'))) return; // 배당 없는 종목 — 기간별권리 조회 생략
+        const rights = await fetchKisOverseasDividendRights(symbol, addDays(today, -400), until);
+        usPlans.set(symbol, planSymbolDividends(overseasScheduleRows(ice, rights), today, monthEnd));
+      } catch (e) {
+        console.warn(`[upcoming-dividends] ${symbol} 해외 배당 일정 조회 실패: ${(e as Error).message}`);
+      }
+    })
+  );
+  for (const h of usdHoldings) {
+    for (const p of usPlans.get(h.symbol) ?? []) {
+      items.push({
+        status: p.status, broker: h.broker, accountId: h.accountId, symbol: h.symbol, name: h.name, currency: 'USD',
+        payDate: p.payDate, recordDate: p.recordDate, quantity: h.quantity, perShare: p.perShare,
+        grossAmount: Math.round(p.perShare * h.quantity * 100) / 100, tax: null,
+        source: p.source === 'ksd-schedule' ? 'kis-overseas' : p.source,
       });
     }
   }

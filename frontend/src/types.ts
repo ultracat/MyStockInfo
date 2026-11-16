@@ -172,9 +172,10 @@ export interface ActiveWarning {
   endDate: string | null;
 }
 
-/** 다가오는 배당(백엔드 upcomingDividends.ts) — 확정은 한국투자증권 계좌 권리, 예상은 예탁원 일정 × 보유 수량. */
+/** 다가오는 배당(백엔드 upcomingDividends.ts) — 확정은 한국투자증권 계좌 권리, 예상은 예탁원 일정(국내) 또는
+ *  ICE 일정 + 해외 기간별권리(미국, `currency: 'USD'`, 금액은 달러) × 보유 수량. */
 export interface UpcomingDividend {
-  /** confirmed = 한투 계좌 확정, estimated = 예탁원 일정의 주당 금액, projected = 지난 일정으로 추정(주당 = 최근 12회 중간값). */
+  /** confirmed = 한투 계좌 확정, estimated = 예탁원·해외권리의 주당 금액, projected = 지난 일정으로 추정(주당 = 최근 12회 중간값). */
   status: 'confirmed' | 'estimated' | 'projected';
   broker: BrokerId;
   accountId: string;
@@ -188,7 +189,7 @@ export interface UpcomingDividend {
   /** 세전. */
   grossAmount: number;
   tax: number | null;
-  source: 'kis-account' | 'ksd-schedule' | 'history';
+  source: 'kis-account' | 'ksd-schedule' | 'kis-overseas' | 'history';
 }
 
 /** 한국투자증권 기간별매매손익(TTTC8715R) 매도 한 줄 — 원. */

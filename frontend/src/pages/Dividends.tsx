@@ -4,13 +4,17 @@ import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlyS
 import DividendsChart from '../components/DividendsChart';
 import DonutDetailModal from '../components/DonutDetailModal';
 import CollapseToggle from '../components/CollapseToggle';
-import UpcomingDividends from '../components/UpcomingDividends';
+import UpcomingDividends, { type UpcomingDividendsState } from '../components/UpcomingDividends';
 import { krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { formatImportResult } from '../importResult';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
+
+// 그래프의 예상 배당을 배당 기록(세후)과 같은 기준으로 맞추는 원천징수율 가정 — 국내 배당소득세 15.4%, 미국 현지 15%.
+const KR_WITHHOLDING = 0.154;
+const US_WITHHOLDING = 0.15;
 
 // export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
 // 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
@@ -138,6 +142,19 @@ export default function Dividends() {
   async function refresh() {
     setRecords(await api.listDividends());
   }
+
+  // 다가오는 배당 — 아래 표와 "월별 배당금" 그래프의 흐린 예상 막대가 같이 쓴다(한 번만 받는다, 백엔드 6시간 캐시).
+  const [upcoming, setUpcoming] = useState<UpcomingDividendsState>({ items: null, available: true, error: null });
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getUpcomingDividends()
+      .then((r) => !cancelled && setUpcoming({ items: r.items, available: r.available, error: null }))
+      .catch((e) => !cancelled && setUpcoming({ items: null, available: true, error: (e as Error).message }));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     refresh().catch((e) => setError((e as Error).message));
@@ -831,6 +848,26 @@ export default function Dividends() {
       .sort((a, b) => (a.month < b.month ? -1 : 1));
   }, [chartRecords]);
 
+  // 그래프의 흐린 "예상" 막대 — 아직 지급 전인 다가오는 배당(확정·예상·추정)을 지급월(없으면 기준월)로 묶는다.
+  // 배당 기록은 **세후**라 같은 기준으로 맞춘다: 확정은 세전 − 세금, 나머지는 원천징수를 가정해 국내 15.4%·미국 15%를 뺀다
+  // (ETF 분배금의 과세 대상분 차이 등은 무시한 근사). 그래프와 같은 증권사·연도 필터를 탄다.
+  const upcomingMonthlyRows = useMemo<MonthlySummaryRow[]>(() => {
+    const byMonth = new Map<string, MonthlySummaryRow>();
+    for (const i of upcoming.items ?? []) {
+      if (chartBroker !== 'ALL' && i.broker !== chartBroker) continue;
+      const month = (i.payDate ?? i.recordDate ?? '').slice(0, 7);
+      if (!month || (year !== 'ALL' && !month.startsWith(String(year)))) continue;
+      const net =
+        i.tax !== null ? i.grossAmount - i.tax : i.grossAmount * (1 - (i.currency === 'USD' ? US_WITHHOLDING : KR_WITHHOLDING));
+      const row = byMonth.get(month) ?? { month, totalKrw: 0, totalUsd: 0, count: 0 };
+      if (i.currency === 'USD') row.totalUsd += net;
+      else row.totalKrw += Math.round(net);
+      row.count += 1;
+      byMonth.set(month, row);
+    }
+    return [...byMonth.values()];
+  }, [upcoming.items, chartBroker, year]);
+
   // 배당내역 팝업에 "총 주식갯수"(오늘 기준 보유수량)를 같이 보여주기 위한 조회용
   // 맵 — avgCostByBroker(오늘 기준 평단가 계산용으로 이미 조회해둔 값)가 종목별
   // 수량도 갖고 있어(quantity) 재사용한다. chartBroker가 특정 증권사면 그 브로커만,
@@ -1111,6 +1148,7 @@ export default function Dividends() {
             <div style={{ flex: '1 1 420px', minWidth: 0 }}>
               <DividendsChart
                 rows={monthlyRows}
+                expectedRows={upcomingMonthlyRows}
                 fxRate={dividendFxRateFor}
                 onBarClick={(month) => setSelectedDividendMonth(month)}
               />
@@ -1160,7 +1198,7 @@ export default function Dividends() {
         )}
       </div>
 
-      <UpcomingDividends accountLabels={accountLabels} />
+      <UpcomingDividends accountLabels={accountLabels} state={upcoming} />
 
       {selectedDividendMonth && (
         <DonutDetailModal

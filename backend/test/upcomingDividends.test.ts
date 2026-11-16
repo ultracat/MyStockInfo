@@ -1,7 +1,7 @@
 import './setup';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseKsdDate, planSymbolDividends } from '../src/upcomingDividends';
+import { overseasScheduleRows, parseKsdDate, planSymbolDividends } from '../src/upcomingDividends';
 
 // 예탁원 배당일정(HHKDB669102C0) 행 — 기준일은 YYYYMMDD, 지급일은 YYYY/MM/DD로 온다(2026-11-10 실측). 값은 지어낸 것.
 const row = (record: string, per: number, pay = '') => ({ record_date: record, per_sto_divi_amt: String(per), divi_pay_dt: pay });
@@ -94,4 +94,39 @@ test('planSymbolDividends: 주기가 일정하지 않거나 기록이 부족하�
   assert.equal(planSymbolDividends(monthly.slice(0, 7), '2026-11-10', '2027-03-10').length, 0);
   // 일정 없음
   assert.equal(planSymbolDividends([], '2026-11-10', '2027-03-10').length, 0);
+});
+
+// --- 미국(달러): ICE 일정(HHDFS78330900) + 해외 기간별권리(CTRGT011R) 주당 금액 — 2026-11-16 실측 모양, 값은 지어낸 것 ---
+const ice = (record: string, pay: string, title = '현금배당') => ({ anno_dt: '', ca_title: title, div_lock_dt: record, pay_dt: pay, record_dt: record });
+const right = (record: string, per: string, type = '03') => ({ pdno: 'X', rght_type_cd: type, acpl_bass_dt: record, alct_frcr_unpr: per, crcy_cd: 'USD', dfnt_yn: 'Y' });
+
+test('overseasScheduleRows: ICE 날짜에 기간별권리 주당 금액을 붙이고, 금액 없는 발표 건은 0(미정), 지난 권리는 지급일 없이 더한다', () => {
+  const rows = overseasScheduleRows(
+    [ice('20261030', '20261113'), ice('20261130', '20261215'), ice('20261101', '', '티커변경')],
+    [right('20260930', '0.27150'), right('20261030', '0.27150'), right('20261030', '1', '02')]
+  );
+  assert.deepEqual(rows, [
+    { record_date: '2026-10-30', per_sto_divi_amt: '0.2715', divi_pay_dt: '20261113' },
+    { record_date: '2026-11-30', per_sto_divi_amt: '0', divi_pay_dt: '20261215' },
+    { record_date: '2026-09-30', per_sto_divi_amt: '0.2715', divi_pay_dt: '' },
+  ]);
+});
+
+test('미국 배당: 권리 금액이 있으면 예상, 발표만 된 건은 최근 중간값으로 추정(이번 달 지급분만)', () => {
+  // 주간 분배 ETF — 11-12 기준분은 금액 등록됨, 11-19·11-27 기준분은 ICE에만 있음.
+  const rows = overseasScheduleRows(
+    [ice('20261105', '20261106'), ice('20261112', '20261113'), ice('20261119', '20261120'), ice('20261127', '20261130')],
+    [right('20261029', '0.05'), right('20261105', '0.06'), right('20261112', '0.0537')]
+  );
+  const out = planSymbolDividends(rows, '2026-11-16', '2026-11-30');
+  assert.deepEqual(
+    out.map((p) => [p.status, p.recordDate, p.payDate, p.perShare]),
+    [
+      ['projected', '2026-11-19', '2026-11-20', 0.0537],
+      ['projected', '2026-11-27', '2026-11-30', 0.0537],
+    ]
+  );
+  // 11-12 기준·11-13 지급분은 이미 지급돼(오늘 11-16) 빠진다. 지급 전이면 예상(estimated)으로 나온다.
+  const before = planSymbolDividends(rows, '2026-11-12', '2026-11-30');
+  assert.deepEqual(before[0], { status: 'estimated', source: 'ksd-schedule', recordDate: '2026-11-12', payDate: '2026-11-13', perShare: 0.0537 });
 });

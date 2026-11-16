@@ -1,3 +1,4 @@
+import { shapeForLog } from '../../logRedact';
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { withRateLimitRetry } from '../rateLimiter';
 import { getTossRateLimiter, type TossRateLimitGroup } from './rateLimitGroups';
@@ -372,7 +373,7 @@ export async function fetchTossHoldings(
       const overview = raw?.result ?? raw;
 
       if (!overview || typeof overview !== 'object' || !Array.isArray(overview.items)) {
-        console.error('[toss] Unexpected /api/v1/holdings response shape:', JSON.stringify(raw));
+        console.error('[toss] Unexpected /api/v1/holdings response shape:', shapeForLog(raw));
         throw new Error(
           '토스증권 보유 종목 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했으니 ' +
             '확인 후 backend/src/brokers/toss/tossClient.ts의 TossHoldingsOverviewResponse 매핑을 맞춰주세요.'
@@ -438,7 +439,7 @@ export async function fetchTossTransactions(
     const raw = await tossFetch<any>(`/api/v1/transactions?${params}`, 'TRANSACTION', { accountSeq });
     const data = raw?.result ?? raw;
     if (!data || !Array.isArray(data.transactions)) {
-      console.error('[toss] Unexpected /api/v1/transactions response shape:', JSON.stringify(raw));
+      console.error('[toss] Unexpected /api/v1/transactions response shape:', shapeForLog(raw));
       throw new Error(
         '토스증권 거래내역 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
       );
@@ -565,7 +566,7 @@ export async function fetchTossOrders(
         const data = (raw?.result ?? raw) as RawTossOrdersResponse;
 
         if (!data || !Array.isArray(data.orders)) {
-          console.error('[toss] Unexpected /api/v1/orders response shape:', JSON.stringify(raw));
+          console.error('[toss] Unexpected /api/v1/orders response shape:', shapeForLog(raw));
           throw new Error(
             '토스증권 매매내역 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
           );
@@ -604,7 +605,7 @@ export async function fetchTossBuyingPower(
       const data = raw?.result ?? raw;
 
       if (!data || typeof data !== 'object' || typeof data.cashBuyingPower !== 'string') {
-        console.error('[toss] Unexpected /api/v1/buying-power response shape:', JSON.stringify(raw));
+        console.error('[toss] Unexpected /api/v1/buying-power response shape:', shapeForLog(raw));
         throw new Error(
           '토스증권 매수 가능 금액(예수금) 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
         );
@@ -636,7 +637,7 @@ export async function fetchTossExchangeRate(
       // a nice-to-have, falls back to the manual rate), which is why it
       // went unnoticed rather than surfacing as an error.
       if (!data || typeof data !== 'object' || typeof data.rate !== 'string') {
-        console.error('[toss] Unexpected /api/v1/exchange-rate response shape:', JSON.stringify(raw));
+        console.error('[toss] Unexpected /api/v1/exchange-rate response shape:', shapeForLog(raw));
         throw new Error(
           '토스증권 환율 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
         );
@@ -687,7 +688,7 @@ export async function fetchTossStockInfo(symbols: string[], opts: FetchOpts = {}
       const data = raw?.result ?? raw;
 
       if (!Array.isArray(data)) {
-        console.error('[toss] Unexpected /api/v1/stocks response shape:', JSON.stringify(raw));
+        console.error('[toss] Unexpected /api/v1/stocks response shape:', shapeForLog(raw));
         throw new Error(
           '토스증권 종목정보 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
         );
@@ -732,7 +733,7 @@ export async function fetchTossPrices(symbols: string[], opts: FetchOpts = {}): 
       const data = raw?.result ?? raw;
 
       if (!Array.isArray(data)) {
-        console.error('[toss] Unexpected /api/v1/prices response shape:', JSON.stringify(raw));
+        console.error('[toss] Unexpected /api/v1/prices response shape:', shapeForLog(raw));
         throw new Error(
           '토스증권 현재가 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
         );
@@ -802,7 +803,7 @@ async function fetchTossDailyCandlesPage(
       const data = (raw?.result ?? raw) as RawTossCandlesResponse;
 
       if (!data || !Array.isArray(data.candles)) {
-        console.error('[toss] Unexpected /api/v1/candles response shape:', JSON.stringify(raw));
+        console.error('[toss] Unexpected /api/v1/candles response shape:', shapeForLog(raw));
         throw new Error('토스증권 일봉 조회 응답 형식이 예상과 다릅니다.');
       }
 

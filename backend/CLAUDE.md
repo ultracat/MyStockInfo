@@ -40,6 +40,9 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   KIS는 재실행 때 한 번 더 발급), 예전 평문 파일은 읽으면서 봉투로 다시 쓴다. ⚠ 토큰 파일을 직접 `JSON.parse`하지
   말 것 — 테스트는 `test/setup.ts`의 `readSecretJson`, 실서버 점검 스크립트(`check:kis`/`check:nh`)도 이 클래스로 읽는다.
   새 브로커 토큰도 **`<브로커>-token.json` 이름 + 이 클래스**로 — 백업이 이름 규칙으로 뺀다("백업/복원" 절).
+- `src/logRedact.ts` — **증권사 응답을 로그에 남길 땐 이걸 거친다**(2026-11-16). "응답 형식이 예상과 다름" 로그는
+  `shapeForLog(raw)`(값을 버리고 키·타입·길이만), 오류 본문은 `redactText()`(6자리 이상 숫자열 가림 + 500자). 예전엔 원본 응답
+  전체(계좌번호·수량·금액)를 찍었다 — 터미널·Linux·Windows에선 남을 수 있다. 새 로그에 `JSON.stringify(raw)`를 쓰지 말 것.
 - `src/paths.ts` — `getDataDir()`: Electron 안에서 `app.getPath('userData')/data`,
   단독 실행 시 `backend/data/`(gitignore). 단독 실행에서 `MYSTOCK_DATA_DIR` 환경변수가
   있으면 그 폴더를 쓴다 — 테스트가 실제 dev 데이터를 건드리지 않게 하는 용도(Electron
@@ -754,13 +757,23 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
 없으면 "토스 실패 시 몇 초 안에 대체"라는 이 기능의 목적 자체가 무한 대기로
 무너질 수 있다(최악의 경우도 총 대기 30초 안쪽으로 묶임).
 
-**인증키는 사용자 입력이 아니라 앱 빌드에 미리 박아 넣는다**(`fx/eximbankConfig.ts`,
-`EXIMBANK_AUTH_KEY` 상수) — Google Client ID/Secret과 같은 이유·같은 패턴이다
-(`google/clientConfig.ts` 절 참고). `.gitignore`에 등록돼 커밋되지 않고,
-`eximbankConfig.example.ts`가 템플릿이다. 예전엔 Settings 화면에서 사용자가 직접
-입력해 평문 `settings.json`에 저장했지만(`db/settings.ts`의 `eximbankAuthKey`,
-`POST /api/settings/eximbank-key` — 둘 다 이제 없음), 일반 사용자가 이 키의 존재
-자체를 몰라도 되게 바꿨다.
+**인증키는 사용자가 설정에서 직접 입력한다**(2026-11-16 사용자 결정 — "내 키를 삽입해서 사용하는 것은 아닌 것 같다").
+- 저장: `fx/eximbankKey.ts` — `eximbank-key.json`에 증권사 키와 같은 키체인 봉투(`sealJson`)로. 키링 없는 Linux면 저장 거부(409).
+  복호화 결과는 암호문을 키로 메모리 캐시. **값을 화면으로 돌려주지 않는다**(`GET /api/settings/eximbank-key`는 `{configured}`만).
+- 저장 전 확인: `POST /api/settings/eximbank-key` → `checkEximbankAuthKey()`가 최근 평일을 한 번 조회 — 응답 `result`
+  1 성공·3 인증키 오류(→ 400, 저장 안 함)·4 일일 한도 마감(저장 + 경고)·연결 실패(저장 + 경고). `DELETE`로 지운다.
+- 백업: 키체인 파일 목록(`KEYCHAIN_FILES`)에 들어가 zip엔 원본이 안 들어가고, 비밀번호 백업이면 `secrets.enc.json`의
+  `eximbankKey`로 들어간다. 이 필드가 없는 예전 백업을 복원하면 지금 키를 그대로 둔다(`undefined`), `null`이면 지운다.
+- ⚠ **"없음" 캐시 오염 주의**: 키를 사용자가 넣다 보니 틀린 키로 조회하는 일이 생긴다. `fetchEximbankRateForDate`는 응답에
+  `result !== 1` 항목이 있으면(2·3·4 — 키·요청 문제) 날짜 캐시에 null을 **쓰지 않는다**(쓰면 키를 고친 뒤에도 그 날짜가 영영 빈다).
+  월평균의 메모리 캐시(`withCache`, 최대 30일)는 키에 `eximbankKeyFingerprint`(sha256 앞 12자)를 넣어 키가 바뀌면 다시 받는다.
+  키가 없을 땐 아예 캐시하지 않고 null — 키를 넣는 즉시 다음 요청부터 받아진다.
+- 화면: 설정의 "한국수출입은행 환율 인증키" 카드(입력 필요/저장됨), 배당금 화면은 키가 없고 달러 배당이 있으면 안내.
+- ①의 평문 `settings.json`의 `eximbankAuthKey`가 남아 있으면(실제로 개발자 PC에 남아 있었다 — 백업 zip에도 들어감) 처음 읽을 때
+  `migrateLegacyKey()`가 봉투로 옮기고 평문 필드를 지운다(이미 새 키가 있으면 지우기만, 키링이 없으면 잃지 않게 그대로).
+- 이력: 예전엔 ① Settings 입력 + 평문 `settings.json` → ② 개발자 키를 빌드에 내장(`fx/eximbankConfig.ts`, gitignore) → ③ 지금.
+  ②의 파일이 개발자 PC에 남아 있어도 `backend/tsconfig.json`의 `exclude`로 컴파일·배포에서 빠진다. 키는 git 이력에 들어간
+  적이 없다(2026-11-16 전 브랜치·태그·PR ref 검색).
 
 **응답을 날짜별로 영구 캐시한다**(`fx/eximbankCache.ts`, `eximbank-cache.json`) —
 이 인증키가 앱에 공유로 박힌 개인 발급 키라, 테스트 배포 후 여러 사용자가 반복
@@ -1000,6 +1013,10 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
     만료되고 없으면 앱이 다시 받는다. 복원할 때도 예전 백업에 들어 있으면 건너뛰고, 비밀번호 복원 뒤엔 남은 토큰을 지운다.
     ⚠ 예전엔 파일 이름 목록(KIS·KB)으로 골라서 **NH·키움 토큰이 평문으로 백업에 들어갔다** — 지금은 이름 규칙
     `/^[a-z0-9]+-token\.json$/`(`isAccessTokenFile`)으로 고른다(2026-11-16). 토큰 자체도 이제 `SecretJsonStore`로 암호화돼 있다.
+- **복원 입력 검증**(2026-11-16): 항목 500개·항목당 100MB·합계 300MB(풀기 전 `header.size`로 먼저 — 압축 폭탄), JSON은 파싱되는지,
+  `.sqlite`는 `SQLite format 3\0` 헤더인지 본다. 형식이 틀린 항목은 `skipped`. **모두 검사한 뒤에 쓴다**(일부만 덮어쓰지 않게).
+  예전 형식 백업의 `credentials.json`·`google-account.json`은 **`encrypted: true` 봉투만** 받는다 — 평문 봉투를 받으면 조작된 백업이
+  남의 API 키를 심을 수 있다(그래서 테스트도 평문 봉투가 되는 standalone 저장 대신 `encrypted:true` 모양을 직접 만든다).
   - `credentials.json`/`google-account.json`(OS 키체인으로 암호화): 그 열쇠는 PC 밖으로
     못 나가서 그대로 넣으면 다른 PC에선 못 연다. **사용자가 백업 비밀번호를 주면** 풀어서
     그 비밀번호로 다시 잠근 `secrets.enc.json` 하나로 넣는다(`backupCrypto.ts` —

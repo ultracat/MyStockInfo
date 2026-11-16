@@ -253,6 +253,18 @@ export default function Dividends() {
   // records 전체에서 클라이언트 쪽으로만 좁히는 필터라 여기 의존성에 안 넣는다
   // (연도를 바꿔도 이미 가진 records 범위 안이면 새로 조회할 게 없다). 백엔드가
   // 달마다 이미 강하게 캐싱해서(4시간~30일) 반복 호출이 비싸지 않다.
+  // 한국수출입은행 환율 인증키(사용자 입력) — 없으면 달러 배당을 지급월 평균 환율로 못 바꿔 오늘 환율로 환산된다.
+  // 그 사실을 화면 위에 알린다(설정에서 키를 넣으면 dataChanged로 다시 보일 때 갱신).
+  const [eximbankConfigured, setEximbankConfigured] = useState<boolean | null>(null);
+  const loadEximbankStatus = () =>
+    api
+      .getEximbankKeyStatus()
+      .then((s) => setEximbankConfigured(s.configured))
+      .catch(() => {});
+  useEffect(() => {
+    void loadEximbankStatus();
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const months = [...new Set(records.filter((r) => r.currency === 'USD').map((r) => r.paidDate.slice(0, 7)))];
@@ -465,6 +477,7 @@ export default function Dividends() {
   // 투자금은 30초 간격, 증권사 배당 동기화(거래내역을 통째로 다시 받음)는 10분 간격.
   useResumeRefresh(() => {
     refresh().catch(() => {});
+    void loadEximbankStatus();
     api.listAccountLabels().then(setAccountLabels).catch(() => {});
     if (!upcoming.refreshing) loadUpcoming();
     setInvestedReload((n) => n + 1);
@@ -1129,6 +1142,12 @@ export default function Dividends() {
         API 내용으로 자동으로 맞춥니다 — 그 증권사 기록은 직접 고칠 수 없습니다. 그 밖의 증권사는 입금된 배당을
         조회하는 API가 없어 지급 시 직접 입력합니다. 배당금은 세후 실수령액이고, 세금은 따로 적습니다.
       </div>
+      {eximbankConfigured === false && records.some((r) => r.currency === 'USD') && (
+        <div className="notice">
+          <strong>한국수출입은행 환율 인증키가 없습니다.</strong> 달러 배당금을 지급한 달의 평균 환율 대신 오늘 환율로 원화
+          환산하고 있습니다. <strong>설정 → 한국수출입은행 환율 인증키</strong>에 직접 발급받은 키를 넣어 주세요.
+        </div>
+      )}
 
       <div className="form-row">
         <label>연도</label>

@@ -1,5 +1,5 @@
 import { withCache } from '../brokers/responseCache';
-import { EXIMBANK_AUTH_KEY } from './eximbankConfig';
+import { eximbankKeyFingerprint, getEximbankAuthKey } from './eximbankKey';
 import { getCachedRate, setCachedRate } from './eximbankCache';
 
 // 한국수출입은행 Open API(환율, data=AP01). 공공데이터포털 공지("도메인이
@@ -15,8 +15,9 @@ import { getCachedRate, setCachedRate } from './eximbankCache';
 // 타임아웃/재시도 로직이 그대로 안전망 역할을 한다.
 const BASE_URL = 'https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON';
 
+// 인증키는 사용자가 설정에서 입력한다(fx/eximbankKey.ts) — 없으면 이 파일의 조회는 전부 즉시 null이다.
 export function isEximbankConfigured(): boolean {
-  return !!EXIMBANK_AUTH_KEY;
+  return getEximbankAuthKey() !== null;
 }
 
 interface EximbankRateItem {
@@ -60,7 +61,7 @@ async function fetchWithTimeout(url: string): Promise<Response> {
 // 동시에 진행할 수 있는 실제 네트워크 요청 수 상한 — 월평균 환율은 달 하나에
 // 평일 20여 개를 Promise.all로 쏘고, 라우트가 여러 달을 다시 Promise.all로
 // 묶어서, 콜드 캐시에서 배당 이력이 긴 계정은 수백 건이 한꺼번에 나갔다. 앱에
-// 박힌 공유 인증키(eximbankConfig.ts)라 요청 폭주는 피하고 싶고, 개별 응답이
+// 사용자 발급 키라(fx/eximbankKey.ts) 일일 한도를 아끼려고 요청 폭주는 피하고 싶고, 개별 응답이
 // 0.1~0.2초라 이 정도 상한이면 전체 소요 시간도 크게 안 늘어난다. 캐시 히트는
 // 이 상한과 무관하게 즉시 반환된다(아래 fetchEximbankRateForDate).
 const MAX_CONCURRENT_REQUESTS = 6;
@@ -90,8 +91,7 @@ function isPastDate(searchdate: string): boolean {
 // "그 날짜는 없다"는 사실만 알면 되고, 왜 없는지는 알 필요가 없어서다.
 //
 // **디스크 캐시(eximbankCache.ts)를 이 경계에서 확인/기록한다** — 이 인증키가
-// 앱 빌드에 미리 박힌 개인 발급 키라(eximbankConfig.ts), 테스트 배포 후 여러
-// 사용자가 같은 키로 반복 조회하면 요청량이 예상보다 커질 수 있어서, 한 번
+// 사용자 발급 키의 일일 호출 한도를 아끼려고, 한 번
 // 확인한 날짜는 다시 API를 안 부르게 한다. 지나간 날짜의 결과(환율이든 "그날
 // 데이터 없음"이든)는 캐시하지만, **오늘 날짜는 "데이터 없음"을 캐시하지
 // 않는다** — 매매기준율이 보통 11시경에야 고시되므로, 그 전에 조회하면 아직
@@ -117,8 +117,11 @@ async function fetchEximbankRateForDate(authKey: string, searchdate: string): Pr
   }
   if (!Array.isArray(items)) return null;
 
+  // result 2(DATA 코드 오류)·3(인증키 오류)·4(일일 한도 마감)는 키/요청 문제지 "그날 환율 없음"이 아니다 —
+  // 캐시하면 키를 고친 뒤에도 그 날짜가 영영 비어 보인다(사용자 입력 키라 잘못 넣는 일이 생긴다).
+  if ((items as EximbankRateItem[]).some((i) => i.result !== 1)) return null;
   const usd = (items as EximbankRateItem[]).find((i) => i.cur_unit === 'USD');
-  if (!usd || usd.result !== 1) {
+  if (!usd) {
     if (isPastDate(searchdate)) setCachedRate(searchdate, null);
     return null;
   }
@@ -137,14 +140,15 @@ async function fetchEximbankRateForDate(authKey: string, searchdate: string): Pr
  * 최악의 경우 총 대기가 30초 안쪽이다). 인증키가 설정 안 돼 있으면 즉시 null.
  */
 export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: string } | null> {
-  if (!EXIMBANK_AUTH_KEY) return null;
+  const authKey = getEximbankAuthKey();
+  if (!authKey) return null;
 
   for (let daysAgo = 0; daysAgo <= 5; daysAgo++) {
     const date = new Date();
     date.setDate(date.getDate() - daysAgo);
     const searchdate = yyyymmdd(date);
 
-    const rate = await fetchEximbankRateForDate(EXIMBANK_AUTH_KEY, searchdate);
+    const rate = await fetchEximbankRateForDate(authKey, searchdate);
     if (rate === null) continue;
 
     return { rate, asOf: `${searchdate.slice(0, 4)}-${searchdate.slice(4, 6)}-${searchdate.slice(6, 8)}` };
@@ -154,9 +158,9 @@ export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: s
 }
 
 async function computeEximbankMonthlyAvgUsdKrwRate(
-  month: string
+  month: string,
+  authKey: string
 ): Promise<{ rate: number; sampleCount: number } | null> {
-  if (!EXIMBANK_AUTH_KEY) return null;
 
   const [yearStr, monthStr] = month.split('-');
   const year = Number(yearStr);
@@ -177,7 +181,7 @@ async function computeEximbankMonthlyAvgUsdKrwRate(
   }
   if (weekdaySearchdates.length === 0) return null;
 
-  const rates = await Promise.all(weekdaySearchdates.map((d) => fetchEximbankRateForDate(EXIMBANK_AUTH_KEY, d)));
+  const rates = await Promise.all(weekdaySearchdates.map((d) => fetchEximbankRateForDate(authKey, d)));
   const valid = rates.filter((r): r is number => r !== null);
   if (valid.length === 0) return null;
 
@@ -204,9 +208,43 @@ const CURRENT_MONTH_TTL_MS = 4 * 60 * 60 * 1000;
 export async function fetchEximbankMonthlyAvgUsdKrwRate(
   month: string
 ): Promise<{ rate: number; sampleCount: number } | null> {
+  const authKey = getEximbankAuthKey();
+  if (!authKey) return null; // 키 없음은 캐시하지 않는다 — 키를 넣는 즉시 다음 요청부터 받아진다
   const now = new Date();
   const isCurrentMonth = month === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  return withCache(`eximbank:monthly-avg:${month}`, isCurrentMonth ? CURRENT_MONTH_TTL_MS : PAST_MONTH_TTL_MS, () =>
-    computeEximbankMonthlyAvgUsdKrwRate(month)
+  // 캐시 키에 인증키 지문을 넣는다 — 잘못된 키로 받은 null을 새 키에서 30일 동안 다시 쓰지 않게.
+  return withCache(
+    `eximbank:monthly-avg:${eximbankKeyFingerprint(authKey)}:${month}`,
+    isCurrentMonth ? CURRENT_MONTH_TTL_MS : PAST_MONTH_TTL_MS,
+    () => computeEximbankMonthlyAvgUsdKrwRate(month, authKey)
   );
+}
+
+export type EximbankKeyCheck = 'ok' | 'invalid' | 'limit' | 'unreachable';
+
+/**
+ * 설정 화면에서 저장하기 전에 키가 맞는지 확인한다 — 최근 평일부터 거슬러 올라가며 한 번 조회해 본다(오늘은 11시
+ * 고시 전이면 비어 있어 어제부터). 응답 코드: 1 성공, 3 인증키 오류, 4 일일 한도 마감. 캐시를 거치지 않는다.
+ */
+export async function checkEximbankAuthKey(authKey: string): Promise<EximbankKeyCheck> {
+  for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+    const date = new Date();
+    date.setDate(date.getDate() - daysAgo);
+    if (date.getDay() === 0 || date.getDay() === 6) continue;
+    let items: unknown;
+    try {
+      const res = await fetchWithTimeout(`${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${yyyymmdd(date)}&data=AP01`);
+      if (!res.ok) return 'unreachable';
+      items = await res.json();
+    } catch {
+      return 'unreachable';
+    }
+    if (!Array.isArray(items) || items.length === 0) continue; // 공휴일 등 — 하루 더 앞으로
+    const results = (items as EximbankRateItem[]).map((i) => i.result);
+    if (results.includes(3)) return 'invalid';
+    if (results.includes(4)) return 'limit';
+    if (results.includes(1)) return 'ok';
+    return 'invalid';
+  }
+  return 'unreachable';
 }

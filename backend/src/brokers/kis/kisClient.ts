@@ -1,3 +1,4 @@
+import { shapeForLog } from '../../logRedact';
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
@@ -331,7 +332,7 @@ async function fetchKisBalanceUncached(): Promise<{ items: KisHoldingItem[]; sum
   const summary = Array.isArray(summaryRaw) ? summaryRaw[0] : summaryRaw;
 
   if (!summary || typeof summary !== 'object') {
-    console.error('[kis] Unexpected inquire-balance response shape:', JSON.stringify(data));
+    console.error('[kis] Unexpected inquire-balance response shape:', shapeForLog(data));
     throw new Error(
       '한국투자증권 잔고 조회 응답 형식이 예상과 다릅니다. 백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
     );

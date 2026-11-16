@@ -105,7 +105,8 @@ test('복원: 비밀번호 없이 만든 백업은 지금 등록된 키를 그�
 
 test('예전 형식 백업: 키체인 파일은 받고 평문 접속 토큰은 건너뛴다', async () => {
   const legacy = new AdmZip();
-  legacy.addFile('credentials.json', fs.readFileSync(path.join(DATA_DIR, 'credentials.json')));
+  // 실제 앱의 예전 백업처럼 이 PC 키체인으로 암호화된 봉투(테스트 환경은 평문 봉투라 모양만 흉내 낸다)
+  legacy.addFile('credentials.json', Buffer.from(JSON.stringify({ kis: { data: 'AAAA', encrypted: true } })));
   legacy.addFile('kis-token.json', Buffer.from('{"accessToken":"old"}'));
   legacy.addFile('holdings.json', Buffer.from('[]'));
   legacy.addFile('sub/evil.json', Buffer.from('{}')); // adm-zip이 '../'는 만들 때 지워버려서 하위 폴더로 확인
@@ -116,4 +117,42 @@ test('예전 형식 백업: 키체인 파일은 받고 평문 접속 토큰은 �
   assert.deepEqual(result.restored.sort(), ['credentials.json', 'holdings.json']);
   assert.deepEqual(result.skipped.sort(), ['kis-token.json', 'sub/evil.json']);
   assert.equal(exists('kis-token.json'), false);
+});
+
+test('복원: 형식이 틀린 항목·평문 키 봉투는 건너뛰고, 나머지는 쓴다', async () => {
+  const zip = new AdmZip();
+  zip.addFile('holdings.json', Buffer.from('[{"symbol":"NEW"}]'));
+  zip.addFile('trades.json', Buffer.from('{not json'));
+  zip.addFile('stockNames.sqlite', Buffer.from('not a sqlite file'));
+  // 조작된 예전 형식 백업 — 평문 봉투로 남의 키를 심으려는 경우
+  zip.addFile('credentials.json', Buffer.from(JSON.stringify({ toss: { data: Buffer.from('{"clientId":"evil"}').toString('base64'), encrypted: false } })));
+
+  const result = await restoreBackupZip(zip.toBuffer());
+
+  assert.deepEqual(result.restored, ['holdings.json']);
+  assert.deepEqual(result.skipped.sort(), ['credentials.json', 'stockNames.sqlite', 'trades.json']);
+  assert.deepEqual(listConfiguredBrokers(), ['kis']); // 원래 키 그대로
+});
+
+test('복원: 풀면 지나치게 큰 백업(압축 폭탄)은 아무것도 쓰지 않고 거절한다', async () => {
+  const zip = new AdmZip();
+  zip.addFile('holdings.json', Buffer.alloc(120 * 1024 * 1024, 0x20)); // 공백 120MB — 압축하면 아주 작다
+  const before = fs.readFileSync(path.join(DATA_DIR, 'holdings.json'), 'utf-8');
+  await assert.rejects(restoreBackupZip(zip.toBuffer()), /너무 큽니다/);
+  assert.equal(fs.readFileSync(path.join(DATA_DIR, 'holdings.json'), 'utf-8'), before);
+});
+
+test('환율 인증키: 비밀번호 백업에만 암호화돼 들어가고, 복원하면 되살아난다', async () => {
+  const { setEximbankAuthKey, getEximbankAuthKey, clearEximbankAuthKey } = await import('../src/fx/eximbankKey');
+  setEximbankAuthKey('EXIMKEY1234567890abcdef');
+  const plain = await createBackupZip();
+  assert.ok(!entryNames(plain.buffer).includes('eximbank-key.json'));
+  const { buffer } = await createBackupZip(PASSWORD);
+  const all = new AdmZip(buffer).getEntries().map((e) => e.getData().toString('utf-8')).join('\n');
+  assert.ok(!all.includes('EXIMKEY1234567890abcdef'));
+
+  clearEximbankAuthKey();
+  assert.equal(getEximbankAuthKey(), null);
+  await restoreBackupZip(buffer, PASSWORD);
+  assert.equal(getEximbankAuthKey(), 'EXIMKEY1234567890abcdef');
 });

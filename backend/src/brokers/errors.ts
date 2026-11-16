@@ -1,3 +1,4 @@
+import { redactText } from '../logRedact';
 import type { Response } from 'express';
 
 /** Shared shape of TossApiError / KisApiError (and any future broker's). */
@@ -17,7 +18,7 @@ function isBrokerApiError(err: unknown): err is BrokerApiError {
 /** Common error-to-HTTP-response mapping for broker adapter route handlers. */
 export function handleBrokerApiError(err: unknown, res: Response): void {
   if (isBrokerApiError(err)) {
-    console.error(`[broker] ${err.message} (status ${err.status}):`, err.body);
+    console.error(`[broker] ${redactText(err.message)} (status ${err.status}):`, redactText(err.body));
     res.status(502).json({ error: err.message, detail: err.body });
     return;
   }

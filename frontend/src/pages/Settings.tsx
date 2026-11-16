@@ -52,6 +52,11 @@ export default function Settings() {
   const [broker, setBroker] = useState<BrokerId>('toss');
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [fxRate, setFxRate] = useState('');
+  // 한국수출입은행 환율 인증키 — 값은 받아 오지 않고(서버가 안 줌) 저장 여부만 안다.
+  const [eximbankConfigured, setEximbankConfigured] = useState<boolean | null>(null);
+  const [eximbankKeyInput, setEximbankKeyInput] = useState('');
+  const [eximbankSaving, setEximbankSaving] = useState(false);
+  const [eximbankNote, setEximbankNote] = useState<{ kind: 'good' | 'warn' | 'error'; text: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,14 +138,16 @@ export default function Settings() {
   }
 
   async function refresh() {
-    const [s, fx, specs, info, secure] = await Promise.all([
+    const [s, fx, specs, info, secure, exim] = await Promise.all([
       api.getCredentialStatus(),
       api.getFxRate(),
       api.getCredentialFields(),
       api.getCredentialInfo(),
       api.getSecureStorageStatus(),
+      api.getEximbankKeyStatus(),
     ]);
     setStatus(s);
+    setEximbankConfigured(exim.configured);
     setSecureStorage(secure);
     setFxRate(fx.usdKrwRate ? String(fx.usdKrwRate) : '');
     setFieldSpecs(specs);
@@ -200,6 +207,37 @@ export default function Settings() {
       setMessage('환율이 저장되었습니다.');
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+
+  async function onSaveEximbankKey() {
+    setEximbankNote(null);
+    const key = eximbankKeyInput.trim();
+    if (!key) {
+      setEximbankNote({ kind: 'error', text: '인증키를 입력해 주세요.' });
+      return;
+    }
+    setEximbankSaving(true);
+    try {
+      const r = await api.saveEximbankKey(key);
+      setEximbankConfigured(true);
+      setEximbankKeyInput('');
+      setEximbankNote(r.warning ? { kind: 'warn', text: r.warning } : { kind: 'good', text: '인증키를 확인하고 저장했습니다.' });
+    } catch (e) {
+      setEximbankNote({ kind: 'error', text: (e as Error).message });
+    } finally {
+      setEximbankSaving(false);
+    }
+  }
+
+  async function onDeleteEximbankKey() {
+    setEximbankNote(null);
+    try {
+      await api.deleteEximbankKey();
+      setEximbankConfigured(false);
+      setEximbankNote({ kind: 'good', text: '인증키를 지웠습니다.' });
+    } catch (e) {
+      setEximbankNote({ kind: 'error', text: (e as Error).message });
     }
   }
 
@@ -598,11 +636,61 @@ export default function Settings() {
       </div>
 
       <div className="card">
+        <h3 style={{ marginTop: 0 }}>
+          한국수출입은행 환율 인증키{' '}
+          {eximbankConfigured === false && <span className="text-critical" style={{ fontSize: 13 }}>· 입력 필요</span>}
+          {eximbankConfigured && <span className="text-good" style={{ fontSize: 13 }}>· 저장됨</span>}
+        </h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          달러 배당금을 <strong>지급한 달의 평균 환율</strong>로 원화 환산하고, 토스증권 환율 조회가 실패했을 때 대신 쓰는 환율은
+          한국수출입은행 Open API에서 받습니다. 이 인증키는 <strong>각자 발급</strong>받아 넣어야 합니다(무료, 계좌 권한 없음 — 환율
+          조회 전용). 한국수출입은행 홈페이지 → Open API → 인증키 발급에서 받을 수 있고, 자세한 순서는 사용자 매뉴얼의 부록에
+          있습니다. 키가 없으면 달러 배당금도 오늘 환율(또는 아래에 입력한 수동 환율)로 환산됩니다.
+        </p>
+        <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          저장할 때 한국수출입은행에 한 번 조회해 키가 맞는지 확인합니다. 키는 OS 키체인으로 암호화해 이 PC에만 저장하며, 저장한
+          뒤에는 화면에 다시 보여 주지 않습니다.
+        </p>
+        <div className="form-row">
+          <label>{eximbankConfigured ? '새 인증키로 바꾸기' : '인증키'}</label>
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={eximbankKeyInput}
+            onChange={(e) => setEximbankKeyInput(e.target.value)}
+            placeholder={eximbankConfigured ? '저장된 키가 있습니다 — 바꿀 때만 입력' : '발급받은 인증키를 붙여 넣으세요'}
+          />
+        </div>
+        <button
+          className="primary"
+          onClick={onSaveEximbankKey}
+          disabled={eximbankSaving || secureStorage?.available === false}
+          title={secureStorage?.available === false ? (secureStorage.message ?? undefined) : undefined}
+        >
+          {eximbankSaving ? '확인 중…' : '확인 후 저장'}
+        </button>{' '}
+        {eximbankConfigured && (
+          <button className="ghost" onClick={onDeleteEximbankKey}>
+            지우기
+          </button>
+        )}
+        {eximbankNote && (
+          <p
+            className={eximbankNote.kind === 'good' ? 'text-good' : eximbankNote.kind === 'error' ? 'text-critical' : undefined}
+            style={{ fontSize: 13, color: eximbankNote.kind === 'warn' ? 'var(--text-muted)' : undefined }}
+          >
+            {eximbankNote.text}
+          </p>
+        )}
+      </div>
+
+      <div className="card">
         <h3 style={{ marginTop: 0 }}>USD/KRW 환율</h3>
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           해외 종목 비중(%) 계산에 사용됩니다. 기본적으로 토스증권 Open API(GET /api/v1/exchange-rate)에서
           실시간으로 조회하고, 실패하면(가끔씩 일시 오류가 날 수 있음) 한국수출입은행 환율 API로
-          자동 대체됩니다. 아래에 값을 입력하면 실시간 조회 대신 이 값을 우선 사용합니다 — 특정
+          자동 대체됩니다(위 인증키를 넣었을 때). 아래에 값을 입력하면 실시간 조회 대신 이 값을 우선 사용합니다 — 특정
           환율로 고정하고 싶을 때만 입력하고, 평소엔 비워두세요. (한국투자증권 국내주식 잔고는 전부
           원화라 이 설정이 필요 없습니다.)
         </p>

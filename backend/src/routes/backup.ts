@@ -46,6 +46,7 @@ export function createBackupRouter(options: { requestRestart?: () => void }): Ro
       if (options.requestRestart) setTimeout(options.requestRestart, 1500);
     } catch (err) {
       if (err instanceof BackupPasswordError) return res.status(400).json({ error: err.message, code: 'BACKUP_PASSWORD' });
+      if (err instanceof BackupRequestError) return res.status(400).json({ error: err.message });
       res.status(500).json({ error: `복원에 실패했습니다: ${(err as Error).message}` });
     }
   });

@@ -20,8 +20,8 @@ electron/userData/
 # 연동" 절 참고.
 backend/src/google/clientConfig.ts
 
-# 앱 배포용 한국수출입은행 Open API 인증키 — 위와 같은 이유로 빌드에 컴파일해
-# 넣는다(eximbankConfig.example.ts가 템플릿).
+# 예전 빌드 내장 한국수출입은행 인증키 파일 — 이제 쓰지 않는다(설정에서 사용자가 입력, fx/eximbankKey.ts).
+# 개발자 PC에 남아 있을 수 있어 계속 무시하고, backend/tsconfig.json이 컴파일에서도 뺀다.
 backend/src/fx/eximbankConfig.ts
 
 # scripts/generate-app-info.cjs가 매 빌드마다 새로 만든다(버전 + OSS 패키지

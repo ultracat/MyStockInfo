@@ -382,7 +382,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `effectiveFxRate`로 합친다. 환율을 못 가져오면 "환율 미적용"으로 표시하고 합산을
   생략한다(조용히 틀린 숫자를 보여주지 않기 위함). `liveFxRate`는 `api.getUsdKrwRate()`
   (`Dashboard.tsx`/`Trades.tsx`/`Dividends.tsx`/`Overview.tsx` 네 곳 전부 동일 호출) —
-  브로커를 지정하는 `api.getExchangeRate('toss', ...)`를 예전엔 하드코딩해서 호출하고
+  브로커를 지정하는 `api.getExchangeRate('toss', ...)`(2026-11-16 삭제)를 예전엔 하드코딩해서 호출하고
   실패를 `try/catch`로 삼켰는데, 지금은 백엔드가 토스→한국수출입은행 순으로 대체
   조회를 해주는 브로커 무관 엔드포인트로 바뀌면서(backend/CLAUDE.md의 "환율 조회"
   절 참고) 프론트 쪽 `try/catch`가 필요 없어졌다 — 이 엔드포인트는 완전히 실패해도

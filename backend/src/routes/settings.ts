@@ -137,7 +137,9 @@ settingsRouter.delete('/credentials/:broker', (req, res) => {
 });
 
 settingsRouter.get('/fx-rate', (_req, res) => {
-  res.json(getSettings());
+  // 필요한 값만 골라 준다 — settings.json 전체를 그대로 돌려주면, 예전 버전이 평문으로 남긴 필드(eximbankAuthKey 등,
+  // fx/eximbankKey.ts가 옮기기 전)까지 화면으로 나간다(2026-11-16 보안 점검).
+  res.json({ usdKrwRate: getSettings().usdKrwRate ?? null });
 });
 
 settingsRouter.post('/fx-rate', (req, res) => {
@@ -145,5 +147,5 @@ settingsRouter.post('/fx-rate', (req, res) => {
   if (usdKrwRate !== null && (typeof usdKrwRate !== 'number' || usdKrwRate <= 0)) {
     return res.status(400).json({ error: 'usdKrwRate는 양수 또는 null이어야 합니다.' });
   }
-  res.json(setUsdKrwRate(usdKrwRate));
+  res.json({ usdKrwRate: setUsdKrwRate(usdKrwRate).usdKrwRate ?? null });
 });

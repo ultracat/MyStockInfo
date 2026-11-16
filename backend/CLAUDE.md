@@ -83,7 +83,7 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   **in-flight promise 공유**(같은 key로 거의 동시에 온 호출은 하나만 실제 요청). React
   StrictMode의 effect 이중실행이 이 없이는 rate-limit과 무관해 보이는 에러(토스
   `account-not-found` 등)로 샐 수 있어서 생긴 장치 — 새 브로커 클라이언트도 이걸로 감싼다.
-- `registry.ts` — `getAdapter`/`listAdapters`. **삼성증권/미래에셋증권은 등록 안
+- `registry.ts` — `getAdapter`. **삼성증권/미래에셋증권은 등록 안
   돼 있음**(어댑터를 만들 계획 자체가 없음 — CSV 전용, 아래 `knownBrokers.ts` 참고).
   **KB증권도 여기 없다** — Open API는 연동했지만(`kb/kbClient.ts`)
   `BrokerAdapter` 인터페이스(여러 계좌를 넘겨받는 `listAccounts`/`getPortfolio(accountId)`
@@ -309,10 +309,10 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 지금은 `db/tradesStore.ts`가 내용(broker/accountId/symbol/side/quantity/price/
 executedAt)으로도 같은 거래를 식별한다: `id` 없는 가져오기 행은 같은 내용의 기존
 행 id를 1:1로 물려받고(`createIdReuser`, Sheets 전체 교체도 동일), 실시간 조회
-(`upsertTrades`)는 같은 내용의 UUID 사본을 지운다. 이미 쌓인 중복은
-`POST /api/trades-store/dedupe`(`removeImportedDuplicates`)로 정리한다 — 브로커 id
-행이 없는 묶음(CSV 전용 브로커의 같은 날 같은 가격 반복 체결 등)은 진짜 반복
-체결과 구분할 수 없어 건드리지 않는다.
+(`upsertTrades`)는 같은 내용의 UUID 사본을 지운다. 이미 쌓였던 중복은 일회성 정리
+엔드포인트(`POST /api/trades-store/dedupe`, `removeImportedDuplicates`)로 정리했고, 그 도구는 2026-11-16에 지웠다 —
+화면에서 부르지 않고(API 토큰이 실행마다 바뀌어 손으로도 못 부름) 원인은 그 전에 고쳐져 공개 릴리스엔 해당 중복이 없다.
+다시 필요하면 git 이력에서 되살린다.
 
 **보유종목 CSV는 현재가/평가금액/손익도 자동으로 채운다** — 필수 컬럼(`broker,accountId,
 symbol,quantity,averagePurchasePrice,currency`, `market`은 KR 심볼 0-패딩용으로 사실상
@@ -729,8 +729,8 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
 종목명 조회의 토스→KIS→KB 3단계 폴백과 같은 방향(위 절 참고), 토스 환율 API
 (`GET /api/v1/exchange-rate`)가 가끔씩 실패하는 문제를 완화하려고 만들었다.
 `GET /api/market-info/exchange-rate/usd-krw`(브로커 무관, `routes/marketInfo.ts`)가
-이 리졸버를 호출한다 — 기존 `GET /api/market-info/:broker/exchange-rate`(브로커
-지정 필수, 그 브로커 어댑터가 없거나 실패하면 그대로 에러)와 달리, 이 라우트는
+이 리졸버를 호출한다 — 예전의 브로커 지정 `GET /api/market-info/:broker/exchange-rate`(2026-11-16 삭제 — 화면이
+더 이상 부르지 않았다)와 달리, 이 라우트는
 둘 다 실패해도 예외를 던지지 않고 `{rate: null}`을 응답한다 — 프론트는 그걸 보고
 설정에 저장된 수동 환율로 마지막 폴백한다(`manualFxRate ?? liveFxRate` 패턴,
 `Dashboard.tsx`/`Trades.tsx`/`Dividends.tsx`/`Overview.tsx` 전부 동일).
@@ -1116,7 +1116,7 @@ github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포
 돌린다(별도 테스트 프레임워크 없음). 데이터를 잃거나 중복이 생기는 규칙만 골라 덮는다:
 행 소유권(`isSyncOwned`, 배당은 `isDividendSyncOwned`), Sheets 전체 교체의 전부 취소·API 행 보존, 배당 동기화
 (토스·KIS 분류, 우선주 코드, API 우선 교체·id 이어받기·멱등), 매매내역 중복
-제거(`removeImportedDuplicates`, 가져오기 id 이어받기, 실시간 조회의 UUID 사본 제거),
+제거(가져오기 id 이어받기, 실시간 조회의 UUID 사본 제거),
 `normalizeSymbol`, `SAFE_FILENAME_RE`, 백업 비밀번호 암호화·복원(비밀번호가 틀리면 아무것도
 안 바뀜, 모든 브로커 접속 토큰은 zip에 안 들어감, 형식이 틀린 항목·평문 키 봉투는 건너뜀, 압축 폭탄 거절, 환율 인증키 왕복),
 KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tossCashFlows.test.ts`),

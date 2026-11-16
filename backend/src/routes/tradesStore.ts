@@ -2,7 +2,6 @@ import { Router } from 'express';
 import {
   deleteTrade,
   listTrades,
-  removeImportedDuplicates,
   replaceAllTrades,
   updateTradeNames,
   upsertFromImport,
@@ -41,12 +40,6 @@ tradesStoreRouter.post('/refresh-names', async (_req, res) => {
   const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
   const updated = updateTradeNames(namesBySymbol);
   res.json({ updated, resolved: Object.keys(namesBySymbol).length, failed: Array.from(unresolved) });
-});
-
-// 예전 CSV/Sheets 가져오기가 만든 중복 매매내역을 한 번에 정리한다 —
-// db/tradesStore.ts의 removeImportedDuplicates 참고.
-tradesStoreRouter.post('/dedupe', (_req, res) => {
-  res.json(removeImportedDuplicates());
 });
 
 function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { error: string } {

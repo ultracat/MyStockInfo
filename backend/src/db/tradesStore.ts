@@ -249,36 +249,6 @@ export function updateTradeNames(namesBySymbol: Record<string, string>): number 
   return updated;
 }
 
-/** 이미 쌓인 중복을 한 번에 정리한다(`POST /api/trades-store/dedupe`). 내용이
- *  같은 행 묶음 안에 브로커 고유 id 행이 있으면 가져오기가 만든 UUID 행을 전부
- *  지운다 — 브로커 id 행이 하나도 없는 묶음(CSV 전용 브로커, 실시간 조회를 아직
- *  안 한 연도)은 진짜 반복 체결과 구분할 수 없어 건드리지 않는다. */
-export function removeImportedDuplicates(): { removed: number; ambiguousGroups: number } {
-  let removed = 0;
-  let ambiguousGroups = 0;
-  store().update((current) => {
-    const groups = new Map<string, StoredTrade[]>();
-    for (const t of current) {
-      const fp = fingerprint(t);
-      if (!groups.has(fp)) groups.set(fp, []);
-      groups.get(fp)!.push(t);
-    }
-    const drop = new Set<StoredTrade>();
-    for (const group of groups.values()) {
-      if (group.length < 2) continue;
-      const hasBrokerId = group.some((t) => !isImportGeneratedId(t.id));
-      if (!hasBrokerId) {
-        ambiguousGroups += 1;
-        continue;
-      }
-      for (const t of group) if (isImportGeneratedId(t.id)) drop.add(t);
-    }
-    removed = drop.size;
-    return removed === 0 ? current : current.filter((t) => !drop.has(t));
-  });
-  return { removed, ambiguousGroups };
-}
-
 export function deleteTrade(broker: BrokerId, accountId: string, id: string): boolean {
   let removed = false;
   store().update((current) => {

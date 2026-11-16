@@ -74,7 +74,6 @@ export default function RealizedGains() {
   const [allTrades, setAllTrades] = useState<StoredTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
 
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
@@ -390,7 +389,6 @@ export default function RealizedGains() {
     <div>
       <h2 className="page-title">실현손익</h2>
       {error && <p className="text-critical">{error}</p>}
-      {message && <p className="text-good">{message}</p>}
 
       <p className="card" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
         매도 거래를 이동평균법으로 계산한 <strong>참고용 추정치</strong>입니다 — 환율은 거래

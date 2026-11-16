@@ -25,6 +25,3 @@ export function getAdapter(broker: BrokerId): BrokerAdapter {
   return adapter;
 }
 
-export function listAdapters(): BrokerAdapter[] {
-  return Object.values(registry).filter((a): a is BrokerAdapter => Boolean(a));
-}

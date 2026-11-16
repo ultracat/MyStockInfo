@@ -76,7 +76,7 @@ function base64url(input: Buffer): string {
   return input.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function buildAuthUrl(clientId: string, redirectUri: string, codeChallenge: string): string {
+function buildAuthUrl(clientId: string, redirectUri: string, codeChallenge: string, state: string): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -88,6 +88,9 @@ function buildAuthUrl(clientId: string, redirectUri: string, codeChallenge: stri
     prompt: 'consent',
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
+    // 이 로그인 시도에서 만든 값만 콜백으로 받는다 — 다른 페이지가 이 루프백 콜백으로 남의 code를
+    // 밀어 넣는 것(로그인 CSRF)을 막는다. PKCE가 이미 대부분 막지만 표준 권고대로 둘 다 쓴다.
+    state,
   });
   return `${AUTH_URL}?${params.toString()}`;
 }
@@ -157,12 +160,19 @@ export function startConnectFlow(): void {
 
   const codeVerifier = base64url(crypto.randomBytes(32));
   const codeChallenge = base64url(crypto.createHash('sha256').update(codeVerifier).digest());
+  const expectedState = base64url(crypto.randomBytes(16));
 
   const server = http.createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1');
       if (url.pathname !== '/callback') {
         res.writeHead(404).end();
+        return;
+      }
+
+      // state가 다르면 이 로그인 시도의 응답이 아니다 — 무시하고(서버도 닫지 않음) 진짜 콜백을 계속 기다린다.
+      if (url.searchParams.get('state') !== expectedState) {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('잘못된 요청입니다.');
         return;
       }
 
@@ -202,7 +212,7 @@ export function startConnectFlow(): void {
       return;
     }
     const redirectUri = `http://127.0.0.1:${address.port}/callback`;
-    const authUrl = buildAuthUrl(GOOGLE_CLIENT_ID, redirectUri, codeChallenge);
+    const authUrl = buildAuthUrl(GOOGLE_CLIENT_ID, redirectUri, codeChallenge, expectedState);
     const shell = getElectronShell();
     if (shell) {
       void shell.openExternal(authUrl);

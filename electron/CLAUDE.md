@@ -63,6 +63,8 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
     앱 내부 새 창 자체는 항상 막음). `backend/src/google/oauth.ts`가 OAuth 로그인
     페이지를 여는 것과 같은 `shell` — 그쪽은 백엔드 코드에서 직접 `require('electron')`로
     가져온다(safeStorage와 같은 lazy-require 패턴).
+  - **`will-navigate`로 창이 앱 화면 밖으로 이동하지 못하게 막고**(http(s)는 시스템 브라우저로 넘김),
+    **`denyAllPermissions()`가 브라우저 권한 요청(카메라·알림 등)을 전부 거절한다** — 아래 "보안 하드닝" 절.
   - `process.platform !== 'darwin'`일 때만 `Menu.setApplicationMenu(null)`로 기본
     메뉴(File/Edit/View/Window)를 없앤다. Mac은 이 메뉴가 창 밖 OS 전역 메뉴바로
     가서 원래도 창 안엔 안 보이고 Cmd+Q 같은 표준 단축키도 거기 얹혀 있어 그대로
@@ -137,8 +139,9 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   추가하게 되면 그때 필요한 로케일 코드를 이 배열에 추가하면 된다.
 - **Mac은 위 `electronLanguages`만으로는 안 줄어든다 + `identity: null`만으로는
   다른 맥에서 "손상된 앱" 오류가 난다 — 이 둘을 `afterPack:
-  "scripts/afterPack-mac-finalize.cjs"` 훅 하나에서 순서대로 처리한다(반드시 로케일
-  삭제 → 재서명 순서, 거꾸로 하면 재서명한 뒤에 파일을 지워서 서명이 다시 깨진다).**
+  "scripts/afterPack.cjs"` 훅 하나에서 순서대로 처리한다(반드시 fuse 적용 → 로케일
+  삭제 → 재서명 순서, 거꾸로 하면 재서명한 뒤에 파일을 바꿔서 서명이 다시 깨진다).
+  같은 훅이 모든 OS에서 먼저 Electron fuses를 적용한다 — 아래 "보안 하드닝" 절.**
   1. **로케일 정리**: electron-builder(25.1.8, `app-builder-lib/out/electron/
      ElectronFramework.js`의 `getLocalesConfig`)가 Mac에서 로케일을 정리할 때 보는
      디렉터리는 `packager.getResourcesDir()`(= 앱 최상위 `Contents/Resources` — 여긴
@@ -349,6 +352,45 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 3. **`did-finish-load`에서 `setZoomFactor(1)`** — ⚠ 페이지 줌은 **origin별로 디스크에
    기억된다.** 과거에 ⌘+를 눌러 페이지 줌이 남아 있으면 CSS 배율과 이중으로 곱해져
    "똑같은 100%인데 화면이 크다"가 된다. 매 로드마다 되돌린다.
+
+## 보안 하드닝 (2026-11-16)
+
+목표는 **"이 앱의 권한(키체인으로 증권사 자격증명을 푸는 프로세스 + 토큰을 든 렌더러)을 남의 코드가 빌려 쓰지 못하게"**다.
+네 겹이고 각각 막는 길이 다르다.
+
+| 겹 | 위치 | 막는 것 |
+|---|---|---|
+| 렌더러 격리 | `main.ts` `webPreferences` | 렌더러에서 Node/Electron API 접근 |
+| CSP | `frontend/vite.config.ts`(빌드 때 `<meta>`로 주입) | 외부 스크립트·인라인 스크립트·`eval`·외부 연결·iframe |
+| 탐색·권한 | `main.ts` `will-navigate`, `denyAllPermissions()` | 창이 다른 페이지로 바뀌어 토큰 든 창에서 남의 코드가 도는 것, 브라우저 권한 |
+| Electron fuses | `scripts/afterPack.cjs`(패키징 때 바이너리 수정) | 실행 파일을 Node로 쓰기(`ELECTRON_RUN_AS_NODE`), `NODE_OPTIONS`, `--inspect`, asar 바꿔치기 |
+| 원격 디버깅·개발자 도구 | `main.ts` 맨 위 `REMOTE_DEBUG_SWITCHES`, `webPreferences.devTools`, 보기 메뉴 | 다른 프로그램이 `--remote-debugging-port`로 앱을 띄워 화면을 조종하는 것, 개발자 도구 |
+
+- **CSP는 패키징 빌드에만 들어간다** — dev는 Vite HMR이 인라인 스크립트·ws를 써서 뺐다. 그래서 CSP 위반은 dev에선
+  안 보이고 패키징해야 드러난다. 렌더러에 외부 자원(폰트·이미지·스크립트)을 들이면 `vite.config.ts`의 `CSP`를 같이 고치고
+  **패키징해서** 확인한다. 화면은 `file://`라 응답 헤더가 없어 `<meta>`밖에 방법이 없다(`frame-ancestors`는 meta에서 무시됨 — 상관없다).
+- **fuses 확인**: `npx @electron/fuses read --app release/mac-arm64/MyStock.app`. electron-builder 25에 fuse 설정이 없어
+  `@electron/fuses`(MIT, 루트 devDependency)로 afterPack에서 직접 바꾼다. 26 이상으로 올리면 `electronFuses` 설정으로 옮길 수 있다.
+- ⚠ **`EnableCookieEncryption`은 켜지 않는다** — 켰더니 시작 시 네트워크 서비스가 키체인 키를 먼저 요구해서, 서명이 매 빌드
+  바뀌는 ad-hoc 앱은 키체인 허용 창에 답할 때까지 렌더러의 모든 fetch가 멈췄다("불러오는 중…"에서 정지, 실측). 쿠키를 안 쓴다.
+- ⚠ **`GrantFileProtocolExtraPrivileges`는 켜 둔다(기본값)** — 화면을 `file://`로 열기 때문. 끄려면 화면을 커스텀 프로토콜로 옮겨야 한다.
+- **asar 무결성 검사**(`EnableEmbeddedAsarIntegrityValidation`)는 Mac·Windows만 동작한다 — 해시는 electron-builder가
+  `Info.plist`의 `ElectronAsarIntegrity`·exe 리소스에 넣는다. 패키징 뒤에 `app.asar`를 손으로 고치면 앱이 안 뜬다(의도).
+- 검증(2026-11-16, Mac 패키징 + 빈 `--user-data-dir` + `--remote-debugging-port`): 화면·API 정상, CSP 위반 로그 0건.
+  외부 fetch·외부/인라인 script·iframe·`eval` 차단, `file://` 탐색 차단, 알림 권한 `denied`.
+  ⚠ CDP `Runtime.evaluate`로 `eval`을 시험하면 기본값 `allowUnsafeEvalBlockedByCSP: true` 때문에 CSP를 무시하고 실행된다 —
+  `false`로 줘야 페이지와 같은 조건이 된다.
+- **원격 디버깅 옵션은 fuses로 못 막는다** — Chromium 스위치라서. 패키징본(`app.isPackaged`)은 `remote-debugging-port`·
+  `-pipe`·`-address`가 붙어 있으면 **모듈을 읽자마자 `app.exit(1)`**(창·백엔드를 만들기 전). 이걸 열어 두면 같은 PC의 프로그램이
+  앱을 그 옵션으로 띄워 렌더러를 조종하고, 자기 비밀번호로 "데이터 백업"을 눌러 키체인 확인 없이 API 키를 전부 꺼내 갈 수 있었다.
+  dev 실행·매뉴얼 스크린샷용 인스턴스(개발용 Electron)는 그대로 쓸 수 있다. **그래서 패키징본은 CDP로 검증할 수 없다** —
+  CSP 등 렌더러 검증은 이 차단을 잠시 빼고 패키징하거나(커밋하지 말 것) dev에서 `vite build` 결과를 `loadFile`로 띄워 한다.
+  패키징본 검증(2026-11-16): 두 옵션 모두 exit 1, 옵션 없이 실행하면 정상(창 뜸, 화면→백엔드 저장 요청 들어옴).
+- 패키징본은 `webPreferences.devTools: false` + 보기 메뉴의 "개발자 도구" 항목 없음.
+- **릴리스 산출물 무결성**: 릴리스 잡이 `SHA256SUMS.txt`를 만들어 같이 올린다(공백 든 파일명은 GitHub처럼 `.`으로 바꾼 뒤 —
+  `MyStock.Setup.X.exe`). 워크플로의 외부 액션은 **커밋 해시로 고정**(`@<sha> # vX.Y.Z`)하고 `.github/dependabot.yml`이
+  매달 갱신 PR을 올린다. 액션을 새로 쓰면 해시로 적는다(`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`).
+- **광고·외부 위젯을 넣는다면 이 창의 CSP를 넓히지 말고** 별도 `WebContentsView`(다른 출처, preload 없음)에 띄운다.
 
 ## 자격증명 암호화와의 관계
 

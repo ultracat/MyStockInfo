@@ -31,6 +31,8 @@ beforeEach(() => {
   });
   write('kis-token.json', { accessToken: 'plain-kis-token' });
   write('kb-token.json', { accessToken: 'plain-kb-token' });
+  write('nh-token.json', { accessToken: 'plain-nh-token' });
+  write('kiwoom-token.json', { accessToken: 'plain-kiwoom-token' });
   write('holdings.json', [{ symbol: '005930' }]);
 });
 
@@ -51,7 +53,7 @@ test('비밀번호로 만든 백업: 키는 secrets.enc.json에만 암호화돼 
   assert.equal(includesSecrets, true);
   assert.deepEqual(entryNames(buffer), ['holdings.json', 'manifest.json', 'secrets.enc.json']);
   const all = new AdmZip(buffer).getEntries().map((e) => e.getData().toString('utf-8')).join('\n');
-  for (const plain of [SECRET, 'g-refresh', 'plain-kis-token', 'plain-kb-token']) {
+  for (const plain of [SECRET, 'g-refresh', 'plain-kis-token', 'plain-kb-token', 'plain-nh-token', 'plain-kiwoom-token']) {
     assert.ok(!all.includes(plain), `${plain}이 zip 안에 평문으로 있다`);
   }
 });
@@ -87,6 +89,8 @@ test('복원: 비밀번호가 맞으면 키·Google 연결을 백업 기준으�
   assert.equal(googleStore.getState().refreshToken, 'g-refresh');
   assert.equal(exists('kis-token.json'), false);
   assert.equal(exists('kb-token.json'), false);
+  assert.equal(exists('nh-token.json'), false);
+  assert.equal(exists('kiwoom-token.json'), false);
 });
 
 test('복원: 비밀번호 없이 만든 백업은 지금 등록된 키를 그대로 둔다', async () => {

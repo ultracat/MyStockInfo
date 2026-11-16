@@ -1,4 +1,4 @@
-import { DATA_DIR, readJson, resetDataDir } from './setup';
+import { DATA_DIR, readJson, readSecretJson, resetDataDir } from './setup';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -101,7 +101,7 @@ test('KIS 토큰: 만료됐으면 한 번 발급해 파일에 저장, 동시에 
     { grant: tokenCalls[0].body?.grant_type, key: tokenCalls[0].body?.appkey, secret: tokenCalls[0].body?.appsecret },
     { grant: 'client_credentials', key: `kis-app-${keySeq}`, secret: 'kis-secret' }
   );
-  const stored = readJson<{ accessToken: string; expiresAt: number }>('kis-token.json');
+  const stored = readSecretJson<{ accessToken: string; expiresAt: number }>('kis-token.json');
   assert.equal(stored.accessToken, `kis-tok-${tokenSeq}`);
   assert.ok(stored.expiresAt > Date.now() + 23 * 3600_000);
 });

@@ -6,7 +6,20 @@ export function toCsv(rows: string[][]): string {
   return rows.map((row) => row.map(escapeCsvField).join(',')).join('\r\n');
 }
 
-function escapeCsvField(value: string): string {
+// CSV 수식 주입 방지 — 엑셀·구글 시트는 =, +, -, @(와 탭·CR)로 시작하는 칸을 수식으로 실행한다.
+// 메모·종목명처럼 사람이 쓴 글자가 그대로 나가므로 그런 칸 앞에 '를 붙여 글자로 만든다(OWASP 권고).
+// 음수·부호 있는 숫자(-1234.5, +3)는 숫자 그대로 둔다 — 금액 칸이 글자가 되면 안 된다.
+// 우리 가져오기(parseCsv)는 이 '를 다시 떼서 왕복해도 값이 같다.
+const FORMULA_START = /^[=+\-@\t\r]/;
+const SIGNED_NUMBER = /^[+-]?\d[\d,]*(\.\d+)?$/;
+// 원래 '로 시작하던 값('=x)도 하나 더 붙여 내보낸다 — 가져올 때 하나만 떼므로 왕복해도 같다.
+const needsFormulaGuard = (v: string): boolean => {
+  const body = v.replace(/^'+/, '');
+  return FORMULA_START.test(body) && !SIGNED_NUMBER.test(body);
+};
+
+function escapeCsvField(raw: string): string {
+  const value = needsFormulaGuard(raw) ? `'${raw}` : raw;
   if (/[",\r\n]/.test(value)) {
     return `"${value.replace(/"/g, '""')}"`;
   }
@@ -74,7 +87,9 @@ export function parseCsv(text: string): string[][] {
     rows.push(row);
   }
 
-  return rows.filter((r) => !(r.length === 1 && r[0] === ''));
+  return rows
+    .filter((r) => !(r.length === 1 && r[0] === ''))
+    .map((r) => r.map((f) => (f.startsWith("'") && needsFormulaGuard(f.slice(1)) ? f.slice(1) : f)));
 }
 
 /** 브라우저 표준 API(Blob + objectURL + <a download>)만으로 파일을 내려받는다 —

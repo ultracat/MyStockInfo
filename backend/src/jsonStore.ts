@@ -58,7 +58,8 @@ export class JsonStore<T> {
 
   write(data: T): void {
     const tmpPath = `${this.filePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    // 소유자만 읽고 쓰게(0600) — 임시 파일의 권한이 rename 뒤 그대로 남는다. 폴더도 0700(paths.ts).
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 });
     fs.renameSync(tmpPath, this.filePath);
     const stat = fs.statSync(this.filePath);
     fileCache.set(this.filePath, { mtimeMs: stat.mtimeMs, size: stat.size, value: data });

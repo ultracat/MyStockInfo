@@ -1,4 +1,4 @@
-import { DATA_DIR, readJson, resetDataDir } from './setup';
+import { DATA_DIR, readJson, readSecretJson, resetDataDir } from './setup';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -104,7 +104,7 @@ test('토큰: 명세 형식으로 한 번만 발급하고, 파일에 저장해 �
     assert.match(c.headers['content-type'], /^application\/json/);
     assert.ok(c.input, `${c.path} Input_0 봉투`);
   }
-  const stored = readJson<{ accessToken: string; keyHash: string; expiresAt: number }>('nh-token.json');
+  const stored = readSecretJson<{ accessToken: string; keyHash: string; expiresAt: number }>('nh-token.json');
   assert.equal(stored.accessToken, `tok-${tokenSeq}`);
   assert.ok(!JSON.stringify(stored).includes('app-key'), '앱키 원문은 저장하지 않는다');
   assert.ok(stored.expiresAt > Date.now() + 23 * 3600_000);

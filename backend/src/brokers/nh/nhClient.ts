@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
-import { JsonStore } from '../../jsonStore';
+import { SecretJsonStore } from '../../secretJsonStore';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
 
@@ -67,7 +67,7 @@ interface StoredNhToken {
   keyHash: string;
 }
 
-const tokenStore = () => new JsonStore<StoredNhToken | null>('nh-token.json', getDataDir(), null);
+const tokenStore = () => new SecretJsonStore<StoredNhToken>('nh-token.json', getDataDir());
 let cachedToken: StoredNhToken | null = null;
 let inFlightToken: Promise<string> | null = null;
 

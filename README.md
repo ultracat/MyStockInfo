@@ -20,6 +20,8 @@
 
 - **설치 파일**: [GitHub Releases](https://github.com/ultracat/MyStockInfo/releases)에서 OS에 맞는 파일을 받습니다.
   - macOS(Apple 칩) `.dmg`, Windows `.exe`, Linux `.AppImage`
+  - 릴리스마다 `SHA256SUMS.txt`가 함께 올라갑니다 — 받은 파일이 진짜인지 확인하는 방법은
+    [매뉴얼의 "받은 파일 확인하기"](doc/user-manual.md#받은-파일-확인하기-선택)를 보세요.
 - **사용자 매뉴얼**: [`doc/user-manual.md`](doc/user-manual.md) — 화면별 사용법, 증권사 API 키 발급 안내, 백업/복원, 문제 해결.
 - **변경 내역**: [`CHANGELOG.md`](CHANGELOG.md) — 버전별 새 기능과 수정(최신 v1.2.2). 새 버전으로 바꿔 설치해도 데이터와 API 키는 그대로 남습니다
   ([매뉴얼의 "새 버전으로 업데이트"](doc/user-manual.md#새-버전으로-업데이트)).
@@ -134,6 +136,9 @@
   (한국투자증권의 달러 배당은 예외 — API가 주지 않아 직접 기록합니다).
 - 환율을 가져오지 못하면 달러 금액을 억지로 합산하지 않고 "환율 미적용"으로 표시합니다.
 - **API 자격증명은 절대 커밋되지 않습니다.** 실제 데이터는 OS의 앱 데이터 폴더에 저장됩니다(아래).
+- **보안**: API 키와 증권사 접속 토큰은 OS 키체인으로 암호화해 저장하고, 데이터 폴더는 본인 계정만 읽을 수 있게 만듭니다.
+  앱 화면은 콘텐츠 보안 정책(CSP)으로 외부 코드를 받지 않고, 설치본은 Electron fuses로 실행 파일을 다른 용도로 쓰지 못하게
+  잠겨 있으며 원격 디버깅 옵션으로는 실행되지 않습니다. 내보낸 CSV는 엑셀 수식이 실행되지 않게 처리됩니다.
 
 ---
 
@@ -216,11 +221,13 @@ npm run package:win     # .exe (NSIS)
    CHANGELOG에 그 버전 절·같은 태그 없음.
 3. 빌드할 때 **`npm run release:build`**(다른 태그면 `-- vX.Y.Z`) — 그 태그로 Actions를 실행해 세 OS 산출물과
    **초안** 릴리스를 만듭니다. 릴리스 노트는 `CHANGELOG.md`의 그 버전 절에서 자동으로 들어갑니다.
+   설치 파일의 SHA-256을 담은 `SHA256SUMS.txt`도 같이 올라갑니다.
 4. 초안을 확인하고 공개합니다: `gh release edit vX.Y.Z --draft=false --latest`
 
 필요한 OS만 빌드해 보려면 Actions 탭에서 main으로 수동 실행하고 플랫폼을 고르면 됩니다(릴리스는 만들지 않음).
 Google Sheets·실시간 환율용 키는 저장소 Secrets(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `EXIMBANK_AUTH_KEY`)로
 넣으며, 없으면 템플릿으로 빌드돼 두 기능만 동작하지 않습니다.
+워크플로의 외부 액션은 커밋 해시로 고정하고(태그는 옮겨질 수 있어서), Dependabot(`.github/dependabot.yml`)이 매달 새 버전을 PR로 올립니다.
 
 ### 로고
 

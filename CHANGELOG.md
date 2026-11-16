@@ -3,7 +3,10 @@
 MyStock의 버전별 변경 사항입니다. 설치 파일은 [GitHub Releases](https://github.com/ultracat/MyStockInfo/releases)에서 받습니다.
 기능별 사용법은 [사용자 매뉴얼](doc/user-manual.md)을 참고하세요.
 
-## 다음 버전 (미배포)
+## v1.3.0 — 2026-11-16
+
+**보안을 크게 강화**하고, 외부 서비스 키(한국수출입은행 환율·Google Sheets)를 **각자 발급받아 넣는 방식**으로 바꿨습니다.
+Electron 45로 올라가 **macOS 13(Ventura) 이상**이 필요합니다.
 
 ### 보안
 - **앱 화면이 외부 코드를 실행하지 못하게 막았습니다.** 화면에 콘텐츠 보안 정책(CSP)을 걸어 앱 자체 파일과 내 컴퓨터의 MyStock

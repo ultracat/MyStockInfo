@@ -370,6 +370,8 @@ export interface KisPeriodRight {
   last_alct_amt: string;
   tax_amt: string;
   cash_dfrm_dt: string;
+  /** 잔고수량(기준일 보유 수량) — 다가오는 배당 확정 건의 "수량 × 주당"(주당 = 최종배정금액 ÷ 이 값). 공식 예제 COLUMN_MAPPING. */
+  cblc_qty?: string;
 }
 
 /** 이 앱이 쓰는 KIS 계좌 id(`CANO-상품코드`) — kisAdapter의 계좌 목록과 같은 형식. */

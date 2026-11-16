@@ -1,7 +1,8 @@
 import './setup';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { overseasScheduleRows, parseKsdDate, planSymbolDividends } from '../src/upcomingDividends';
+import { itemsFromSnapshot, overseasScheduleRows, parseKsdDate, planSymbolDividends } from '../src/upcomingDividends';
+import type { UpcomingDividend } from '../src/upcomingDividends';
 
 // 예탁원 배당일정(HHKDB669102C0) 행 — 기준일은 YYYYMMDD, 지급일은 YYYY/MM/DD로 온다(2026-11-10 실측). 값은 지어낸 것.
 const row = (record: string, per: number, pay = '') => ({ record_date: record, per_sto_divi_amt: String(per), divi_pay_dt: pay });
@@ -129,4 +130,61 @@ test('미국 배당: 권리 금액이 있으면 예상, 발표만 된 건은 최
   // 11-12 기준·11-13 지급분은 이미 지급돼(오늘 11-16) 빠진다. 지급 전이면 예상(estimated)으로 나온다.
   const before = planSymbolDividends(rows, '2026-11-12', '2026-11-30');
   assert.deepEqual(before[0], { status: 'estimated', source: 'ksd-schedule', recordDate: '2026-11-12', payDate: '2026-11-13', perShare: 0.0537 });
+});
+
+// ---- 저장된 일정 → 화면 줄(itemsFromSnapshot) ----
+
+const holding = (broker: string, accountId: string, symbol: string, quantity: number, currency = 'KRW') =>
+  ({
+    broker, accountId, symbol, name: symbol, market: null, currency, quantity, lastPrice: 0, averagePurchasePrice: 0,
+    purchaseAmount: 0, marketValue: 0, profitLossAmount: 0, profitLossRate: 0, commission: null, tax: null, memo: null,
+    updatedAt: '2026-11-16T00:00:00Z',
+  }) as Parameters<typeof itemsFromSnapshot>[1][number];
+
+const confirmedRow = (symbol: string, record: string, pay: string): UpcomingDividend => ({
+  status: 'confirmed', broker: 'kis', accountId: '12345678-01', symbol, name: symbol, currency: 'KRW', payDate: pay,
+  recordDate: record, quantity: 0, perShare: null, grossAmount: 1000, tax: 154, source: 'kis-account',
+});
+
+test('itemsFromSnapshot: 저장된 일정에 지금 보유 수량을 곱한다(저장 뒤 수량이 바뀌어도 맞음)', () => {
+  const snap = { confirmed: [], krCalendar: {}, kr: { '111110': monthly }, us: {} };
+  const [p] = planSymbolDividends(monthly, '2026-11-16', '2026-11-30');
+  const items = itemsFromSnapshot(snap, [holding('toss', '1', '111110', 10), holding('samsung', 'a', '111110', 3)], '2026-11-16', '');
+  assert.deepEqual(
+    items.map((i) => [i.broker, i.quantity, i.grossAmount, i.recordDate]),
+    [
+      ['toss', 10, Math.round(p.perShare * 10), p.recordDate],
+      ['samsung', 3, Math.round(p.perShare * 3), p.recordDate],
+    ]
+  );
+  // 같은 저장본, 수량만 바뀜 → 금액도 따라간다.
+  const more = itemsFromSnapshot(snap, [holding('toss', '1', '111110', 20)], '2026-11-16', '');
+  assert.equal(more[0].grossAmount, Math.round(p.perShare * 20));
+});
+
+test('itemsFromSnapshot: 저장본에 없는 종목·수량 0은 빼고, 지급일이 지난 확정 건은 오늘 기준으로 거른다', () => {
+  const snap = {
+    confirmed: [confirmedRow('222220', '2026-10-31', '2026-11-16'), confirmedRow('222220', '2026-11-30', '2026-12-20')],
+    krCalendar: {},
+    kr: { '111110': monthly },
+    us: {},
+  };
+  const items = itemsFromSnapshot(snap, [holding('toss', '1', '333330', 5), holding('toss', '1', '111110', 0)], '2026-11-16', '12345678-01');
+  assert.deepEqual(items.map((i) => [i.status, i.payDate]), [['confirmed', '2026-12-20']]);
+});
+
+test('itemsFromSnapshot: KIS 계좌에 같은 종목·기준월 확정이 있으면 그 계좌엔 예상·추정을 안 만든다', () => {
+  const [p] = planSymbolDividends(monthly, '2026-11-16', '2026-11-30');
+  const snap = { confirmed: [confirmedRow('111110', p.recordDate, '2026-11-25')], krCalendar: {}, kr: { '111110': monthly }, us: {} };
+  const items = itemsFromSnapshot(snap, [holding('kis', '12345678-01', '111110', 10), holding('toss', '1', '111110', 4)], '2026-11-16', '12345678-01');
+  assert.deepEqual(items.map((i) => [i.status, i.broker]).sort(), [['confirmed', 'kis'], ['projected', 'toss']]);
+});
+
+test('itemsFromSnapshot: 미국 종목은 달러·센트 반올림, 출처는 kis-overseas/history', () => {
+  const rows = overseasScheduleRows(
+    [ice('20261105', '20261106'), ice('20261112', '20261113'), ice('20261119', '20261120')],
+    [right('20261029', '0.05'), right('20261105', '0.06'), right('20261119', '0.0537')]
+  );
+  const items = itemsFromSnapshot({ confirmed: [], krCalendar: {}, kr: {}, us: { XYZ: rows } }, [holding('toss', '1', 'XYZ', 7, 'USD')], '2026-11-16', '');
+  assert.deepEqual(items.map((i) => [i.currency, i.source, i.grossAmount]), [['USD', 'kis-overseas', Math.round(0.0537 * 7 * 100) / 100]]);
 });

@@ -10,19 +10,33 @@ import CollapseToggle from './CollapseToggle';
 // 확정 = 한투 계좌의 지급 예정 권리(세전·세금 정확), 예상 = 예탁원 배당일정(국내) / ICE 일정 + 해외 기간별권리(미국)의
 // 주당 배당금 × 지금 보유 수량(세전), 추정 = 아직 금액이 없는 다음 배당을 지난 일정의 주기·최근 12회 주당 중간값으로 만든 것.
 // 국내(원화)와 해외·미국(달러)을 소제목으로 나눠 표를 따로 그리고 합계도 각자 낸다(환율로 합치지 않는다).
-// 데이터는 배당금 화면(Dividends.tsx)이 한 번 받아 이 표와 "월별 배당금" 그래프의 흐린 예상 막대에 같이 넘긴다.
+// 데이터는 배당금 화면(Dividends.tsx)이 받아 이 표와 "월별 배당금" 그래프의 흐린 예상 막대에 같이 넘긴다.
+// 일정은 백엔드에 저장돼 하루 한 번 다시 받는다 — 머리에 받은 시각과 "갱신 중"을, 옆에 새로고침 버튼을 둔다.
 export interface UpcomingDividendsState {
   items: UpcomingDividend[] | null;
   available: boolean;
   error: string | null;
+  /** 지금 보이는 일정을 받은 시각(ISO). */
+  builtAt: string | null;
+  /** 백엔드가 뒤에서 다시 받는 중. */
+  refreshing: boolean;
+}
+
+/** ISO → "11-16 09:12"(이 PC 시간대). */
+function shortStamp(iso: string): string {
+  const d = new Date(iso);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 export default function UpcomingDividends({
   accountLabels,
-  state: { items, available, error },
+  state: { items, available, error, builtAt, refreshing },
+  onRefresh,
 }: {
   accountLabels: AccountLabel[];
   state: UpcomingDividendsState;
+  onRefresh: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -52,7 +66,19 @@ export default function UpcomingDividends({
         }}
       >
         <h3 style={{ margin: 0 }}>다가오는 배당</h3>
-        <CollapseToggle collapsed={collapsed} onClick={() => setCollapsed((c) => !c)} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {(builtAt || refreshing) && (
+            <span style={{ color: 'var(--text-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>
+              {builtAt ? `기준 ${shortStamp(builtAt)}` : ''}
+              {builtAt && refreshing ? ' · ' : ''}
+              {refreshing ? '갱신 중…' : ''}
+            </span>
+          )}
+          <button type="button" className="ghost" onClick={onRefresh} disabled={refreshing || items === null}>
+            새로고침
+          </button>
+          <CollapseToggle collapsed={collapsed} onClick={() => setCollapsed((c) => !c)} />
+        </div>
       </div>
       {!collapsed && (
         <>
@@ -63,6 +89,8 @@ export default function UpcomingDividends({
             종목의 지난 일정으로 짐작한 것입니다(주당 금액은 최근 12회의 중간값, 기준일이 휴일이면 직전 영업일, 지급일은 지난 일정처럼 기준일 뒤 몇 영업일 —
             미국 종목은 미국 증시 정기 휴장일 기준). 확정은 앞으로 120일, 예상·추정은 <strong>이번 달 지급분까지만</strong>{' '}
             보여 줍니다. 금액은 세전이고(미국 배당은 현지 원천징수 15% 전), 국내는 원화·해외는 달러로 따로 합계를 냅니다.
+            배당 일정은 <strong>하루 한 번</strong> 새로 받아 저장해 두고(그사이엔 저장된 일정 × 지금 보유 수량), 새로 산 종목은
+            바로 받아 더합니다 — 지금 다시 받으려면 <strong>새로고침</strong>.
           </p>
           {error ? (
             <p className="text-critical">{error}</p>

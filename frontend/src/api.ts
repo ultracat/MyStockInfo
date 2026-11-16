@@ -259,7 +259,11 @@ export const api = {
       `/market-info/sectors?symbols=${encodeURIComponent(symbols.join(','))}`
     ),
   // 한국투자증권 키가 있어야 한다 — 없으면 upcoming은 available:false, realized는 409.
-  getUpcomingDividends: () => request<{ items: UpcomingDividend[]; available: boolean }>('/dividends/upcoming'),
+  // 일정은 백엔드에 저장돼 하루 한 번 다시 받는다 — `refreshing`이면 뒤에서 받는 중(잠시 뒤 다시 부른다), `refresh`는 지금 다시 받기.
+  getUpcomingDividends: (refresh = false) =>
+    request<{ items: UpcomingDividend[]; available: boolean; builtAt: string | null; refreshing: boolean }>(
+      `/dividends/upcoming${refresh ? '?refresh=true' : ''}`
+    ),
   getKisRealized: (from: string, to: string) =>
     request<{ accountId: string; rows: KisRealizedRow[]; overseasRows: KisRealizedRow[] | null }>(`/kis/realized?from=${from}&to=${to}`),
   getKisStockDetail: (symbol: string) => request<KisStockDetail>(`/kis/stock-detail/${encodeURIComponent(symbol)}`),

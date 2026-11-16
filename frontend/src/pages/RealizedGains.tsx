@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { effectiveRate } from '../fx';
+import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
@@ -77,7 +79,7 @@ export default function RealizedGains() {
 
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
-  const effectiveFxRate = manualFxRate ?? liveFxRate;
+  const effectiveFxRate = effectiveRate(manualFxRate, liveFxRate);
   const [monthlyAvgFxRates, setMonthlyAvgFxRates] = useState<
     Record<string, { rate: number; sampleCount: number } | null>
   >({});
@@ -90,7 +92,7 @@ export default function RealizedGains() {
   const [broker, setBroker] = useState<'ALL' | BrokerId>('ALL');
 
   useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
         setAllTrades(await api.listTradesStore());
       } catch (e) {
@@ -125,12 +127,12 @@ export default function RealizedGains() {
   // (월평균을 못 구한 달의 최종 폴백).
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null }));
+    void (async () => {
+      // 수동·실시간을 동시에 받는다(fxLoader.ts) — 실패해도 던지지 않고 null. 규칙은 fx.ts의 effectiveRate.
+      const { manual, live } = await loadUsdKrwRates();
       if (cancelled) return;
-      setManualFxRate(fx.usdKrwRate);
-      const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
-      if (!cancelled && live.rate) setLiveFxRate(live.midRate ?? live.rate);
+      setManualFxRate(manual);
+      if (live !== null) setLiveFxRate(live);
     })();
     return () => {
       cancelled = true;

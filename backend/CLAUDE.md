@@ -1089,7 +1089,30 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
   바디 크기 제한(100kb)을 20mb로 올렸다(안 그러면 복원 업로드가 데이터가 조금만
   쌓여도 막힘).
 
+## 자동 로컬 백업 (`src/autoBackup.ts`, `routes/backup.ts`의 `/auto`)
+
+2026-11-16 추가 — 예전엔 사용자가 직접 받을 때만 백업이 생겨 가져오기를 잘못하면 되돌릴 방법이 없었다.
+- `startServer()`가 listen 직후 `startAutoBackupSchedule()` — 1분 뒤 + 6시간마다 "마지막 하루 백업이 20시간 넘었나" 확인 후
+  `createBackupZip()`(**비밀번호 없음 → 비밀 정보 제외**)를 `auto-YYYYMMDD-HHMMSS.zip`으로. 최근 7개만(복원 직전 백업 포함).
+- 위치는 데이터 폴더 **옆** `backups/`(`getBackupDir()`, 0700/파일 0600) — 데이터 폴더 안이면 다음 백업이 이전 백업을 또 담는다.
+- **복원(수동 `/restore`·자동 `/auto/:name/restore`) 직전에 `-before-restore` 백업을 남긴다** — 되돌린 것을 되돌릴 수 있게.
+  자동 백업 복원은 비밀 정보가 없어 `secrets: 'not-in-backup'`(지금 키 유지).
+- 복원 라우트는 이름을 `AUTO_BACKUP_NAME_RE`로만 받는다(경로 조작 방지, 테스트 있음).
+- ⚠ 테스트: `test/setup.ts`가 데이터 폴더를 **전용 임시 폴더 아래 `data/`**로 둔다 — 예전처럼 `os.tmpdir()` 바로 아래면
+  "데이터 폴더 옆 backups/"가 시스템 임시 폴더에 생기고 테스트가 그걸 지운다(실제로 그럴 뻔했다).
+
+## 새 버전 알림 (`src/updateCheck.ts`, `routes/about.ts`의 `/update`)
+
+자동 설치는 코드 서명이 있어야 안전해서 없고, **알림만** 한다(2026-11-16). GitHub 공개 API
+`repos/ultracat/MyStockInfo/releases/latest`(키 없음, 익명 시간당 60회)를 6시간 메모리 캐시로 부른다. 초안·프리릴리스·형식이 다른
+태그는 무시, 링크는 이 저장소 릴리스 페이지만 받는다. 실패하면 "모름"(지난 성공 결과 유지). `settings.json`의 `updateCheck: false`로
+끈다(정보 화면 체크박스, `POST /api/about/update-check`). User-Agent는 `MyStock/<버전>`뿐 — 개인정보를 보내지 않는다.
+버전 비교 `isNewerVersion`은 `x.y.z` 숫자만(테스트 있음).
+
 ## 앱 정보(About) 화면 (`src/routes/about.ts`, `src/generated/appInfo.ts`, `scripts/generate-app-info.cjs`)
+
+- 같은 라우터에 2026-11-16 추가: `GET /update`·`POST /update-check`(위 절), `POST /client-error`(화면 오류 경계가 보낸 오류를
+  잘라서 `console.error` → 메인 로그 파일, electron/CLAUDE.md "로그 파일"), `POST /open-logs`(`shell.openPath(app.getPath('logs'))`).
 
 프론트 "정보" 페이지(`frontend/src/pages/About.tsx`, 사이드바에서 "설정" 바로
 아래)가 `GET /api/about`로 SW 이름/버전과 사용 중인 오픈소스 패키지 목록(이름/
@@ -1139,7 +1162,10 @@ KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tos
 (`secretJsonStore.test.ts`), 로그 가리기(`logRedact.test.ts`), 예전 평문 `settings.json` 환율 키 이전(`eximbankKey.test.ts`).
 - ⚠ 테스트는 Electron 밖이라 `sealJson`이 **평문 봉투**(`encrypted:false`)를 만든다 — 복원 검증은 키체인 파일에 `encrypted:true`만
   받으므로, 예전 형식 백업을 흉내 낼 땐 `{ data, encrypted: true }` 모양을 직접 만든다(`backup.test.ts`).
-- **`test/setup.ts`를 각 테스트 파일에서 가장 먼저 import한다** — 임시 폴더를 만들어
+- **CI**: `.github/workflows/ci.yml`이 푸시·PR마다 `npm run build`(타입 검사) → `npm run lint` → `npm test`(백엔드 + 프론트엔드
+  `frontend/test/*.test.ts` — 화면 쪽 순수 함수 `fx.ts`·`csv.ts`). 린트(`eslint.config.mjs`)는 `no-floating-promises`·
+  `no-misused-promises`(조건)·`await-thenable`·React 훅 규칙만 — 결과를 일부러 안 기다릴 땐 `void`를 붙인다.
+- **`test/setup.ts`를 각 테스트 파일에서 가장 먼저 import한다** — 전용 임시 폴더 아래 `data/`를 만들어
   `MYSTOCK_DATA_DIR`로 넘긴다. `getDataDir()`는 처음 불린 값을 고정하므로 다른 모듈이
   먼저 데이터 폴더를 건드리면 `backend/data/`의 실제 데이터에 쓴다.
 - 브로커를 하나도 연동하지 않은 상태로 돈다 — 네트워크를 타지 않게, 종목명은

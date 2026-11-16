@@ -364,7 +364,7 @@ export default function Dashboard() {
     // brokers/kis/kisClient.ts's `inFlightBalance`.
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       try {
         setLoading(true);
         setError(null);
@@ -394,7 +394,7 @@ export default function Dashboard() {
     if (!selectedBroker) return;
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       try {
         setLoading(true);
         setError(null);
@@ -561,7 +561,7 @@ export default function Dashboard() {
     // CSV 전용 브로커는 폴링할 라이브 소스가 없다 — 한 번만 로컬 저장소를 읽고
     // 인터벌을 안 돌린다.
     if (!API_BROKER_IDS.includes(selectedBroker)) {
-      (async () => {
+      void (async () => {
         try {
           setLoading(true);
           setError(null);
@@ -599,9 +599,9 @@ export default function Dashboard() {
       }
     }
 
-    fetchPortfolio();
+    void fetchPortfolio();
     const interval = setInterval(() => {
-      if (marketOpenRef.current && pageActiveRef.current) fetchPortfolio();
+      if (marketOpenRef.current && pageActiveRef.current) void fetchPortfolio();
     }, AUTO_REFRESH_MS);
 
     return () => {

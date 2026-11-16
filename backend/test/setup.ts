@@ -7,10 +7,14 @@ import { SecretJsonStore } from '../src/secretJsonStore';
 // 각 테스트 파일은 node --test가 별도 프로세스로 돌린다 — 파일마다 임시 데이터 폴더를
 // 하나 잡는다. 다른 모듈보다 **먼저** import해야 한다(paths.ts의 getDataDir()가
 // 처음 불릴 때 이 값을 읽고 고정한다).
-export const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'mystock-test-'));
+// 전용 임시 폴더 아래 data/로 한 단계 내린다 — 데이터 폴더의 **옆**에 만드는 것(자동 백업 backups/)이 시스템 임시 폴더에
+// 직접 생기지 않게(예전엔 os.tmpdir()/backups를 만들고 지울 뻔했다).
+const TEST_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'mystock-test-'));
+export const DATA_DIR = path.join(TEST_ROOT, 'data');
+fs.mkdirSync(DATA_DIR);
 process.env.MYSTOCK_DATA_DIR = DATA_DIR;
 
-process.on('exit', () => fs.rmSync(DATA_DIR, { recursive: true, force: true }));
+process.on('exit', () => fs.rmSync(TEST_ROOT, { recursive: true, force: true }));
 
 /** 테스트 사이에 데이터 폴더를 비운다. JsonStore 캐시는 ENOENT를 보면 스스로 지운다. */
 export function resetDataDir(): void {

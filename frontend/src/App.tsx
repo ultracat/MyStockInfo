@@ -11,6 +11,8 @@ import StockLinks from './pages/StockLinks';
 import Settings from './pages/Settings';
 import About from './pages/About';
 import { PageActivity } from './pageActivity';
+import { PageErrorBoundary } from './components/PageErrorBoundary';
+import { api } from './api';
 
 // 페이지 id → 컴포넌트. 한 번 연 페이지는 지우지 않고 숨겨 둔다(아래 `visited`, pageActivity.tsx).
 const PAGES = {
@@ -276,6 +278,19 @@ export default function App() {
   // 한 번 연 페이지는 지우지 않고 숨겨 둔다 — 돌아오면 이전 데이터·필터가 그대로 바로 보이고, 페이지가 뒤에서 갱신한다
   // (pageActivity.tsx). 예전엔 메뉴를 옮길 때마다 페이지를 새로 만들어 매번 "불러오는 중"부터 다시 시작했다.
   const [visited, setVisited] = useState<Page[]>(['overview']);
+  // 새 버전 알림(백엔드 updateCheck.ts) — 켜 두면 시작할 때 한 번, 그 뒤 6시간마다 확인해 사이드바 아래에 링크를 띄운다.
+  // 정보 화면에서 끌 수 있다. 링크는 target=_blank라 시스템 브라우저로 열린다(electron main.ts의 setWindowOpenHandler).
+  const [update, setUpdate] = useState<{ latest: string; url: string } | null>(null);
+  useEffect(() => {
+    const check = () =>
+      api
+        .getUpdateStatus()
+        .then((s) => setUpdate(s.newer && s.latest && s.url ? { latest: s.latest, url: s.url } : null))
+        .catch(() => {});
+    void check();
+    const t = setInterval(() => void check(), 6 * 60 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
 
   // 스크롤은 `.zoom-viewport` 하나가 맡아서 페이지끼리 공유된다 — 떠날 때 위치를 적어 두고 돌아오면 되돌린다
   // (처음 여는 페이지는 맨 위). 숨긴 페이지가 빠지면서 높이가 바뀌므로 sizer 높이가 다시 재진 뒤(두 프레임 뒤)에 맞춘다.
@@ -327,6 +342,11 @@ export default function App() {
             </button>
           );
         })}
+        {update && (
+          <a className="nav-item update-link" href={update.url} target="_blank" rel="noreferrer" title={`새 버전 v${update.latest}`}>
+            {collapsed ? '⬆' : `⬆ 새 버전 v${update.latest} 받기`}
+          </a>
+        )}
       </nav>
       {/* 래퍼 3겹: viewport(스크롤) → sizer(확대된 크기를 레이아웃에 알림) →
           main(뷰포트 크기로 배치된 뒤 scale). 상세는 frontend/CLAUDE.md의 "화면 줌" 절. */}
@@ -341,7 +361,9 @@ export default function App() {
               return (
                 <div key={id} style={id === page ? undefined : { display: 'none' }}>
                   <PageActivity active={id === page}>
-                    <PageComponent />
+                    <PageErrorBoundary page={id}>
+                      <PageComponent />
+                    </PageErrorBoundary>
                   </PageActivity>
                 </div>
               );

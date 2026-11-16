@@ -48,7 +48,7 @@ export default function Watchlist() {
   }
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, []);
 
   // 메뉴를 옮겼다 돌아오면 목록(현재가)을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패하면 이전 값 유지.
@@ -193,7 +193,7 @@ export default function Watchlist() {
                         className="ghost"
                         onClick={(ev) => {
                           ev.stopPropagation();
-                          onRemove(e.symbol);
+                          void onRemove(e.symbol);
                         }}
                       >
                         삭제

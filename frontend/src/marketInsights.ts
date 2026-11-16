@@ -41,7 +41,7 @@ export function useMarketStatus(): { kr: MarketStatus | null; us: MarketStatus |
         .getMarketStatus()
         .then((s) => !cancelled && setStatus(s))
         .catch(() => {});
-    load();
+    void load();
     // 숨겨진 화면(pageActivity.tsx)에서는 건너뛴다 — 다시 보일 때 아래 effect가 한 번 받는다.
     const t = setInterval(() => activeRef.current && load(), 10 * 60_000);
     return () => {

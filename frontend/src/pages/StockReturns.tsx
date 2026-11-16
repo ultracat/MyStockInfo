@@ -168,7 +168,7 @@ export default function StockReturns() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         setLoading(true);
         await loadAll();

@@ -96,12 +96,12 @@ export default function DividendsChart({
         {hasUnconvertedUsd && ' (달러 배당금은 환율 미적용 — 설정에서 환율을 등록해주세요)'}
       </div>
       {hasExpected && (
-        <div style={{ display: 'flex', gap: 14, fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
-          <span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', columnGap: 14, rowGap: 2, fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>
+          <span style={{ whiteSpace: 'nowrap' }}>
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--series-1)', marginRight: 4 }} />
             받은 배당
           </span>
-          <span>
+          <span style={{ whiteSpace: 'nowrap' }}>
             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: 'var(--series-1)', opacity: EXPECTED_OPACITY, marginRight: 4 }} />
             예상 (지급 전, 세후 추정)
           </span>

@@ -30,9 +30,20 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   `isEncryptionAvailable()`만으로는 못 거른다 — `getSelectedStorageBackend()`가
   `basic_text`/`unknown`이면 거부한다. 평문 저장은 Electron 밖(단독 dev 실행)에서만
   허용된다. 이미 평문으로 저장된 항목은 그대로 읽히고(사용자가 해제할 수 있게),
-  나중에 키링이 생기면 다음 읽기 때 암호화해 다시 쓴다(`shouldReseal`). 토큰이 없는
+  나중에 키링이 생기면 다음 읽기 때 암호화해 다시 쓴다(`openJson`의 `reseal`). 토큰이 없는
   Google 상태(연결 해제 후)는 비밀이 아니라 평문으로 쓸 수 있다 — 그래야 키링 없이도
   "연결 해제"가 동작한다.
+  - **safeStorage는 비동기 API만 쓴다**(2026-11-16, Electron 45 — 동기 `encryptString`/`decryptString`/`isEncryptionAvailable`은
+    45에서 사용 중단 예고, 46에서 제거). 그래서 **키체인을 거치는 함수는 전부 `async`**다: `getSecureStorageState`·`canEncrypt`·
+    `sealJson`·`openJson`, 그 위의 `getCredentialFields`/`setCredentialFields`/`listInsecureBrokers`, google `store.*`,
+    `SecretJsonStore.read/write`, `SealedValueStore.read/write`(sealedValueStore.ts — 환율 키·Google 클라이언트 공용), 브로커의
+    `requireCredentials`·`getKisAccountId`·`getKbLinkedAccountId`, `loadSyncOwnership`(rowOwnership.ts — 판정은 동기 함수를 돌려줌).
+    동기 API로 암호화해 둔 기존 파일도 `decryptStringAsync`로 그대로 풀린다(실데이터로 확인, 파일 재기록 없음).
+    `openJson`의 `reseal`은 ① 평문인데 지금 암호화 가능 ② `shouldReEncrypt`(키체인이 다시 암호화하라고 함) 둘 다다.
+  - ⚠ **`await` 빠뜨림은 타입 검사로 안 잡힌다** — `getEximbankAuthKey() !== null`(Promise는 항상 null 아님),
+    `res.json({ configured: hasEximbankAuthKey() })`(Promise가 `{}`로 직렬화), `try { setX() } catch`(거부가 catch를 지나쳐
+    처리 안 된 예외)처럼 조용히 틀린다. 전환 때 실제로 `routes/kisReports.ts`의 `accountId: getKisAccountId()`가 이렇게 빠져
+    있었다. 이 함수들을 새로 부를 땐 `await`를 확인하고, 라우트는 express 4가 async 예외를 못 잡으니 `next(err)`로 넘긴다.
 - `src/secretJsonStore.ts` — `SecretJsonStore<T>`: **증권사 접속 토큰**(`kis/kb/nh/kiwoom-token.json`)을 위
   봉투(`sealJson`)로 암호화해 쓰는 저장소(2026-11-16 — 그 전엔 평문이라 같은 사용자 권한의 아무 프로그램이 파일만
   읽어도 하루짜리 계좌 토큰을 가져갈 수 있었다). 자격증명과 달리 토큰은 **캐시**라서: 풀 수 없으면(키체인 거부·손상)

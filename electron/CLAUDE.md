@@ -142,7 +142,8 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   "scripts/afterPack.cjs"` 훅 하나에서 순서대로 처리한다(반드시 fuse 적용 → 로케일
   삭제 → 재서명 순서, 거꾸로 하면 재서명한 뒤에 파일을 바꿔서 서명이 다시 깨진다).
   같은 훅이 모든 OS에서 먼저 Electron fuses를 적용한다 — 아래 "보안 하드닝" 절.**
-  1. **로케일 정리**: electron-builder(25.1.8, `app-builder-lib/out/electron/
+  1. **로케일 정리**(⚠ electron-builder 26부터는 빌드 도구가 직접 정리해서 이 단계가 지우는 로케일이 0개다 — 26.18.1로 올린
+     2026-11-16 확인. 남겨 둬도 해가 없고, 26 미만으로 내려가면 다시 필요하다): electron-builder(25.1.8, `app-builder-lib/out/electron/
      ElectronFramework.js`의 `getLocalesConfig`)가 Mac에서 로케일을 정리할 때 보는
      디렉터리는 `packager.getResourcesDir()`(= 앱 최상위 `Contents/Resources` — 여긴
      원래 거의 빈 스텁 `.lproj`뿐)인데, 실제 무거운 Chromium 로케일 데이터는
@@ -372,7 +373,7 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 - **CSP는 패키징 빌드에만 들어간다** — dev는 Vite HMR이 인라인 스크립트·ws를 써서 뺐다. 그래서 CSP 위반은 dev에선
   안 보이고 패키징해야 드러난다. 렌더러에 외부 자원(폰트·이미지·스크립트)을 들이면 `vite.config.ts`의 `CSP`를 같이 고치고
   **패키징해서** 확인한다. 화면은 `file://`라 응답 헤더가 없어 `<meta>`밖에 방법이 없다(`frame-ancestors`는 meta에서 무시됨 — 상관없다).
-- **fuses 확인**: `npx @electron/fuses read --app release/mac-arm64/MyStock.app`. electron-builder 25에 fuse 설정이 없어
+- **fuses 확인**: `npx @electron/fuses read --app release/mac-arm64/MyStock.app`. (electron-builder 26엔 `electronFuses` 설정이 생겼지만 맥 재서명 순서를 한 훅에서 챙기려고 afterPack을 그대로 쓴다.) 처음 넣을 땐 electron-builder 25에 fuse 설정이 없어
   `@electron/fuses`(MIT, 루트 devDependency)로 afterPack에서 직접 바꾼다. 26 이상으로 올리면 `electronFuses` 설정으로 옮길 수 있다.
 - ⚠ **`EnableCookieEncryption`은 켜지 않는다** — 켰더니 시작 시 네트워크 서비스가 키체인 키를 먼저 요구해서, 서명이 매 빌드
   바뀌는 ad-hoc 앱은 키체인 허용 창에 답할 때까지 렌더러의 모든 fetch가 멈췄다("불러오는 중…"에서 정지, 실측). 쿠키를 안 쓴다.

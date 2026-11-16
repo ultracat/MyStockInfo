@@ -18,12 +18,12 @@ export const kbRouter = Router();
 // KB 자격증명 세 번째 필드(credentialFields.ts)로 미리 등록해둔 값을 기본으로
 // 쓰고, 요청 본문에 accountId가 오면 그걸 우선한다(다른 계좌로 한 번만 동기화하고
 // 싶은 경우를 위한 탈출구).
-function resolveAccountId(body: unknown): { accountId: string } | { error: string } {
+async function resolveAccountId(body: unknown): Promise<{ accountId: string } | { error: string }> {
   const bodyAccountId = (body as { accountId?: unknown })?.accountId;
   if (typeof bodyAccountId === 'string' && bodyAccountId.trim()) {
     return { accountId: bodyAccountId.trim() };
   }
-  const configured = getKbLinkedAccountId();
+  const configured = await getKbLinkedAccountId();
   if (configured) return { accountId: configured };
   return {
     error: 'accountId가 필요합니다 — 설정 화면의 KB증권 자격증명에 계좌번호를 입력하거나 요청에 accountId를 실어 보내주세요.',
@@ -34,7 +34,7 @@ kbRouter.post('/sync-holdings', async (req, res) => {
   if (!isKbConfigured()) {
     return res.status(409).json({ error: 'KB증권 API 키가 설정되지 않았습니다.' });
   }
-  const resolved = resolveAccountId(req.body);
+  const resolved = await resolveAccountId(req.body);
   if ('error' in resolved) return res.status(400).json({ error: resolved.error });
 
   try {
@@ -50,7 +50,7 @@ kbRouter.post('/sync-trades', async (req, res) => {
   if (!isKbConfigured()) {
     return res.status(409).json({ error: 'KB증권 API 키가 설정되지 않았습니다.' });
   }
-  const resolved = resolveAccountId(req.body);
+  const resolved = await resolveAccountId(req.body);
   if ('error' in resolved) return res.status(400).json({ error: resolved.error });
 
   const { from, to } = req.body as { from?: unknown; to?: unknown };

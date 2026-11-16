@@ -56,7 +56,7 @@ kisReportsRouter.get('/realized', async (req, res) => {
           };
         }) ?? null;
     res.json({
-      accountId: getKisAccountId(),
+      accountId: await getKisAccountId(),
       overseasRows,
       rows: rows
         .filter((r) => n(r.sll_qty) > 0)

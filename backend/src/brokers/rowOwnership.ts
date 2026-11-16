@@ -18,10 +18,17 @@ import type { BrokerId } from './types';
  *  - 토스/KIS(`hasApiIntegration`): 계좌 전부
  *  - KB: 자격증명에 등록된 연동 계좌 하나만(나머지 KB 계좌 — IRP/연금저축 등 — 는
  *    API로 못 읽어서 수동 행이다, routes/kb.ts 참고) */
-export function isSyncOwned(broker: BrokerId, accountId: string): boolean {
-  if (KNOWN_BROKERS.some((b) => b.id === broker && b.hasApiIntegration)) return true;
-  if (broker === 'kb') return isKbConfigured() && getKbLinkedAccountId() === accountId;
-  return false;
+export type SyncOwnership = (broker: BrokerId, accountId: string) => boolean;
+
+/** 위 규칙의 판정 함수를 만든다 — KB 연동 계좌 id는 키체인에 암호화된 자격증명 안에 있어 읽기가 비동기라, 한 번 읽어 두고
+ *  행마다 부르는 판정은 동기로 한다(가져오기는 수천 행을 거른다). 가져오기 한 번마다 새로 만든다(설정이 바뀌었을 수 있다). */
+export async function loadSyncOwnership(): Promise<SyncOwnership> {
+  const kbLinked = isKbConfigured() ? await getKbLinkedAccountId() : null;
+  return (broker, accountId) => {
+    if (KNOWN_BROKERS.some((b) => b.id === broker && b.hasApiIntegration)) return true;
+    if (broker === 'kb') return kbLinked !== null && kbLinked === accountId;
+    return false;
+  };
 }
 
 /** 배당 기록의 소유권 — 토스증권·한국투자증권은 API 키가 있으면 **모든 계좌의 배당이 API 동기화 소유**다

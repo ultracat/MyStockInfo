@@ -75,12 +75,12 @@ globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
 process.on('exit', () => (globalThis.fetch = realFetch));
 
 let keySeq = 0;
-beforeEach(() => {
+beforeEach(async () => {
   resetDataDir();
   calls = [];
   handlers = defaultHandlers();
   // 테스트마다 앱키를 바꿔 메모리·파일 토큰 캐시가 이전 테스트 토큰을 재사용하지 않게 한다(키 해시가 달라짐).
-  setCredentialFields('nh', { appKey: `app-key-${++keySeq}`, appSecret: 'app-secret' });
+  await setCredentialFields('nh', { appKey: `app-key-${++keySeq}`, appSecret: 'app-secret' });
 });
 
 const apiCalls = (p: string) => calls.filter((c) => c.path === p);
@@ -104,7 +104,7 @@ test('토큰: 명세 형식으로 한 번만 발급하고, 파일에 저장해 �
     assert.match(c.headers['content-type'], /^application\/json/);
     assert.ok(c.input, `${c.path} Input_0 봉투`);
   }
-  const stored = readSecretJson<{ accessToken: string; keyHash: string; expiresAt: number }>('nh-token.json');
+  const stored = await readSecretJson<{ accessToken: string; keyHash: string; expiresAt: number }>('nh-token.json');
   assert.equal(stored.accessToken, `tok-${tokenSeq}`);
   assert.ok(!JSON.stringify(stored).includes('app-key'), '앱키 원문은 저장하지 않는다');
   assert.ok(stored.expiresAt > Date.now() + 23 * 3600_000);
@@ -112,7 +112,7 @@ test('토큰: 명세 형식으로 한 번만 발급하고, 파일에 저장해 �
 
 test('토큰: 앱키를 바꾸면 저장된 토큰을 쓰지 않고 새로 받는다', async () => {
   await nhAdapter.listAccounts({ forceRefresh: true });
-  setCredentialFields('nh', { appKey: 'another-key', appSecret: 'app-secret' });
+  await setCredentialFields('nh', { appKey: 'another-key', appSecret: 'app-secret' });
   await nhAdapter.listAccounts({ forceRefresh: true });
   assert.equal(apiCalls('/oauth2/token').length, 2);
 });

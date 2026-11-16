@@ -70,11 +70,11 @@ globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
 process.on('exit', () => (globalThis.fetch = realFetch));
 
 let keySeq = 0;
-beforeEach(() => {
+beforeEach(async () => {
   resetDataDir();
   calls = [];
   handlers = defaultHandlers();
-  setCredentialFields('kis', { appKey: `kis-app-${++keySeq}`, appSecret: 'kis-secret', accountNumber: '12345678', accountProductCode: '01' });
+  await setCredentialFields('kis', { appKey: `kis-app-${++keySeq}`, appSecret: 'kis-secret', accountNumber: '12345678', accountProductCode: '01' });
 });
 const pathCalls = (p: string) => calls.filter((c) => c.path === p);
 
@@ -101,7 +101,7 @@ test('KIS 토큰: 만료됐으면 한 번 발급해 파일에 저장, 동시에 
     { grant: tokenCalls[0].body?.grant_type, key: tokenCalls[0].body?.appkey, secret: tokenCalls[0].body?.appsecret },
     { grant: 'client_credentials', key: `kis-app-${keySeq}`, secret: 'kis-secret' }
   );
-  const stored = readSecretJson<{ accessToken: string; expiresAt: number }>('kis-token.json');
+  const stored = await readSecretJson<{ accessToken: string; expiresAt: number }>('kis-token.json');
   assert.equal(stored.accessToken, `kis-tok-${tokenSeq}`);
   assert.ok(stored.expiresAt > Date.now() + 23 * 3600_000);
 });

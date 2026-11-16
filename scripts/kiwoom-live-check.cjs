@@ -18,13 +18,14 @@ runLiveCheck('키움증권 REST API 실서버 점검 (조회 API만, 개인 데�
 
   if (!kw.isKiwoomConfigured()) return log('FAIL', '자격증명', '설정 → API 키 등록에서 키움증권 앱키/시크릿키를 먼저 저장하세요');
   log('PASS', '자격증명', '저장돼 있음');
-  const tokenFile = path.join(getDataDir(), 'kiwoom-token.json');
-  const readToken = () => (fs.existsSync(tokenFile) ? JSON.parse(fs.readFileSync(tokenFile, 'utf8')) : null);
-  const before = readToken();
+  // 토큰 파일은 키체인 봉투라(SecretJsonStore) 직접 JSON.parse하지 않는다.
+  const { SecretJsonStore } = ctx.require('secretJsonStore.js');
+  const readToken = () => new SecretJsonStore('kiwoom-token.json', getDataDir()).read();
+  const before = await readToken();
 
   // 1) 토큰 + 계좌번호조회(ka00001)
   const acct = await check.step('계좌번호조회 ka00001(토큰 발급 포함)', () => kw.fetchKiwoomAccountNo({ forceRefresh: true }));
-  const after = readToken();
+  const after = await readToken();
   if (after) {
     log(before && before.accessToken === after.accessToken ? 'PASS' : 'INFO', '토큰', before && before.accessToken === after.accessToken ? '저장된 토큰 재사용' : '새로 발급해 저장함');
     const h = (after.expiresAt - Date.now()) / 3600_000;

@@ -13,69 +13,93 @@ import { SHEET_DATA_TYPES, type SheetDataType } from '../google/sheetSchemas';
 
 export const googleRouter = Router();
 
-googleRouter.get('/status', (_req, res) => {
-  const state = store.getState();
-  const connectStatus = oauth.getConnectStatus();
-  res.json({
-    // 사용자가 설정에 OAuth 클라이언트를 넣었는지(google/clientCredentials.ts) — 없으면 프론트가 입력칸을 보여 주고
-    // "Google 계정 연결"을 막는다. Client ID는 비밀이 아니라 알아보기용으로 준다(Secret은 절대 안 준다).
-    hasClientCredentials: oauth.isClientConfigured(),
-    clientId: getGoogleClientCredentials()?.clientId ?? null,
-    connected: Boolean(state.refreshToken),
-    email: state.email,
-    spreadsheetUrl: state.spreadsheetUrl,
-    connectStatus: connectStatus.state,
-    connectError: connectStatus.state === 'error' ? connectStatus.message : null,
-  });
+// ⚠ 저장소 접근은 전부 비동기(safeStorage 비동기 API) — express 4는 async 핸들러 예외를 못 잡으니 next(err)로 넘긴다.
+googleRouter.get('/status', async (_req, res, next) => {
+  try {
+    // 풀 수 없는 상태(다른 PC의 키체인 등)면 연결 안 됨으로 보여 준다 — 다시 연결하면 된다.
+    const state = await store.getState().catch(() => null);
+    const client = await getGoogleClientCredentials();
+    const connectStatus = oauth.getConnectStatus();
+    res.json({
+      // 사용자가 설정에 OAuth 클라이언트를 넣었는지(google/clientCredentials.ts) — 없으면 프론트가 입력칸을 보여 주고
+      // "Google 계정 연결"을 막는다. Client ID는 비밀이 아니라 알아보기용으로 준다(Secret은 절대 안 준다).
+      hasClientCredentials: client !== null,
+      clientId: client?.clientId ?? null,
+      connected: Boolean(state?.refreshToken),
+      email: state?.email ?? null,
+      spreadsheetUrl: state?.spreadsheetUrl ?? null,
+      connectStatus: connectStatus.state,
+      connectError: connectStatus.state === 'error' ? connectStatus.message : null,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
-googleRouter.post('/connect', (_req, res) => {
-  if (!oauth.isClientConfigured()) {
-    return res.status(400).json({ error: '먼저 Google OAuth 클라이언트(Client ID/Secret)를 넣어 주세요.' });
+googleRouter.post('/connect', async (_req, res, next) => {
+  try {
+    if (!oauth.isClientConfigured()) {
+      return res.status(400).json({ error: '먼저 Google OAuth 클라이언트(Client ID/Secret)를 넣어 주세요.' });
+    }
+    // 로그인을 다 마친 뒤 토큰 저장에서 실패하지 않도록, 브라우저를 열기 전에 먼저
+    // 막는다(키링 없는 Linux 등 — secureStorage.ts).
+    if ((await getSecureStorageState()).kind === 'unavailable') {
+      return res.status(409).json({ error: SECURE_STORAGE_UNAVAILABLE_MESSAGE });
+    }
+    await oauth.startConnectFlow();
+    res.json({ started: true });
+  } catch (err) {
+    next(err);
   }
-  // 로그인을 다 마친 뒤 토큰 저장에서 실패하지 않도록, 브라우저를 열기 전에 먼저
-  // 막는다(키링 없는 Linux 등 — secureStorage.ts).
-  if (getSecureStorageState().kind === 'unavailable') {
-    return res.status(409).json({ error: SECURE_STORAGE_UNAVAILABLE_MESSAGE });
-  }
-  oauth.startConnectFlow();
-  res.json({ started: true });
 });
 
 // ---- 사용자 OAuth 클라이언트(Client ID/Secret)
-googleRouter.post('/client', (req, res) => {
+googleRouter.post('/client', async (req, res, next) => {
   const clientId = typeof req.body?.clientId === 'string' ? req.body.clientId.trim() : '';
   const clientSecret = typeof req.body?.clientSecret === 'string' ? req.body.clientSecret.trim() : '';
   const invalid = validateGoogleClientInput(clientId, clientSecret);
   if (invalid) return res.status(400).json({ error: invalid });
-  // 클라이언트가 바뀌면 이전 클라이언트로 받은 토큰은 새 클라이언트로 갱신할 수 없다 — 연결을 끊고 다시 로그인하게 한다.
-  // 같은 Client ID면(Secret만 다시 넣음) 연결을 그대로 둔다.
-  const previous = getGoogleClientCredentials();
   try {
-    setGoogleClientCredentials({ clientId, clientSecret });
+    // 클라이언트가 바뀌면 이전 클라이언트로 받은 토큰은 새 클라이언트로 갱신할 수 없다 — 연결을 끊고 다시 로그인하게 한다.
+    // 같은 Client ID면(Secret만 다시 넣음) 연결을 그대로 둔다.
+    const previous = await getGoogleClientCredentials();
+    try {
+      await setGoogleClientCredentials({ clientId, clientSecret });
+    } catch (err) {
+      if (err instanceof SecureStorageUnavailableError) return res.status(409).json({ error: err.message });
+      throw err;
+    }
+    const changed = Boolean(previous && previous.clientId !== clientId);
+    const wasConnected = changed && Boolean((await store.getState().catch(() => null))?.refreshToken);
+    if (changed) {
+      oauth.cancelConnectFlow();
+      await store.clearAccount();
+    }
+    res.json({ configured: true, clientId, disconnected: wasConnected });
   } catch (err) {
-    if (err instanceof SecureStorageUnavailableError) return res.status(409).json({ error: err.message });
-    throw err;
+    next(err);
   }
-  const disconnected = Boolean(previous && previous.clientId !== clientId && store.getState().refreshToken);
-  if (previous && previous.clientId !== clientId) {
+});
+
+googleRouter.delete('/client', async (_req, res, next) => {
+  try {
     oauth.cancelConnectFlow();
-    store.clearAccount();
+    await store.clearAccount();
+    clearGoogleClientCredentials();
+    res.json({ configured: false });
+  } catch (err) {
+    next(err);
   }
-  res.json({ configured: true, clientId, disconnected });
 });
 
-googleRouter.delete('/client', (_req, res) => {
-  oauth.cancelConnectFlow();
-  store.clearAccount();
-  clearGoogleClientCredentials();
-  res.json({ configured: false });
-});
-
-googleRouter.post('/disconnect', (_req, res) => {
-  store.clearAccount();
-  oauth.cancelConnectFlow();
-  res.status(204).end();
+googleRouter.post('/disconnect', async (_req, res, next) => {
+  try {
+    oauth.cancelConnectFlow();
+    await store.clearAccount();
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 });
 
 function parseDataType(value: string): SheetDataType | null {

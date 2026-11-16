@@ -71,7 +71,7 @@ async function ensureTabsExist(spreadsheetId: string): Promise<void> {
 }
 
 async function ensureSpreadsheet(): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> {
-  const state = store.getState();
+  const state = await store.getState();
   if (state.spreadsheetId && state.spreadsheetUrl) {
     const exists = await sheetsApi.spreadsheetExists(state.spreadsheetId);
     if (exists) {
@@ -87,12 +87,12 @@ async function ensureSpreadsheet(): Promise<{ spreadsheetId: string; spreadsheet
   const found = await sheetsApi.findSpreadsheetByName(SPREADSHEET_TITLE);
   if (found) {
     await ensureTabsExist(found.spreadsheetId);
-    store.setSpreadsheetInfo(found.spreadsheetId, found.spreadsheetUrl);
+    await store.setSpreadsheetInfo(found.spreadsheetId, found.spreadsheetUrl);
     return found;
   }
 
   const created = await sheetsApi.createSpreadsheet(SPREADSHEET_TITLE, Object.values(SHEET_TAB_TITLES));
-  store.setSpreadsheetInfo(created.spreadsheetId, created.spreadsheetUrl);
+  await store.setSpreadsheetInfo(created.spreadsheetId, created.spreadsheetUrl);
   return created;
 }
 

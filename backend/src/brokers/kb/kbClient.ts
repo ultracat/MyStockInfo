@@ -25,8 +25,8 @@ export class KbApiError extends Error {
   }
 }
 
-function requireCredentials() {
-  const creds = getCredentialFields('kb');
+async function requireCredentials() {
+  const creds = await getCredentialFields('kb');
   if (!creds) {
     throw new Error('KB증권 API 키가 설정되지 않았습니다. 설정 화면에서 appKey/appSecret을 입력해주세요.');
   }
@@ -40,8 +40,8 @@ export function isKbConfigured(): boolean {
 // accountId는 KB API로 보내는 값이 아니라(KB가 계좌번호를 요청 파라미터로 안
 // 받음) routes/kb.ts가 "동기화 결과를 어느 로컬 accountId에 쓸지" 정하는 데만
 // 쓰는 로컬 설정값이다 — credentialFields.ts에 세 번째 필드로 등록해뒀다.
-export function getKbLinkedAccountId(): string | null {
-  const creds = getCredentialFields('kb');
+export async function getKbLinkedAccountId(): Promise<string | null> {
+  const creds = await getCredentialFields('kb');
   const accountId = creds?.accountId?.trim();
   return accountId ? accountId : null;
 }
@@ -58,9 +58,9 @@ interface StoredKbToken {
 const tokenStore = () => new SecretJsonStore<StoredKbToken>('kb-token.json', getDataDir());
 let cachedToken: StoredKbToken | null = null;
 
-function loadCachedToken(): StoredKbToken | null {
+async function loadCachedToken(): Promise<StoredKbToken | null> {
   if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken;
-  const persisted = tokenStore().read();
+  const persisted = await tokenStore().read();
   if (persisted && persisted.expiresAt > Date.now()) {
     cachedToken = persisted;
     return cachedToken;
@@ -86,7 +86,7 @@ interface KbEnvelope<T = Record<string, unknown>> {
 // 사용) + dataBody({appKey, appSecret, grantType:"client_credentials"}) 포맷으로
 // 감싼다. 응답의 access_token은 dataBody.access_token 경로.
 async function fetchTokenUncached(): Promise<string> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
 
   const res = await kbLimiter.schedule(() =>
     fetch(`${BASE_URL}/oauth2/token`, {
@@ -126,7 +126,7 @@ async function fetchTokenUncached(): Promise<string> {
   // kbPost가 401을 만나면 토큰을 강제 재발급하고 한 번 재시도한다.
   const expiresInSec = body.expires_in ?? body.expiresIn ?? 55 * 60;
   cachedToken = { accessToken, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
-  tokenStore().write(cachedToken);
+  await tokenStore().write(cachedToken);
   return cachedToken.accessToken;
 }
 
@@ -146,7 +146,7 @@ function fetchToken(): Promise<string> {
 
 async function getToken(forceRefresh = false): Promise<string> {
   if (!forceRefresh) {
-    const token = loadCachedToken();
+    const token = await loadCachedToken();
     if (token) return token.accessToken;
   }
   return fetchToken();
@@ -169,7 +169,7 @@ export async function kbPost<T = Record<string, unknown>>(
   dataBody: Record<string, unknown>,
   dataHeader: { ipAddr: string; macAddr: string } = DEFAULT_TR_DATA_HEADER
 ): Promise<KbEnvelope<T>> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
 
   const doFetch = async (token: string) =>
     fetch(`${BASE_URL}${endpoint}`, {

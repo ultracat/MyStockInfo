@@ -19,7 +19,7 @@
 ## 다운로드와 사용법
 
 - **설치 파일**: [GitHub Releases](https://github.com/ultracat/MyStockInfo/releases)에서 OS에 맞는 파일을 받습니다.
-  - macOS(Apple 칩) `.dmg`, Windows `.exe`, Linux `.AppImage`
+  - macOS(Apple 칩, macOS 13 이상) `.dmg`, Windows `.exe`(64비트), Linux `.AppImage`(x86_64)
   - 릴리스마다 `SHA256SUMS.txt`가 함께 올라갑니다 — 받은 파일이 진짜인지 확인하는 방법은
     [매뉴얼의 "받은 파일 확인하기"](doc/user-manual.md#받은-파일-확인하기-선택)를 보세요.
 - **사용자 매뉴얼**: [`doc/user-manual.md`](doc/user-manual.md) — 화면별 사용법, API 키 발급 안내(증권사·Google·한국수출입은행), 백업/복원, 문제 해결.

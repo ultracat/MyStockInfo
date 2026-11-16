@@ -1,6 +1,4 @@
-import { getDataDir } from '../paths';
-import { JsonStore } from '../jsonStore';
-import { getDecryptor, sealJson, shouldReseal, type StoredEnvelope } from '../secureStorage';
+import { SealedValueStore } from '../sealedValueStore';
 
 // Google Sheets 연동의 OAuth 클라이언트(Client ID/Secret) — **사용자가 자기 Google Cloud 프로젝트에서 만들어 설정에 넣는다**
 // (2026-11-16 사용자 결정, 수출입은행 환율 키와 같은 이유 — 개발자 키를 배포본에 넣지 않는다).
@@ -17,45 +15,28 @@ export interface GoogleClientCredentials {
   clientSecret: string;
 }
 
-const store = () => new JsonStore<StoredEnvelope | null>(GOOGLE_CLIENT_FILE, getDataDir(), null);
+const store = new SealedValueStore<GoogleClientCredentials>(GOOGLE_CLIENT_FILE, (raw) => {
+  const v = (raw ?? {}) as Partial<GoogleClientCredentials>;
+  if (typeof v.clientId !== 'string' || !v.clientId || typeof v.clientSecret !== 'string' || !v.clientSecret) return null;
+  return { clientId: v.clientId, clientSecret: v.clientSecret };
+});
 
-let decrypted: { data: string; value: GoogleClientCredentials } | null = null;
+export function hasGoogleClientCredentials(): boolean {
+  return store.exists();
+}
 
-export function getGoogleClientCredentials(): GoogleClientCredentials | null {
-  const stored = store().read();
-  if (!stored || typeof stored.data !== 'string') return null;
-  if (decrypted && decrypted.data === stored.data && !shouldReseal(stored)) return { ...decrypted.value };
-  try {
-    let json: string;
-    if (stored.encrypted) {
-      const decryptor = getDecryptor();
-      if (!decryptor) return null;
-      json = decryptor.decryptString(Buffer.from(stored.data, 'base64'));
-    } else {
-      json = Buffer.from(stored.data, 'base64').toString('utf-8');
-    }
-    const v = JSON.parse(json) as Partial<GoogleClientCredentials>;
-    if (typeof v.clientId !== 'string' || !v.clientId || typeof v.clientSecret !== 'string' || !v.clientSecret) return null;
-    const value = { clientId: v.clientId, clientSecret: v.clientSecret };
-    if (shouldReseal(stored)) {
-      setGoogleClientCredentials(value);
-      return { ...value };
-    }
-    decrypted = { data: stored.data, value };
-    return { ...value };
-  } catch {
-    return null;
-  }
+export async function getGoogleClientCredentials(): Promise<GoogleClientCredentials | null> {
+  const v = await store.read();
+  return v ? { ...v } : null;
 }
 
 /** 키체인으로 암호화해 저장 — 안전하게 암호화할 수 없으면 SecureStorageUnavailableError를 던진다. */
-export function setGoogleClientCredentials(value: GoogleClientCredentials): void {
-  store().write(sealJson(JSON.stringify({ clientId: value.clientId, clientSecret: value.clientSecret })));
+export async function setGoogleClientCredentials(value: GoogleClientCredentials): Promise<void> {
+  await store.write({ clientId: value.clientId, clientSecret: value.clientSecret });
 }
 
 export function clearGoogleClientCredentials(): void {
-  store().write(null);
-  decrypted = null;
+  store.clear();
 }
 
 /** 형식 검사 — Desktop 앱 유형 OAuth 클라이언트의 모양. 진짜인지는 로그인해 봐야 안다(Google에 미리 확인할 API가 없다). */

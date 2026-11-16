@@ -8,7 +8,7 @@ import {
 import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
 import { isTossConfigured } from '../brokers/toss/tossClient';
 import { BROKER_IDS } from '../brokers/knownBrokers';
-import { isSyncOwned } from '../brokers/rowOwnership';
+import { loadSyncOwnership } from '../brokers/rowOwnership';
 import type { ImportResult } from './importResult';
 import type { BrokerId } from '../brokers/types';
 
@@ -138,6 +138,7 @@ export async function importHoldingsRecords(
   records: unknown[],
   options?: { fullReplace?: boolean }
 ): Promise<ImportResult> {
+  const isSyncOwned = await loadSyncOwnership();
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
   const shapedRows = shapeResults.filter((r): r is { row: number; input: ImportRowShape } => 'input' in r);
   const validRows = shapedRows.filter((r) => !isSyncOwned(r.input.broker, r.input.accountId));

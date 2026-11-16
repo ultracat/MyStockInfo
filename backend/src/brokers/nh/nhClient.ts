@@ -48,8 +48,8 @@ export function isNhConfigured(): boolean {
   return hasCredential('nh');
 }
 
-function requireCredentials() {
-  const creds = getCredentialFields('nh');
+async function requireCredentials() {
+  const creds = await getCredentialFields('nh');
   if (!creds) {
     throw new Error('NH투자증권(나무) API 키가 설정되지 않았습니다. 설정 화면에서 앱키/앱시크릿을 입력해주세요.');
   }
@@ -75,10 +75,10 @@ function keyHash(appKey: string): string {
   return crypto.createHash('sha256').update(appKey).digest('hex').slice(0, 16);
 }
 
-function loadCachedToken(hash: string): StoredNhToken | null {
+async function loadCachedToken(hash: string): Promise<StoredNhToken | null> {
   const valid = (t: StoredNhToken | null) => t && t.keyHash === hash && t.expiresAt > Date.now();
   if (valid(cachedToken)) return cachedToken;
-  const persisted = tokenStore().read();
+  const persisted = await tokenStore().read();
   if (valid(persisted)) {
     cachedToken = persisted;
     return cachedToken;
@@ -87,7 +87,7 @@ function loadCachedToken(hash: string): StoredNhToken | null {
 }
 
 async function issueToken(): Promise<string> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   // 명세: 쿼리 파라미터 + Content-Type x-www-form-urlencoded(본문 없음). 토큰은 운영 도메인에서만 발급된다.
   const url = new URL('/oauth2/token', BASE_URL);
   url.searchParams.set('appkey', creds.appKey);
@@ -112,13 +112,13 @@ async function issueToken(): Promise<string> {
     expiresAt: Date.now() + (expiresInSec - 60) * 1000,
     keyHash: keyHash(creds.appKey),
   };
-  tokenStore().write(cachedToken);
+  await tokenStore().write(cachedToken);
   return cachedToken.accessToken;
 }
 
 async function getToken(force = false): Promise<string> {
   if (!force) {
-    const t = loadCachedToken(keyHash(requireCredentials().appKey));
+    const t = await loadCachedToken(keyHash((await requireCredentials()).appKey));
     if (t) return t.accessToken;
   }
   if (!inFlightToken) inFlightToken = issueToken().finally(() => (inFlightToken = null));

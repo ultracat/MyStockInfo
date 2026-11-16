@@ -34,7 +34,7 @@ export async function resolveUsdKrwRate(opts?: { forceRefresh?: boolean }): Prom
     }
   }
 
-  if (isEximbankConfigured()) {
+  if (await isEximbankConfigured()) {
     const result = await fetchEximbankUsdKrwRate();
     if (result) {
       return {

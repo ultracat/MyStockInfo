@@ -243,7 +243,7 @@ let cachedToken: { accessToken: string; expiresAt: number } | null = null;
 let inFlightFetch: Promise<string> | null = null;
 
 async function fetchTokenUncached(): Promise<string> {
-  const creds = getCredentialFields('toss');
+  const creds = await getCredentialFields('toss');
   if (!creds) {
     throw new Error('토스증권 API 키가 설정되지 않았습니다. 설정 화면에서 Client ID/Secret을 입력해주세요.');
   }

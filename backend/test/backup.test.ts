@@ -18,10 +18,10 @@ function write(name: string, content: unknown): void {
 const exists = (name: string) => fs.existsSync(path.join(DATA_DIR, name));
 const entryNames = (buf: Buffer) => new AdmZip(buf).getEntries().map((e) => e.entryName).sort();
 
-beforeEach(() => {
+beforeEach(async () => {
   resetDataDir();
-  setCredentialFields('kis', { appKey: 'kis-key', appSecret: SECRET, accountNumber: '12345678' });
-  googleStore.replaceState({
+  await setCredentialFields('kis', { appKey: 'kis-key', appSecret: SECRET, accountNumber: '12345678' });
+  await googleStore.replaceState({
     refreshToken: 'g-refresh',
     accessToken: 'g-access',
     accessTokenExpiresAt: 1,
@@ -76,17 +76,17 @@ test('복원: 비밀번호가 틀리거나 없으면 아무 파일도 바꾸지 
 test('복원: 비밀번호가 맞으면 키·Google 연결을 백업 기준으로 되돌리고 남은 접속 토큰을 지운다', async () => {
   const { buffer } = await createBackupZip(PASSWORD);
   // 백업 뒤에 바뀐 상태 — 키 변경, 새 브로커 추가, Google 해제
-  setCredentialFields('kis', { appKey: 'other', appSecret: 'other', accountNumber: '0' });
-  setCredentialFields('toss', { clientId: 'x', clientSecret: 'y' });
-  googleStore.clearAccount();
+  await setCredentialFields('kis', { appKey: 'other', appSecret: 'other', accountNumber: '0' });
+  await setCredentialFields('toss', { clientId: 'x', clientSecret: 'y' });
+  await googleStore.clearAccount();
 
   const result = await restoreBackupZip(buffer, PASSWORD);
 
   assert.equal(result.secrets, 'restored');
   assert.deepEqual(result.restored, ['holdings.json']);
-  assert.equal(getCredentialFields('kis')?.appSecret, SECRET);
+  assert.equal((await getCredentialFields('kis'))?.appSecret, SECRET);
   assert.deepEqual(listConfiguredBrokers(), ['kis']); // 백업에 없던 toss는 지워짐
-  assert.equal(googleStore.getState().refreshToken, 'g-refresh');
+  assert.equal((await googleStore.getState()).refreshToken, 'g-refresh');
   assert.equal(exists('kis-token.json'), false);
   assert.equal(exists('kb-token.json'), false);
   assert.equal(exists('nh-token.json'), false);
@@ -95,7 +95,7 @@ test('복원: 비밀번호가 맞으면 키·Google 연결을 백업 기준으�
 
 test('복원: 비밀번호 없이 만든 백업은 지금 등록된 키를 그대로 둔다', async () => {
   const { buffer } = await createBackupZip();
-  setCredentialFields('toss', { clientId: 'x', clientSecret: 'y' });
+  await setCredentialFields('toss', { clientId: 'x', clientSecret: 'y' });
 
   const result = await restoreBackupZip(buffer);
 
@@ -144,7 +144,7 @@ test('복원: 풀면 지나치게 큰 백업(압축 폭탄)은 아무것도 쓰�
 
 test('환율 인증키: 비밀번호 백업에만 암호화돼 들어가고, 복원하면 되살아난다', async () => {
   const { setEximbankAuthKey, getEximbankAuthKey, clearEximbankAuthKey } = await import('../src/fx/eximbankKey');
-  setEximbankAuthKey('EXIMKEY1234567890abcdef');
+  await setEximbankAuthKey('EXIMKEY1234567890abcdef');
   const plain = await createBackupZip();
   assert.ok(!entryNames(plain.buffer).includes('eximbank-key.json'));
   const { buffer } = await createBackupZip(PASSWORD);
@@ -152,14 +152,14 @@ test('환율 인증키: 비밀번호 백업에만 암호화돼 들어가고, 복
   assert.ok(!all.includes('EXIMKEY1234567890abcdef'));
 
   clearEximbankAuthKey();
-  assert.equal(getEximbankAuthKey(), null);
+  assert.equal(await getEximbankAuthKey(), null);
   await restoreBackupZip(buffer, PASSWORD);
-  assert.equal(getEximbankAuthKey(), 'EXIMKEY1234567890abcdef');
+  assert.equal(await getEximbankAuthKey(), 'EXIMKEY1234567890abcdef');
 });
 
 test('Google OAuth 클라이언트: 비밀번호 백업에만 암호화돼 들어가고, 복원하면 되살아난다', async () => {
   const gc = await import('../src/google/clientCredentials');
-  gc.setGoogleClientCredentials({ clientId: '123-abc.apps.googleusercontent.com', clientSecret: 'GOCSPX-testsecret123' });
+  await gc.setGoogleClientCredentials({ clientId: '123-abc.apps.googleusercontent.com', clientSecret: 'GOCSPX-testsecret123' });
   assert.ok(!entryNames((await createBackupZip()).buffer).includes('google-client.json'));
   const { buffer } = await createBackupZip(PASSWORD);
   const all = new AdmZip(buffer).getEntries().map((e) => e.getData().toString('utf-8')).join('\n');
@@ -167,5 +167,5 @@ test('Google OAuth 클라이언트: 비밀번호 백업에만 암호화돼 들�
 
   gc.clearGoogleClientCredentials();
   await restoreBackupZip(buffer, PASSWORD);
-  assert.equal(gc.getGoogleClientCredentials()?.clientSecret, 'GOCSPX-testsecret123');
+  assert.equal((await gc.getGoogleClientCredentials())?.clientSecret, 'GOCSPX-testsecret123');
 });

@@ -424,7 +424,7 @@ function startRebuild(): Promise<void> {
   if (rebuildJob) return rebuildJob;
   rebuildJob = (async () => {
     const today = todayKst();
-    const kisAccountId = getKisAccountId();
+    const kisAccountId = await getKisAccountId();
     const { kr, us } = heldSymbols(listHoldings());
     const [confirmed, krCalendar, krRows, usRows] = await Promise.all([
       fetchConfirmed(today, kisAccountId),
@@ -476,7 +476,7 @@ function fetchMissing(kr: string[], us: string[], today: string): Promise<void> 
 export async function getUpcomingDividends(opts: { refresh?: boolean } = {}): Promise<UpcomingDividendsResult> {
   if (!isKisConfigured()) return { items: [], available: false, builtAt: null, refreshing: false };
   const today = todayKst();
-  const kisAccountId = getKisAccountId();
+  const kisAccountId = await getKisAccountId();
   const usable = () => {
     const s = snapshotStore().read();
     return s && s.kisAccountId === kisAccountId ? s : null;

@@ -25,10 +25,10 @@ export function readJson<T>(name: string): T {
 }
 
 /** 접속 토큰처럼 SecretJsonStore(봉투)로 저장된 파일을 풀어서 읽는다. */
-export function readSecretJson<T extends object>(name: string): T {
+export async function readSecretJson<T extends object>(name: string): Promise<T> {
   const raw = readJson<{ data?: unknown; encrypted?: unknown }>(name);
   assert.ok(typeof raw.data === 'string' && typeof raw.encrypted === 'boolean', `${name}은 봉투 형식이어야 한다(평문 저장 금지)`);
-  const value = new SecretJsonStore<T>(name, DATA_DIR).read();
+  const value = await new SecretJsonStore<T>(name, DATA_DIR).read();
   assert.ok(value, `${name}을 풀 수 있어야 한다`);
   return value;
 }

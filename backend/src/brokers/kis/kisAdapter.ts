@@ -94,7 +94,7 @@ export const kisAdapter: BrokerAdapter = {
     // koreainvestment/open-trading-api) — the account number is entered
     // directly in Settings, so we just echo it back as a single account to
     // keep the shape the rest of the app (and frontend) already expects.
-    const creds = getCredentialFields('kis');
+    const creds = await getCredentialFields('kis');
     if (!creds) return [];
     return [
       {

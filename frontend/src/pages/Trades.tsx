@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { effectiveRate } from '../fx';
+import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, BrokerAccount, BrokerId, BrokerSummary, StoredTrade, TradeRecord } from '../types';
 import TradesChart, { type TradeSummaryBucket } from '../components/TradesChart';
@@ -282,16 +284,16 @@ export default function Trades() {
   // 처리해준다(backend/CLAUDE.md의 "환율 조회" 절 참고).
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
-  const effectiveFxRate = manualFxRate ?? liveFxRate;
+  const effectiveFxRate = effectiveRate(manualFxRate, liveFxRate);
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null }));
+    void (async () => {
+      // 수동·실시간을 동시에 받는다(fxLoader.ts) — 실패해도 던지지 않고 null. 규칙은 fx.ts의 effectiveRate.
+      const { manual, live } = await loadUsdKrwRates();
       if (cancelled) return;
-      setManualFxRate(fx.usdKrwRate);
-      const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
-      if (!cancelled && live.rate) setLiveFxRate(live.midRate ?? live.rate);
+      setManualFxRate(manual);
+      if (live !== null) setLiveFxRate(live);
     })();
     return () => {
       cancelled = true;
@@ -300,7 +302,7 @@ export default function Trades() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         setLoading(true);
         setError(null);
@@ -327,7 +329,7 @@ export default function Trades() {
   useEffect(() => {
     if (!selectedBroker) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         setLoading(true);
         setError(null);
@@ -436,7 +438,7 @@ export default function Trades() {
   useEffect(() => {
     if (!selectedBroker || selectedBroker === 'ALL' || !accountId) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         setLoading(true);
         setError(null);

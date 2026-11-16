@@ -4,6 +4,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { startServer } from '@mystock/backend';
+import { setupFileLogging } from './logging';
 
 // 백엔드는 4317을 먼저 시도하고, 다른 프로그램이 쓰고 있으면 그 위의 빈 포트로 옮긴다
 // (findFreeBackendPort). 실제 포트는 렌더러에 URL 해시(`port=`)로 넘긴다 —
@@ -55,6 +56,8 @@ const APP_ICON_PATH = path.join(__dirname, '../assets/icon.png');
 // path segment — hence the nested "@mystock/electron" folder) so existing
 // local data keeps working without migration.
 app.setName('@mystock/electron');
+// 로그 파일과 처리 안 된 오류 기록 — 이름을 정한 직후(로그 폴더가 이름을 따른다), 실행 차단 판단보다 먼저(차단 사유도 남게).
+setupFileLogging();
 
 // 패키징된 앱은 원격 디버깅 옵션을 붙여 실행하면 바로 끝낸다. Chromium의
 // `--remote-debugging-port`/`--remote-debugging-pipe`는 fuses(scripts/afterPack.cjs)로 막을 수 없는데,
@@ -197,9 +200,9 @@ function createWindow() {
   });
 
   if (app.isPackaged) {
-    mainWindow.loadFile(path.join(__dirname, '../../frontend/dist/index.html'), { hash: rendererHash() });
+    mainWindow.loadFile(path.join(__dirname, '../../frontend/dist/index.html'), { hash: rendererHash() }).catch((err) => console.error('[electron] 화면 로드 실패:', err));
   } else {
-    mainWindow.loadURL(`${FRONTEND_DEV_ORIGIN}#${rendererHash()}`);
+    mainWindow.loadURL(`${FRONTEND_DEV_ORIGIN}#${rendererHash()}`).catch((err) => console.error('[electron] 화면 로드 실패:', err));
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
@@ -207,7 +210,7 @@ function createWindow() {
   // 앱 안 새 창이 아니라 시스템 브라우저로 연다.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://')) {
-      shell.openExternal(url);
+      shell.openExternal(url).catch((err) => console.error('[electron] 외부 링크 열기 실패:', err));
     }
     return { action: 'deny' };
   });
@@ -222,7 +225,7 @@ function createWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url.split('#')[0] === appUrlBase) return;
     event.preventDefault();
-    if (url.startsWith('http://') || url.startsWith('https://')) shell.openExternal(url);
+    if (url.startsWith('http://') || url.startsWith('https://')) shell.openExternal(url).catch((err) => console.error('[electron] 외부 링크 열기 실패:', err));
   });
 }
 
@@ -252,7 +255,7 @@ if (!gotSingleInstanceLock) {
   });
 }
 
-app.whenReady().then(async () => {
+void app.whenReady().then(async () => {
   // 락을 못 잡은 두 번째 인스턴스는 app.quit()이 끝나기 전에 ready가 올 수 있다 —
   // 백엔드·창을 띄우지 않는다.
   if (!gotSingleInstanceLock) return;

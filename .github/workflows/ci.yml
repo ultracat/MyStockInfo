@@ -1,0 +1,44 @@
+# 푸시·PR마다 빌드(타입 검사 포함)·린트·테스트를 돌린다(2026-11-16).
+# 그 전엔 워크플로가 release.yml 하나뿐이라 main에 올라간 코드도, 외부 PR도 자동 검사 없이 사람 눈으로만 확인했다.
+# - 외부 기여자 PR은 저장소 설정상 Actions 실행 전에 소유자 승인이 필요하다(README "기여" — 비밀값은 이 워크플로에 없다).
+# - 패키징(electron-builder)은 여기서 하지 않는다 — OS별 러너가 필요하고 오래 걸린다. 릴리스 빌드는 release.yml.
+# - 외부 액션은 release.yml과 같은 커밋 해시로 고정(Dependabot이 갱신 PR을 올린다).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # backend → frontend(tsc + vite build) → electron. 타입 오류는 여기서 걸린다.
+      - name: 빌드(타입 검사 포함)
+        run: npm run build
+
+      # 비동기 실수(await 누락·Promise를 조건에 쓰기)와 React 훅 규칙 — eslint.config.mjs.
+      - name: 린트
+        run: npm run lint
+
+      # 백엔드 자동 테스트(가짜 서버, 실키 없음) + 프론트엔드 순수 함수 테스트.
+      - name: 테스트
+        run: npm test

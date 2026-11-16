@@ -44,7 +44,7 @@ export default function StockLinks() {
   const [reload, setReload] = useState(0);
   useResumeRefresh(() => setReload((n) => n + 1), RESUME_REFRESH_MS);
   useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
         const [holdings, dividends, trades, watchlist, links] = await Promise.all([
           api.listHoldingsStore(),

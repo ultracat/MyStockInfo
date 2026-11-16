@@ -337,6 +337,18 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 그 줄이 있어서 `git check-ignore`로 확인하고 지웠다). 빌드 산출물은 전부 `dist/`·
 `release/`로 나가므로 `build/`는 소스로만 쓰인다.
 
+## 로그 파일과 처리 안 된 오류 (`src/logging.ts`, 2026-11-16)
+
+예전엔 콘솔에만 찍혀 설치본 사용자의 문제를 추적할 방법이 없었다. `main.ts`가 `app.setName()` 직후(로그 폴더가 이름을 따름),
+실행 차단 판단보다 먼저 `setupFileLogging()`을 부른다.
+- 메인 프로세스(백엔드 포함)의 `console.log/info/warn/error`를 그대로 두고 `app.getPath('logs')/main.log`에도 쓴다(0600, 시작 때
+  2MB 넘으면 `main.1.log`로 돌림 — 최대 약 4MB). 정보 화면 "로그 폴더 열기"가 연다(backend `routes/about.ts`).
+- **`redactLogLine`으로 가려서 쓴다**: 홈 폴더 → `~`(계정 이름), 6자리 이상 숫자열(계좌번호·금액·날짜), 이메일, `Bearer …`,
+  영문+숫자가 섞인 24자 이상 덩어리(토큰·키). 사용자가 문의에 첨부하는 파일이라 백엔드 `logRedact.ts` 위에 한 번 더 거른다.
+- `unhandledRejection`·`uncaughtException`을 받아 기록한다(앱은 계속 돈다 — Electron 기본 오류 창 대신). 비동기 함수가 많아져
+  놓친 거부를 추적하려고. 렌더러 오류는 화면 오류 경계가 백엔드 `/api/about/client-error`로 보내 같은 파일에 남는다.
+- dev 실행에선 `app.getVersion()`이 Electron 버전이라 첫 줄에 `(dev)`로 찍는다.
+
 ## 화면 줌 — 메인 프로세스가 맡는 세 가지
 
 **확대/축소 자체는 렌더러가 CSS `transform: scale`로 한다**(`frontend/CLAUDE.md`의

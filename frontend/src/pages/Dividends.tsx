@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { effectiveRate } from '../fx';
+import { loadUsdKrwRates } from '../fxLoader';
 import { HEAVY_RESUME_REFRESH_MS, RESUME_REFRESH_MS, markDataChanged, useResumeRefresh, useWhenActive } from '../pageActivity';
 import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
 import DividendsChart from '../components/DividendsChart';
@@ -127,7 +129,7 @@ export default function Dividends() {
   // 토스 실시간 환율)를 그대로 따른다 — 토스만 환율 API를 제공한다.
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
-  const effectiveFxRate = manualFxRate ?? liveFxRate;
+  const effectiveFxRate = effectiveRate(manualFxRate, liveFxRate);
 
   // 배당금은 오늘 환율이 아니라 그 배당금이 지급된 달의 평균 환율로 환산한다
   // (한국수출입은행 영업일 매매기준율 평균 — Overview.tsx와 같은 이유/방식,
@@ -352,15 +354,12 @@ export default function Dividends() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const fx = await api.getFxRate().catch(() => ({ usdKrwRate: null }));
+    void (async () => {
+      // 수동·실시간을 동시에 받는다(fxLoader.ts) — 실패해도 던지지 않고 null. 규칙은 fx.ts의 effectiveRate.
+      const { manual, live } = await loadUsdKrwRates();
       if (cancelled) return;
-      setManualFxRate(fx.usdKrwRate);
-      // getUsdKrwRate는 토스→한국수출입은행 순으로 시도하고(backend/CLAUDE.md의
-      // "환율 조회" 절 참고) 실패해도 예외 없이 {rate:null}을 준다 — 그럼 수동
-      // 환율 또는 미환산으로 대체됨.
-      const live = await api.getUsdKrwRate().catch(() => ({ rate: null }));
-      if (!cancelled && live.rate) setLiveFxRate(live.midRate ?? live.rate);
+      setManualFxRate(manual);
+      if (live !== null) setLiveFxRate(live);
     })();
     return () => {
       cancelled = true;
@@ -400,7 +399,7 @@ export default function Dividends() {
     // 연도를 바꿀 때마다 서버를 다시 안 묻고 클라이언트에서 즉시 계산하기 위함.
     let cancelled = false;
 
-    (async () => {
+    void (async () => {
       if (investedReload === 0) setInvestedLoading(true);
       const brokers = await api.listBrokers().catch(() => []);
       if (cancelled) return;
@@ -410,6 +409,9 @@ export default function Dividends() {
         configured.map(async (b) => {
           try {
             const tradesPromise = api.listTradesStore({ broker: b.id });
+            // 먼저 시작해 두고 아래에서 기다린다 — 그 사이 계좌 조회가 실패해 이 Promise를 기다리지 않게 되면, 이것의 실패가
+            // 처리 안 된 오류로 남는다. 처리된 것으로 표시만 해 둔다(실패 자체는 아래 await에서 그대로 catch로 간다).
+            tradesPromise.catch(() => undefined);
 
             if (API_BROKER_IDS.includes(b.id)) {
               const accounts = await api.listAccounts(b.id);

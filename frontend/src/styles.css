@@ -155,6 +155,13 @@ body {
   background: var(--surface-2);
 }
 
+/* 새 버전 알림 링크(App.tsx) — 메뉴 맨 아래, 눈에 띄게. */
+.nav-item.update-link {
+  margin-top: 12px;
+  color: var(--good);
+  font-weight: 600;
+}
+
 .nav-item.active {
   background: var(--series-1);
   color: white;

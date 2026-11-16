@@ -66,6 +66,9 @@ export default function Settings() {
   const [backupPasswordConfirm, setBackupPasswordConfirm] = useState('');
   const [restorePassword, setRestorePassword] = useState('');
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  // 자동 로컬 백업 목록과 "이 시점으로 되돌리기" 확인 중인 항목.
+  const [autoBackups, setAutoBackups] = useState<Awaited<ReturnType<typeof api.listAutoBackups>>>([]);
+  const [autoRestoreName, setAutoRestoreName] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
   const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -137,7 +140,41 @@ export default function Settings() {
     }
   }
 
+  async function loadAutoBackups() {
+    setAutoBackups(await api.listAutoBackups().catch(() => []));
+  }
+
+  async function onCreateAutoBackup() {
+    setError(null);
+    setMessage(null);
+    try {
+      await api.createAutoBackup();
+      await loadAutoBackups();
+      setMessage('지금 상태를 자동 백업에 남겼습니다.');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function onConfirmAutoRestore() {
+    if (!autoRestoreName) return;
+    setError(null);
+    setMessage(null);
+    setRestoring(true);
+    try {
+      const result = await api.restoreAutoBackup(autoRestoreName);
+      setMessage(restoreMessage(result));
+      setAutoRestoreName(null);
+      await loadAutoBackups();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   async function refresh() {
+    void loadAutoBackups();
     const [s, fx, specs, info, secure, exim] = await Promise.all([
       api.getCredentialStatus(),
       api.getFxRate(),
@@ -156,6 +193,8 @@ export default function Settings() {
 
   useEffect(() => {
     refresh().catch((e) => setError((e as Error).message));
+    // 처음 열 때 한 번만 — 이후 갱신은 저장 핸들러와 useResumeRefresh가 한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reset the form whenever the selected broker changes, since each has a
@@ -1041,6 +1080,51 @@ export default function Settings() {
                 {restoring ? '복원 중...' : '정말 복원하기'}
               </button>
               <button className="ghost" onClick={() => setRestoreFile(null)} disabled={restoring}>
+                취소
+              </button>
+            </div>
+          </div>
+        )}
+
+        <h4 style={{ marginBottom: 4 }}>자동 백업</h4>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+          앱이 하루 한 번, 그리고 복원하기 직전에 이 PC에 데이터를 자동으로 남깁니다(최근 7개). API 키·Google 연결·접속 토큰은
+          넣지 않으므로 되돌려도 지금 등록된 키는 그대로입니다. 가져오기를 잘못했을 때 그 전 시점으로 되돌리는 용도입니다.
+        </p>
+        {autoBackups.length === 0 ? (
+          <p style={{ fontSize: 13 }}>아직 자동 백업이 없습니다(앱을 켜고 1분쯤 뒤 첫 백업이 생깁니다).</p>
+        ) : (
+          <table>
+            <tbody>
+              {autoBackups.map((b) => (
+                <tr key={b.name}>
+                  <td>{new Date(b.createdAt).toLocaleString('ko-KR')}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{b.beforeRestore ? '복원 직전' : '하루 한 번'}</td>
+                  <td style={{ color: 'var(--text-muted)' }}>{Math.max(1, Math.round(b.size / 1024))} KB</td>
+                  <td>
+                    <button className="ghost" onClick={() => setAutoRestoreName(b.name)} disabled={restoring}>
+                      이 시점으로 되돌리기
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <button className="ghost" onClick={() => void onCreateAutoBackup()} disabled={restoring}>
+          지금 자동 백업 남기기
+        </button>
+        {autoRestoreName && (
+          <div style={{ padding: 12, border: '1px solid var(--critical)', borderRadius: 8, marginTop: 8 }}>
+            <p className="text-critical" style={{ marginTop: 0, fontWeight: 600 }}>
+              {new Date(autoBackups.find((b) => b.name === autoRestoreName)?.createdAt ?? Date.now()).toLocaleString('ko-KR')} 시점으로
+              되돌리면 지금 데이터가 그 시점 내용으로 바뀝니다. 지금 상태는 되돌리기 직전에 자동 백업으로 한 벌 남깁니다.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="primary" onClick={() => void onConfirmAutoRestore()} disabled={restoring}>
+                {restoring ? '되돌리는 중...' : '정말 되돌리기'}
+              </button>
+              <button className="ghost" onClick={() => setAutoRestoreName(null)} disabled={restoring}>
                 취소
               </button>
             </div>

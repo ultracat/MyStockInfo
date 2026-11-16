@@ -364,6 +364,23 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 
 ## 공용 패턴 (여러 페이지가 공유)
 
+### 2026-11-16 추가된 것
+- **화면별 오류 경계**(`components/PageErrorBoundary.tsx`, App.tsx가 각 페이지를 감쌈) — 화면 유지 구조라 숨은 화면 하나의 렌더 오류가
+  앱 전체를 흰 화면으로 만들었다. 이제 그 자리에 안내 + "다시 불러오기"(`generation`을 올려 다시 마운트), 오류는
+  `api.reportClientError`로 백엔드 로그 파일에.
+- **환율 규칙은 `fx.ts`(순수 함수, `frontend/test/fx.test.ts`)** — `effectiveRate(manual, live)`(수동 우선, 0·음수·NaN은 없음),
+  `pickLiveRate`(midRate 우선), `toKrw`, `monthlyRateOr`. 받는 건 `fxLoader.ts`의 `loadUsdKrwRates()`(수동·실시간 **동시에**, 던지지 않음).
+  **배당금·매매내역·실현손익은 옮겼고, 대시보드·개요·종목별 수익은 아직 각자 구현**(다른 데이터와 한 흐름에서 받고 레이스 처리가
+  얽혀 있어 따로 옮긴다). 남은 린트 경고 8건(useMemo가 `toKrw`·`monthlyRateFor` 같은 함수를 의존성에 안 넣음 — 지금은 그 함수가
+  읽는 상태가 의존성에 있어 정확하다)도 그 화면들을 옮길 때 `useCallback`으로 정리한다.
+- **새 버전 알림**: App.tsx가 시작 때·6시간마다 `api.getUpdateStatus()` → 새 버전이면 사이드바 아래 `.nav-item.update-link`
+  (`target="_blank"` → 시스템 브라우저). 정보 화면 "업데이트와 로그" 카드에 켜기/끄기·지금 확인·로그 폴더 열기.
+- **자동 백업 목록**: 설정 백업 카드 아래(`listAutoBackups`/`createAutoBackup`/`restoreAutoBackup`), 되돌리기는 확인 한 번 더.
+- `api.ts`의 `BACKGROUND_WRITES`에 `/about/(client-error|update-check|open-logs)`·`/backup/auto` 추가 — 다른 화면을 다시 불러오게
+  하지 않는 쓰기.
+- 프론트엔드 테스트: `frontend/test/*.test.ts`(`npm run test -w frontend`, 루트 `npm test`가 같이 돈다). `api.ts`는 `window`를 읽으니
+  테스트할 로직은 api를 import하지 않는 순수 모듈(`fx.ts`, `csv.ts`)에 둔다.
+
 이 프로젝트 화면 대부분(Dashboard/Dividends/Trades)이 아래 패턴을 반복해서 쓴다 —
 페이지별 절에서는 그 패턴을 벗어나는 부분만 적는다.
 

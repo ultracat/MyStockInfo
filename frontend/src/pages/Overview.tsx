@@ -283,7 +283,7 @@ export default function Overview() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         setLoading(true);
         await loadAll();

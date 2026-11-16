@@ -43,7 +43,15 @@ const AUTH_HEADER = { Authorization: `Bearer ${API_TOKEN}` };
 
 // 화면이 들어올 때 저절로 부르는 쓰기 요청 — 사용자가 데이터를 바꾼 게 아니라서 다른 화면의 "다시 보일 때 갱신"을 앞당기지 않는다
 // (pageActivity.tsx의 markDataChanged). 배당 동기화는 바뀐 게 있을 때만 Dividends.tsx가 직접 알린다.
-const BACKGROUND_WRITES = [/^\/dividends\/sync$/, /^\/portfolio-snapshots$/, /^\/kb\/sync-/, /^\/google\/(connect|sync\/[a-z]+\/export)$/];
+const BACKGROUND_WRITES = [
+  /^\/dividends\/sync$/,
+  /^\/portfolio-snapshots$/,
+  /^\/kb\/sync-/,
+  /^\/google\/(connect|sync\/[a-z]+\/export)$/,
+  // 화면 데이터와 무관한 쓰기(오류 기록·새 버전 알림 설정·로그 폴더 열기) — 다른 화면을 다시 불러오게 하지 않는다.
+  /^\/about\/(client-error|update-check|open-logs)$/,
+  /^\/backup\/auto$/,
+];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -334,6 +342,19 @@ export const api = {
     }),
 
   getAppInfo: () => request<AppInfo>('/about'),
+  // 새 버전 알림(백엔드 updateCheck.ts) — 실패해도 latest: null로 온다.
+  getUpdateStatus: (refresh = false) =>
+    request<{ enabled: boolean; current: string; latest: string | null; newer: boolean; url: string | null; checkedAt: string | null }>(
+      `/about/update${refresh ? '?refresh=true' : ''}`
+    ),
+  setUpdateCheck: (enabled: boolean) =>
+    request<{ enabled: boolean; current: string; latest: string | null; newer: boolean; url: string | null; checkedAt: string | null }>(
+      '/about/update-check',
+      { method: 'POST', body: JSON.stringify({ enabled }) }
+    ),
+  reportClientError: (body: { page: string; message: string; stack: string }) =>
+    request<void>('/about/client-error', { method: 'POST', body: JSON.stringify(body) }),
+  openLogsFolder: () => request<void>('/about/open-logs', { method: 'POST' }),
 
   // 보유하지 않은 종목을 가격만 추적하는 관심종목 — lastPrice는 조회할 때마다
   // 서버가 라이브로 채워서 내려준다(저장 안 함).
@@ -379,6 +400,13 @@ export const api = {
   },
   // zip을 base64로 감싸 보통 JSON body로 보낸다(이 앱이 전부 JSON body만 쓰는
   // 관례 유지 — backend/CLAUDE.md의 "백업/복원" 절 참고).
+  // 자동 로컬 백업(백엔드 autoBackup.ts) — 비밀 정보 없는 하루 한 벌 + 복원 직전 한 벌, 최근 7개.
+  listAutoBackups: () =>
+    request<{ name: string; createdAt: string; size: number; beforeRestore: boolean }[]>('/backup/auto'),
+  createAutoBackup: () =>
+    request<{ name: string; createdAt: string; size: number; beforeRestore: boolean }>('/backup/auto', { method: 'POST' }),
+  restoreAutoBackup: (name: string) =>
+    request<RestoreBackupResult>(`/backup/auto/${encodeURIComponent(name)}/restore`, { method: 'POST' }),
   restoreBackup: (zipBase64: string, password?: string) =>
     request<RestoreBackupResult>('/backup/restore', {
       method: 'POST',

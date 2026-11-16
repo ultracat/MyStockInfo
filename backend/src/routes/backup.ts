@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { BackupRequestError, createBackupZip, restoreBackupZip } from '../backup';
 import { BackupPasswordError } from '../backupCrypto';
+import { createAutoBackup, listAutoBackups, readAutoBackup } from '../autoBackup';
 
 const optionalPassword = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 
@@ -36,6 +37,8 @@ export function createBackupRouter(options: { requestRestart?: () => void }): Ro
     }
 
     try {
+      // 복원 직전 상태를 자동 백업으로 남긴다 — 잘못 복원해도 되돌릴 수 있게(autoBackup.ts).
+      await createAutoBackup('before-restore').catch((err) => console.error('[backup] 복원 전 자동 백업 실패:', err));
       const result = await restoreBackupZip(Buffer.from(zipBase64, 'base64'), optionalPassword(password));
       if (result.restored.length === 0 && result.secrets !== 'restored') {
         return res.status(400).json({ error: '복원할 수 있는 파일이 zip 안에 없습니다.' });
@@ -48,6 +51,44 @@ export function createBackupRouter(options: { requestRestart?: () => void }): Ro
       if (err instanceof BackupPasswordError) return res.status(400).json({ error: err.message, code: 'BACKUP_PASSWORD' });
       if (err instanceof BackupRequestError) return res.status(400).json({ error: err.message });
       res.status(500).json({ error: `복원에 실패했습니다: ${(err as Error).message}` });
+    }
+  });
+
+  // ---- 자동 로컬 백업(autoBackup.ts) — 비밀 정보 없는 하루 한 벌 + 복원 직전 한 벌, 최근 7개.
+  router.get('/auto', (_req, res, next) => {
+    try {
+      res.json(listAutoBackups());
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/auto', async (_req, res, next) => {
+    try {
+      res.json(await createAutoBackup('daily'));
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // 자동 백업으로 되돌린다. 이름은 autoBackup.ts의 형식만 받는다(경로 조작 방지). 자동 백업엔 비밀 정보가 없어 지금 PC의
+  // API 키·Google 연결은 그대로 남는다(restoreBackupZip의 'not-in-backup').
+  router.post('/auto/:name/restore', async (req, res, next) => {
+    try {
+      let buf: Buffer;
+      try {
+        buf = readAutoBackup(req.params.name);
+      } catch {
+        return res.status(404).json({ error: '그 자동 백업을 찾을 수 없습니다.' });
+      }
+      await createAutoBackup('before-restore').catch((err) => console.error('[backup] 복원 전 자동 백업 실패:', err));
+      const result = await restoreBackupZip(buf);
+      const restarting = Boolean(options.requestRestart);
+      res.json({ ...result, restarting });
+      if (options.requestRestart) setTimeout(options.requestRestart, 1500);
+    } catch (err) {
+      if (err instanceof BackupRequestError) return res.status(400).json({ error: err.message });
+      next(err);
     }
   });
 

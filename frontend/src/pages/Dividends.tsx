@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { HEAVY_RESUME_REFRESH_MS, RESUME_REFRESH_MS, markDataChanged, useResumeRefresh, useWhenActive } from '../pageActivity';
 import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
 import DividendsChart from '../components/DividendsChart';
 import DonutDetailModal from '../components/DonutDetailModal';
@@ -149,6 +150,7 @@ export default function Dividends() {
     items: null, available: true, error: null, builtAt: null, refreshing: false,
   });
   const upcomingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const whenActive = useWhenActive();
   const upcomingAlive = useRef(true); // 화면을 떠난 뒤 늦게 온 응답이 다시 부르기를 예약하지 않게
   const loadUpcoming = useCallback((refresh = false) => {
     if (upcomingTimer.current) clearTimeout(upcomingTimer.current);
@@ -158,9 +160,11 @@ export default function Dividends() {
       .then((r) => {
         if (!upcomingAlive.current) return;
         setUpcoming({ items: r.items, available: r.available, error: null, builtAt: r.builtAt, refreshing: r.refreshing });
-        if (r.refreshing) upcomingTimer.current = setTimeout(() => loadUpcoming(), 5000);
+        // 숨겨진 동안은 다음 회차를 다시 보일 때로 미룬다(pageActivity.tsx)
+        if (r.refreshing) upcomingTimer.current = setTimeout(() => whenActive('upcoming', () => loadUpcoming()), 5000);
       })
       .catch((e) => upcomingAlive.current && setUpcoming((u) => ({ ...u, error: (e as Error).message, refreshing: false })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     upcomingAlive.current = true;
@@ -193,7 +197,10 @@ export default function Dividends() {
         (r) => `${BROKER_LABELS[r.broker]} 추가 ${r.added}건${r.removed ? ` · 삭제 ${r.removed}건` : ''}`
       );
       const errs = errors.map((e) => `${BROKER_LABELS[e.broker]} 실패: ${e.error}`);
-      if (changed.length > 0) await refresh();
+      if (changed.length > 0) {
+        await refresh();
+        markDataChanged(); // 대시보드·보유 종목의 배당 합계도 다음에 보일 때 다시 읽게
+      }
       if (parts.length > 0 || errs.length > 0) setDividendSyncNotice(['배당 동기화', ...parts, ...errs].join(' — '));
       else if (manual) setDividendSyncNotice('배당 동기화: 이미 최신입니다.');
     } catch (e) {
@@ -370,6 +377,8 @@ export default function Dividends() {
     return result;
   }
 
+  // 0 = 첫 로딩("불러오는 중" 표시), 1부터는 화면을 다시 볼 때 뒤에서 다시 받기(이전 값을 둔 채 바꾼다).
+  const [investedReload, setInvestedReload] = useState(0);
   useEffect(() => {
     // 투자금(총 매입금액)은 배당 DB에는 없어 증권사 API에서 직접 계좌별로
     // 조회해 합산한다. 브로커 하나가 실패해도(미연동/레이트리밋 등) 나머지는
@@ -380,7 +389,7 @@ export default function Dividends() {
     let cancelled = false;
 
     (async () => {
-      setInvestedLoading(true);
+      if (investedReload === 0) setInvestedLoading(true);
       const brokers = await api.listBrokers().catch(() => []);
       if (cancelled) return;
       const configured = brokers.filter((b) => b.configured);
@@ -449,7 +458,20 @@ export default function Dividends() {
     return () => {
       cancelled = true;
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [investedReload]);
+
+  // 메뉴를 옮겼다 돌아오면 지금 화면을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 배당 기록·계좌 별칭·다가오는 배당·
+  // 투자금은 30초 간격, 증권사 배당 동기화(거래내역을 통째로 다시 받음)는 10분 간격.
+  useResumeRefresh(() => {
+    refresh().catch(() => {});
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+    if (!upcoming.refreshing) loadUpcoming();
+    setInvestedReload((n) => n + 1);
+  }, RESUME_REFRESH_MS);
+  useResumeRefresh(() => {
+    if (syncOwnedBrokers.size > 0 && !dividendSyncing) void runDividendSync(false);
+  }, HEAVY_RESUME_REFRESH_MS);
 
   // 특정 연도를 고르면 배당수익률의 분모(투자금)도 그 연도 기준으로 바꾼다 —
   // "전체"는 지금처럼 오늘 투자금을 그대로 쓴다. 그 해 12/31까지의 매매내역만으로

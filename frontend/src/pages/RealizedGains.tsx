@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
@@ -112,6 +113,14 @@ export default function RealizedGains() {
       .then(setTaxTypes)
       .catch(() => {});
   }, []);
+
+  // 메뉴를 옮겼다 돌아오면 지금 화면을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패하면 이전 값 유지.
+  useResumeRefresh(() => {
+    api.listTradesStore().then(setAllTrades).catch(() => {});
+    api.listDividends().then(setAllDividends).catch(() => {});
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+    api.listAccountTaxTypes().then(setTaxTypes).catch(() => {});
+  }, RESUME_REFRESH_MS);
 
   // Dividends.tsx와 같은 패턴 — 수동/실시간 환율을 합쳐 effectiveFxRate로 쓴다
   // (월평균을 못 구한 달의 최종 폴백).

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from './api';
+import { usePageActive, useResumeRefresh } from './pageActivity';
 import type { ActiveWarning, MarketSession, MarketStatus } from './types';
 
 // 토스 시장 정보 보조 기능의 화면 쪽 공용 훅(백엔드 src/marketInsights.ts와 짝). 토스 미연동·실패면 빈 값이라
@@ -29,6 +30,10 @@ export function useStockWarnings(symbols: string[]): Record<string, ActiveWarnin
 /** 국내·미국 장 상태 — 10분마다 다시 묻는다(세션 경계를 놓치지 않게). */
 export function useMarketStatus(): { kr: MarketStatus | null; us: MarketStatus | null } {
   const [status, setStatus] = useState<{ kr: MarketStatus | null; us: MarketStatus | null }>({ kr: null, us: null });
+  const active = usePageActive();
+  const activeRef = useRef(active);
+  activeRef.current = active;
+  useResumeRefresh(() => api.getMarketStatus().then(setStatus).catch(() => {}), 60_000);
   useEffect(() => {
     let cancelled = false;
     const load = () =>
@@ -37,7 +42,8 @@ export function useMarketStatus(): { kr: MarketStatus | null; us: MarketStatus |
         .then((s) => !cancelled && setStatus(s))
         .catch(() => {});
     load();
-    const t = setInterval(load, 10 * 60_000);
+    // 숨겨진 화면(pageActivity.tsx)에서는 건너뛴다 — 다시 보일 때 아래 effect가 한 번 받는다.
+    const t = setInterval(() => activeRef.current && load(), 10 * 60_000);
     return () => {
       cancelled = true;
       clearInterval(t);

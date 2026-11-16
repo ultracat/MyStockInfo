@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { StockLinkEntry } from '../types';
 import { autoStockLink, resolveStockLink, stockLinkMap, type StockLinkSource } from '../stockLinks';
 
@@ -39,6 +40,9 @@ export default function StockLinks() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('ALL');
 
+  // 메뉴를 옮겼다 돌아오면 목록을 그대로 둔 채 다시 모은다(pageActivity.tsx) — 0은 첫 로딩.
+  const [reload, setReload] = useState(0);
+  useResumeRefresh(() => setReload((n) => n + 1), RESUME_REFRESH_MS);
   useEffect(() => {
     (async () => {
       try {
@@ -73,12 +77,13 @@ export default function StockLinks() {
         );
         setSaved(links);
       } catch (e) {
-        setError((e as Error).message);
+        if (reload === 0) setError((e as Error).message);
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reload]);
 
   const savedMap = useMemo(() => stockLinkMap(saved), [saved]);
 

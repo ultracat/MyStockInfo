@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { BrokerId, DividendRecord } from '../types';
 import { API_BROKER_IDS } from '../brokers';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
@@ -187,12 +188,25 @@ export default function StockReturns() {
     setRefreshing(true);
     try {
       await loadAll({ forceRefresh: true });
+      markRefreshed();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setRefreshing(false);
     }
   }
+
+  // 메뉴를 옮겼다 돌아오면 지금 화면을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패하면 이전 값 유지.
+  const markRefreshed = useResumeRefresh(async () => {
+    setRefreshing(true);
+    try {
+      await loadAll();
+    } catch {
+      // 이전 화면 유지
+    } finally {
+      setRefreshing(false);
+    }
+  }, RESUME_REFRESH_MS);
 
   // 보유종목(투자금/현재평가금) + 배당 기록(누적배당금)을 종목 기준으로 조인한다.
   // IRP처럼 같은 종목이 memo/계좌로 나뉘어 여러 행인 경우는 한 종목으로 합친다.

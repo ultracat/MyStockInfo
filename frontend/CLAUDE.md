@@ -12,7 +12,22 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/App.tsx` — 좌측 네비 + `page` 상태
   (`'overview'|'dashboard'|'stockReturns'|'dividends'|'trades'|'realizedGains'|'watchlist'|'stockLinks'|'settings'|'about'`,
   기본값 `'overview'` — 사이드바 순서도 이 순서).
-  새 페이지 추가 시 `Page` 타입과 `NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
+  새 페이지 추가 시 `Page` 타입과 `PAGES`·`NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
+  **화면 유지(2026-11-16, 사용자 요청)**: 한 번 연 페이지(`visited`)는 지우지 않고 `display:none`으로 숨겨 둔다 — 메뉴를 옮겨도
+  데이터·선택·필터가 남고, 스크롤은 페이지마다 적어 뒀다 되돌린다(`scrollByPage`, sizer 높이가 다시 재진 뒤 두 프레임 뒤에 한 번 더).
+  예전엔 페이지를 새로 마운트해 매번 "불러오는 중"부터였다. 각 페이지는 `PageActivity`(`src/pageActivity.tsx`)로 보이는지 안다:
+  - `useResumeRefresh(fn, ms)` — 다시 보일 때 마지막 갱신에서 `ms`(`RESUME_REFRESH_MS` 30초, 배당 동기화는 `HEAVY_RESUME_REFRESH_MS`
+    10분)가 지났거나 데이터가 바뀌었으면 `fn`. **`fn`은 화면을 비우지 않는다** — `setLoading(true)`·`setX(null)`·선택 초기화 없이 지금
+    선택(증권사·계좌·연도) 그대로 다시 받아 덮어쓰고, 실패하면 이전 값을 둔다. 선택을 초기화하는 마운트 effect 체인을 다시 돌리지 말 것.
+  - **데이터 변경 신호** `markDataChanged()` — `api.ts`의 `request`가 쓰기 요청(POST/PUT/DELETE)마다 부른다. 화면 진입 때 저절로
+    나가는 쓰기(배당 동기화·순자산 스냅샷·KB 동기화·Google 연결/내보내기, `BACKGROUND_WRITES`)는 빼고, 배당 동기화는 바뀐 게 있을 때만
+    Dividends.tsx가 직접 부른다. 숨겨진 화면은 다음에 보일 때 간격과 상관없이 갱신하고, 변경을 한(보이는) 화면은 이미 반영했다고 본다.
+    설정 화면은 데이터 변경 때만 계좌 목록을 다시 모은다(시간 간격으로 하면 입력 중인 별칭 칸을 덮어씀).
+  - 숨겨진 동안 주기 작업을 멈춘다: 보유 종목 1분 자동 새로고침(`pageActiveRef`), 장 상태 10분 폴링(`useMarketStatus`), 다가오는 배당
+    "갱신 중" 재요청·섹터 ETF 표 재요청(`useWhenActive` — 다시 보일 때 실행).
+  - 실측(2026-11-16, CDP): 30초 안 복귀 시 API 호출 0건·즉시 표시, 숨긴 보유 종목 65초 동안 호출 0건, 30초 뒤 복귀 시 즉시 표시 + 뒤에서 갱신.
+  - ⚠ 새 페이지·주기 작업을 만들면 위 셋(다시 볼 때 갱신, 숨김 중 정지, 화면 안 비우기)을 같이 챙긴다. `position: fixed` 모달은 포털이라
+    숨긴 페이지에서 열려 있으면 그대로 보인다 — 지금 모달은 사이드바까지 덮어 열린 채로 메뉴를 못 옮기므로 문제없다.
   **`'overview'`(대시보드, `pages/Overview.tsx`)와 `'dashboard'`(보유 종목,
   `pages/Dashboard.tsx`) 이름이 헷갈리기 쉽다** — `Dashboard.tsx`는 이 세션
   훨씬 이전부터 있던 "보유 종목" 화면 파일명이라 그대로 두고, 나중에 추가된

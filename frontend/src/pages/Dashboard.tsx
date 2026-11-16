@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
+import { RESUME_REFRESH_MS, usePageActive, useResumeRefresh } from '../pageActivity';
 import type {
   AccountLabel,
   BrokerAccount,
@@ -323,9 +324,8 @@ export default function Dashboard() {
     api.listAccountLabels().then(setAccountLabels).catch(() => {});
   }, []);
 
-  // "배당 포함 손익금액" 열용 배당 기록 — 로컬 JSON 하나라 가볍다. 다른 화면(배당금)에서
-  // 기록을 고친 뒤 돌아오면 이 화면이 다시 마운트되므로, 마운트 + 브로커 변경 시점에만
-  // 다시 읽는다(1분 자동 새로고침에는 안 얹음 — 배당 기록은 라이브 데이터가 아님).
+  // "배당 포함 손익금액" 열용 배당 기록 — 로컬 JSON 하나라 가볍다. 마운트·브로커 변경 때 읽고, 다른 화면(배당금)에서
+  // 기록을 고친 뒤 돌아오면 아래 resume 갱신(pageActivity.tsx)이 다시 읽는다(1분 자동 새로고침에는 안 얹음 — 라이브 데이터가 아님).
   const [dividends, setDividends] = useState<DividendRecord[]>([]);
   useEffect(() => {
     api.listDividends().then(setDividends).catch(() => {});
@@ -549,6 +549,11 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBroker, accountId, kbLink.configured, kbLink.linkedAccountId]);
 
+  // 숨겨진 동안(pageActivity.tsx) 1분 자동 새로고침을 건너뛴다 — 다시 보일 때 아래 resume 갱신이 한 번 받는다.
+  const pageActive = usePageActive();
+  const pageActiveRef = useRef(pageActive);
+  pageActiveRef.current = pageActive;
+
   useEffect(() => {
     if (!selectedBroker || !accountId) return;
     let cancelled = false;
@@ -596,7 +601,7 @@ export default function Dashboard() {
 
     fetchPortfolio();
     const interval = setInterval(() => {
-      if (marketOpenRef.current) fetchPortfolio();
+      if (marketOpenRef.current && pageActiveRef.current) fetchPortfolio();
     }, AUTO_REFRESH_MS);
 
     return () => {
@@ -607,6 +612,55 @@ export default function Dashboard() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+
+  // 메뉴를 옮겼다 돌아오면 지금 화면(선택한 증권사·계좌·표)을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx).
+  // 선택을 초기화하는 위 effect들은 다시 돌리지 않는다. 실패하면 이전 값을 유지한다.
+  const markRefreshed = useResumeRefresh(async ({ dataChanged }) => {
+    api.listAccountLabels().then(setAccountLabels).catch(() => {});
+    api.listDividends().then(setDividends).catch(() => {});
+    try {
+      if (dataChanged) {
+        // 설정에서 키를 등록·해제했거나 CSV를 가져왔을 수 있다 — 증권사·계좌 목록만 맞춘다(지금 선택은 남아 있으면 유지).
+        const list = await api.listBrokers();
+        setBrokers(list);
+        if (!selectedBroker) {
+          const first = list.find((b) => b.configured);
+          if (first) {
+            setError(null);
+            setSelectedBroker(first.id);
+          }
+          return; // 위 effect 체인이 처음부터 불러온다
+        }
+        if (!API_BROKER_IDS.includes(selectedBroker)) {
+          const ids = Array.from(new Set((await api.listHoldingsStore({ broker: selectedBroker })).map((r) => r.accountId)));
+          setAccounts((prev) => {
+            const linked = prev.filter((a) => a.id === kbLink.linkedAccountId && !ids.includes(a.id));
+            return [...ids.map((id) => ({ id })), ...linked];
+          });
+          if (accountId && accountId !== ALL_ACCOUNTS && !ids.includes(accountId) && accountId !== kbLink.linkedAccountId) {
+            setAccountId(ids[0] ?? null); // 지금 계좌가 사라졌다 — 아래 조회 effect가 새 계좌로 다시 받는다
+            return;
+          }
+        }
+      }
+      if (!selectedBroker || !accountId) return;
+      if (!API_BROKER_IDS.includes(selectedBroker)) {
+        if (accountId === ALL_ACCOUNTS) await loadStoredPortfolioAll(selectedBroker);
+        else await loadStoredPortfolio(selectedBroker, accountId);
+      } else {
+        const data =
+          accountId === ALL_ACCOUNTS ? await loadLivePortfolioAll(selectedBroker) : await api.getPortfolio(selectedBroker, accountId);
+        setPortfolio(data);
+        setLastFetchedAt(Date.now());
+      }
+    } catch {
+      // 이전 화면 유지
+    }
+  }, RESUME_REFRESH_MS);
+  // 자동·수동 새로고침으로 이미 받았으면 그때부터 간격을 다시 센다.
+  useEffect(() => {
+    if (lastFetchedAt !== null) markRefreshed();
+  }, [lastFetchedAt, markRefreshed]);
 
   async function handleRefresh() {
     if (!selectedBroker || !accountId) return;

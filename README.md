@@ -50,7 +50,9 @@
 - **설정** — 증권사 API 키(OS 키체인 기반 암호화, 로컬 저장), 한국수출입은행 환율 인증키(달러 배당 환산용), 계좌 별칭·세금 유형, 수동 환율,
   **데이터 백업/복원**(비밀번호로 API 키까지 암호화, 하루 한 번 자동 로컬 백업과 시점 되돌리기), Google Sheets 연동(실험적 기능 — 본인 Google OAuth 클라이언트 필요).
 - **편의** — 화면 확대/축소(핀치 · ⌘휠 · ⌘+/−/0), 기본 포트가 사용 중이면 빈 포트로 자동 이동,
-  중복 실행 시 기존 창을 앞으로 가져옴.
+  중복 실행 시 기존 창을 앞으로 가져옴, **새 버전 알림**(사이드바 아래 받기 링크, 정보 화면에서 끌 수 있음).
+- **문제 해결** — 화면 하나에서 오류가 나도 그 화면 자리에만 안내와 "다시 불러오기"가 뜨고 다른 메뉴는 그대로 씁니다.
+  **로그 파일**을 남기고(계좌번호·금액·이메일·토큰은 가림) 정보 화면의 "로그 폴더 열기"로 엽니다 — 문의할 때 첨부하면 됩니다.
 
 ## 증권사별로 알아둘 점
 
@@ -89,7 +91,7 @@
   (`FHKST01011800`), ETF 현재가·NAV(`FHPST02400000`), ETF 구성종목(`FHKST121600C0`, 상위 30개).
 - **공식 실현손익**: 기간별매매손익현황조회(`TTTC8715R`, 국내)와 해외 기간손익(`TTTS3039R`, 원화 기준)으로 실현손익
   화면의 앱 추정치와 종목별로 대조합니다.
-- 다른 증권사와 달리 **입출금 내역 API가 없어** 보유 종목 화면의 "입금 기준 투자원금" 카드가 없습니다(토스·NH만).
+- 다른 증권사와 달리 **입출금 내역 API가 없어** 보유 종목 화면의 "입금 기준 투자원금" 카드가 없습니다(토스·NH·키움만).
 
 ### NH투자증권 (나무)
 - API 명세 출처: [www.nhplug.com](https://www.nhplug.com)(포털의 `llms-full.txt`와 자산군별 `openapi.json`),
@@ -160,6 +162,9 @@ doc/        사용자 매뉴얼과 스크린샷
 - **브로커 확장 포인트**: `backend/src/brokers/types.ts`의 `BrokerAdapter`를 구현해 `registry.ts`에 등록하고,
   필요한 자격증명 필드를 `credentialFields.ts`에 선언하면 라우트·설정 화면 폼이 그대로 재사용됩니다.
   API 없이 CSV로만 지원하려면 `knownBrokers.ts`에 `hasApiIntegration: false`로 한 줄만 추가합니다.
+- **프론트엔드 구조**: 화면 본체(`frontend/src/pages/*.tsx`)엔 여러 카드가 같이 쓰는 상태·선택·배치만 두고, 데이터 조회는
+  `use*` 훅, 카드·폼·표는 화면 이름의 하위 폴더(`pages/overview/`·`holdings/`·`dividends/`·`trades/`·`settings/`), 계산은
+  `frontend/src/calc/`의 순수 함수(테스트 `frontend/test/`)로 나눴습니다.
 - 각 폴더의 `CLAUDE.md`(= `AGENTS.md`, 심볼릭 링크)에 설계 이유와 함정이 정리돼 있습니다.
 
 ### 소스에서 실행
@@ -180,6 +185,8 @@ npm run lint             # 린트(비동기 실수·React 훅 규칙) — CI도 
 | macOS | Finder에서 `start-mac.command` 더블클릭 (또는 터미널에서 `./start.sh`) |
 | Linux | 터미널에서 `./start.sh` |
 | Windows | 탐색기에서 `start-windows.bat` 더블클릭 |
+
+코드를 push하거나 PR을 올리면 GitHub Actions(`.github/workflows/ci.yml`)가 **빌드(타입 검사) → 린트 → 테스트**를 돌립니다.
 
 > 백엔드(`backend/src/**`)를 고치면 `npm run build:backend`로 다시 빌드하고 Electron을 재시작해야 반영됩니다.
 > 프론트엔드(`frontend/src/**`)는 Vite가 자동 반영합니다.
@@ -240,6 +247,7 @@ npm run package:win     # .exe (NSIS)
 
 ### 다음 단계 (미구현)
 
+- 키움증권 실제 키로 연동 확인(`check:kiwoom`), NH투자증권 실데이터 검증(`check:nh`)
 - KIS 모의투자(paper trading) 지원, KIS 해외주식 실데이터 검증(미국 외 시장은 미지원)
 - 코드 서명/공증(macOS Apple Developer ID, Windows 코드 서명 인증서) — 지금은 서명 없이 배포
 - Intel Mac용 설치 파일

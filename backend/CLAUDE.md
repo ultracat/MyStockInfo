@@ -1163,7 +1163,7 @@ KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tos
 - ⚠ 테스트는 Electron 밖이라 `sealJson`이 **평문 봉투**(`encrypted:false`)를 만든다 — 복원 검증은 키체인 파일에 `encrypted:true`만
   받으므로, 예전 형식 백업을 흉내 낼 땐 `{ data, encrypted: true }` 모양을 직접 만든다(`backup.test.ts`).
 - **CI**: `.github/workflows/ci.yml`이 푸시·PR마다 `npm run build`(타입 검사) → `npm run lint` → `npm test`(백엔드 + 프론트엔드
-  `frontend/test/*.test.ts` — 화면 쪽 순수 함수 `fx.ts`·`csv.ts`). 린트(`eslint.config.mjs`)는 `no-floating-promises`·
+  `frontend/test/*.test.ts` — 화면 쪽 순수 모듈 `fx.ts`·`csv.ts`·`format.ts`·`calc/*`). 린트(`eslint.config.mjs`)는 `no-floating-promises`·
   `no-misused-promises`(조건)·`await-thenable`·React 훅 규칙만 — 결과를 일부러 안 기다릴 땐 `void`를 붙인다.
 - **`test/setup.ts`를 각 테스트 파일에서 가장 먼저 import한다** — 전용 임시 폴더 아래 `data/`를 만들어
   `MYSTOCK_DATA_DIR`로 넘긴다. `getDataDir()`는 처음 불린 값을 고정하므로 다른 모듈이

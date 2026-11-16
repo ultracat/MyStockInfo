@@ -1,43 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import { effectiveRate } from '../fx';
+import { effectiveRate, monthlyRateOr } from '../fx';
 import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
-import { krw } from '../format';
+import { formatKrwValue } from '../format';
 import OfficialRealizedCompare from '../components/OfficialRealizedCompare';
+import {
+  computeRealizedSales,
+  estimateOverseasCapitalGainsTax,
+  FINANCIAL_INCOME_THRESHOLD_KRW,
+  type RealizedSale,
+} from '../calc/realizedGains';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
-
-// 해외주식 양도소득세의 기본공제/세율 — 매년 바뀔 수 있는 값이라 "참고용
-// 추정치"라는 캡션과 함께만 쓴다(공식 세무 자료 대체 아님).
-const TAX_FREE_ALLOWANCE_KRW = 2_500_000;
-const TAX_RATE = 0.22;
-// 금융소득종합과세 기준 — 이자+배당소득이 연 이 금액을 넘으면 초과분이 다른
-// 종합소득과 합산돼 누진세율로 과세된다(그 이하는 원천징수 15.4%로 끝).
-const FINANCIAL_INCOME_THRESHOLD_KRW = 20_000_000;
-
-interface RealizedSale {
-  date: string;
-  broker: BrokerId;
-  accountId: string;
-  symbol: string;
-  name: string | null;
-  quantity: number;
-  /** 거래 통화 — 해외주식 양도소득세(22%)는 해외 상장 종목에만 해당해서, 국내
-   *  상장(KRW) 매도와 가르는 기준으로 쓴다. */
-  currency: string;
-  proceedsKrw: number;
-  costKrw: number;
-  gainKrw: number;
-}
-
-function formatKrwValue(v: number): string {
-  return `${krw.format(Math.round(v))}원`;
-}
 
 /**
  * 매도 건별 실현손익 — 이동평균법(원가를 종목별로 누적하다 매도마다 평균단가 ×
@@ -164,9 +143,10 @@ export default function RealizedGains() {
     };
   }, [allTrades, allDividends]);
 
-  function monthlyRateFor(month: string): number | null {
-    return monthlyAvgFxRates[month]?.rate ?? effectiveFxRate;
-  }
+  const monthlyRateFor = useCallback(
+    (month: string): number | null => monthlyRateOr(monthlyAvgFxRates, month, effectiveFxRate),
+    [monthlyAvgFxRates, effectiveFxRate]
+  );
 
   const taxTypeByAccount = useMemo(() => {
     const m = new Map<string, AccountTaxType>();
@@ -174,80 +154,13 @@ export default function RealizedGains() {
     return m;
   }, [taxTypes]);
 
-  function taxTypeFor(b: BrokerId, accountId: string): AccountTaxType {
-    return taxTypeByAccount.get(accountLabelKey(b, accountId)) ?? 'GENERAL';
-  }
+  const taxTypeFor = useCallback(
+    (b: BrokerId, accountId: string): AccountTaxType => taxTypeByAccount.get(accountLabelKey(b, accountId)) ?? 'GENERAL',
+    [taxTypeByAccount]
+  );
 
-
-  const { sales, excludedSymbols } = useMemo(() => {
-    const bySymbol = new Map<string, StoredTrade[]>();
-    for (const t of allTrades) {
-      if (!bySymbol.has(t.symbol)) bySymbol.set(t.symbol, []);
-      bySymbol.get(t.symbol)!.push(t);
-    }
-
-    const results: RealizedSale[] = [];
-    const excluded: string[] = [];
-
-    for (const [symbol, symTrades] of bySymbol) {
-      const sorted = [...symTrades].sort((a, b) =>
-        a.executedAt < b.executedAt ? -1 : a.executedAt > b.executedAt ? 1 : 0
-      );
-
-      // 이 종목의 모든 달러 거래가 환산 가능한지 먼저 확인한다 — 하나라도
-      // 못 구하면(월평균도 없고 effectiveFxRate도 없음) 이 종목 전체를 계산에서
-      // 뺀다(일부 거래만 반영하면 원가 추적 자체가 깨져서 숫자가 틀어짐).
-      const canCompute = sorted.every(
-        (t) => t.currency !== 'USD' || monthlyRateFor(t.executedAt.slice(0, 7)) !== null
-      );
-      if (!canCompute) {
-        excluded.push(symbol);
-        continue;
-      }
-
-      let qty = 0;
-      let totalCostKrw = 0;
-
-      for (const t of sorted) {
-        const rate = t.currency === 'USD' ? monthlyRateFor(t.executedAt.slice(0, 7))! : 1;
-        const grossKrw = t.amount * rate;
-        const feeKrw = ((t.commission ?? 0) + (t.tax ?? 0)) * rate;
-
-        if (t.side === 'BUY') {
-          qty += t.quantity;
-          totalCostKrw += grossKrw + feeKrw; // 매수 부대비용은 취득원가에 가산
-          continue;
-        }
-
-        // SELL — 매수 기록 없이(또는 수량이 모자라게) 매도만 있으면 그만큼은
-        // 원가를 알 수 없다. 로컬 매매내역이 다 안 모여있을 수 있다는, 이 앱
-        // 여러 화면에 이미 있는 한계와 같은 이유 — 있는 수량만큼만 반영한다.
-        if (qty <= 0) continue;
-        const soldQty = Math.min(t.quantity, qty);
-        const soldFraction = soldQty / t.quantity;
-        const avgCost = totalCostKrw / qty;
-        const costKrw = avgCost * soldQty;
-        const proceedsKrw = grossKrw * soldFraction - feeKrw * soldFraction; // 매도 부대비용은 양도가액에서 차감
-        results.push({
-          date: t.executedAt,
-          broker: t.broker,
-          accountId: t.accountId,
-          symbol,
-          name: t.name,
-          quantity: soldQty,
-          currency: t.currency,
-          proceedsKrw,
-          costKrw,
-          gainKrw: proceedsKrw - costKrw,
-        });
-        qty -= soldQty;
-        totalCostKrw -= costKrw;
-      }
-    }
-
-    results.sort((a, b) => (a.date < b.date ? 1 : -1));
-    return { sales: results, excludedSymbols: excluded.sort() };
-  }, [allTrades, monthlyAvgFxRates, effectiveFxRate]);
+  // 이동평균법 실현손익 — calc/realizedGains.ts(순수 함수, frontend/test/realizedGains.test.ts).
+  const { sales, excludedSymbols } = useMemo(() => computeRealizedSales(allTrades, monthlyRateFor), [allTrades, monthlyRateFor]);
 
   const yearSales = useMemo(
     () => sales.filter((s) => s.date.slice(0, 4) === String(year) && (broker === 'ALL' || s.broker === broker)),
@@ -255,28 +168,31 @@ export default function RealizedGains() {
   );
   const generalSales = useMemo(
     () => yearSales.filter((s) => taxTypeFor(s.broker, s.accountId) === 'GENERAL'),
-    [yearSales, taxTypeByAccount]
+    [yearSales, taxTypeFor]
   );
   const taxAdvantagedSales = useMemo(
     () => yearSales.filter((s) => taxTypeFor(s.broker, s.accountId) !== 'GENERAL'),
-    [yearSales, taxTypeByAccount]
+    [yearSales, taxTypeFor]
   );
 
   const overseasSales = useMemo(() => generalSales.filter((s) => s.currency !== 'KRW'), [generalSales]);
   const domesticSales = useMemo(() => generalSales.filter((s) => s.currency === 'KRW'), [generalSales]);
 
   const totalGainKrw = overseasSales.reduce((sum, s) => sum + s.gainKrw, 0);
-  const estimatedTaxKrw = Math.max(0, totalGainKrw - TAX_FREE_ALLOWANCE_KRW) * TAX_RATE;
+  const estimatedTaxKrw = estimateOverseasCapitalGainsTax(totalGainKrw);
   const domesticGainKrw = domesticSales.reduce((sum, s) => sum + s.gainKrw, 0);
 
   // 배당 기록의 accountId는 사용자가 직접 적는 자유 문자열이라, 토스처럼 내부
   // accountId("1")와 화면 표시 계좌번호가 다른 계좌는 표시 번호로 적혀 있을 수
   // 있다 — 세금 유형(내부 accountId 기준)을 찾기 전에 표시 번호를 되돌린다.
-  function dividendTaxType(d: DividendRecord): AccountTaxType {
-    if (!d.accountId) return 'GENERAL';
-    const byNumber = accountLabels.find((l) => l.broker === d.broker && l.accountNumber === d.accountId);
-    return taxTypeFor(d.broker, byNumber ? byNumber.accountId : d.accountId);
-  }
+  const dividendTaxType = useCallback(
+    (d: DividendRecord): AccountTaxType => {
+      if (!d.accountId) return 'GENERAL';
+      const byNumber = accountLabels.find((l) => l.broker === d.broker && l.accountNumber === d.accountId);
+      return taxTypeFor(d.broker, byNumber ? byNumber.accountId : d.accountId);
+    },
+    [accountLabels, taxTypeFor]
+  );
 
   const dividendSummary = useMemo(() => {
     const rows = allDividends.filter(
@@ -313,7 +229,7 @@ export default function RealizedGains() {
     }
     const brokerRows = BROKER_ORDER.filter((b) => byBroker.has(b)).map((b) => ({ broker: b, ...byBroker.get(b)! }));
     return { count: rows.length, krwTotal, usdTotal, convertedKrw, unconvertedCount, brokerRows };
-  }, [allDividends, year, broker, taxTypeByAccount, accountLabels, monthlyAvgFxRates, effectiveFxRate]);
+  }, [allDividends, year, broker, dividendTaxType, monthlyRateFor]);
   const dividendRatio = dividendSummary.convertedKrw / FINANCIAL_INCOME_THRESHOLD_KRW;
 
   function accountDisplay(b: BrokerId, accountId: string): string {

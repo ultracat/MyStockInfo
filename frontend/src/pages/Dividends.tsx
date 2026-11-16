@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { effectiveRate } from '../fx';
 import { loadUsdKrwRates } from '../fxLoader';
+import { buildAvgCostMap, type BrokerInvested, type BrokerSymbolCost, investedAsOf } from '../calc/dividends';
 import { HEAVY_RESUME_REFRESH_MS, RESUME_REFRESH_MS, markDataChanged, useResumeRefresh, useWhenActive } from '../pageActivity';
 import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord, MonthlySummaryRow, StoredTrade } from '../types';
 import DividendsChart from '../components/DividendsChart';
 import DonutDetailModal from '../components/DonutDetailModal';
 import CollapseToggle from '../components/CollapseToggle';
 import UpcomingDividends, { type UpcomingDividendsState } from '../components/UpcomingDividends';
-import { krw, usdFmt } from '../format';
+import { formatDividendMeta, formatKrwValue, krw, usdFmt } from '../format';
 import { downloadCsv, parseCsv } from '../csv';
 import { formatImportResult } from '../importResult';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER } from '../brokers';
@@ -37,36 +38,12 @@ const SYMBOL_CODE_PATTERN = /^[A-Za-z0-9.,-]+$/;
 const today = () => new Date().toISOString().slice(0, 10);
 const CURRENT_YEAR = new Date().getFullYear();
 
-function formatKrwValue(v: number) {
-  return `${krw.format(Math.round(v))}원`;
-}
-
-/** 배당내역 팝업의 종목별 행 meta — 지금 보유 중이 아닌 종목(전량 매도 등)은
- *  수량 정보가 없어 배당 건수만 보여준다. */
-function formatDividendMeta(count: number, quantity: number | undefined) {
-  return quantity ? `배당 ${count}건 · 보유 ${quantity}주` : `배당 ${count}건`;
-}
-
 type YearFilter = 'ALL' | number;
 type BrokerFilter = 'ALL' | BrokerId;
 type PageSize = 10 | 20 | 30 | 'ALL';
 
 const PAGE_SIZE_OPTIONS: PageSize[] = [10, 20, 30, 'ALL'];
 const PAGE_GROUP_SIZE = 10;
-
-interface BrokerInvested {
-  krw: number;
-  usd: number;
-}
-
-/** 종목 하나의 오늘 기준 평단가(브로커 안의 여러 계좌에 같은 심볼이 있으면
- *  가중평균) — "연도별 투자금 재구성"이 재구성한 수량에 곱하는 값. quantity는
- *  오늘 기준 실제 보유수량 합계 — 배당내역 팝업의 "총 주식갯수" 표시에 쓴다. */
-interface BrokerSymbolCost {
-  avgCost: number;
-  currency: string;
-  quantity: number;
-}
 
 interface BrokerLine {
   broker: BrokerId;
@@ -370,23 +347,7 @@ export default function Dividends() {
   // 한다(investedByBroker가 계좌 경계를 무시하고 브로커 단위로 합산하는 것과
   // 같은 원칙). "연도별 투자금 재구성"(investedByBrokerForYear)이 재구성한
   // 수량에 이 평단가를 곱한다.
-  function buildAvgCostMap(
-    rows: { symbol: string; currency: string | null; quantity: number; purchaseAmount: number }[]
-  ): Map<string, BrokerSymbolCost> {
-    const bySymbol = new Map<string, { amount: number; qty: number; currency: string }>();
-    for (const r of rows) {
-      if (r.quantity <= 0 || !r.currency) continue;
-      const existing = bySymbol.get(r.symbol) ?? { amount: 0, qty: 0, currency: r.currency };
-      existing.amount += r.purchaseAmount;
-      existing.qty += r.quantity;
-      bySymbol.set(r.symbol, existing);
-    }
-    const result = new Map<string, BrokerSymbolCost>();
-    for (const [symbol, v] of bySymbol) {
-      if (v.qty > 0) result.set(symbol, { avgCost: v.amount / v.qty, currency: v.currency, quantity: v.qty });
-    }
-    return result;
-  }
+
 
   // 0 = 첫 로딩("불러오는 중" 표시), 1부터는 화면을 다시 볼 때 뒤에서 다시 받기(이전 값을 둔 채 바꾼다).
   const [investedReload, setInvestedReload] = useState(0);
@@ -508,35 +469,9 @@ export default function Dividends() {
     for (const brokerId of Object.keys(avgCostByBroker) as BrokerId[]) {
       const costs = avgCostByBroker[brokerId];
       if (!costs) continue;
-      const brokerTrades = tradesByBroker[brokerId] ?? [];
 
-      const tradesBySymbol = new Map<string, StoredTrade[]>();
-      for (const t of brokerTrades) {
-        if (!costs.has(t.symbol)) continue; // 지금 안 갖고 있는 종목은 대상 아님
-        if (!tradesBySymbol.has(t.symbol)) tradesBySymbol.set(t.symbol, []);
-        tradesBySymbol.get(t.symbol)!.push(t);
-      }
-
-      let krw = 0;
-      let usd = 0;
-      for (const [symbol, cost] of costs) {
-        const symTrades = (tradesBySymbol.get(symbol) ?? [])
-          .filter((t) => t.executedAt <= cutoff)
-          .sort((a, b) => (a.executedAt < b.executedAt ? -1 : 1));
-        let qty = 0;
-        for (const t of symTrades) qty += t.side === 'BUY' ? t.quantity : -Math.min(t.quantity, qty);
-        // 과거 시점 보유수량이 오늘 실제 보유수량보다 많을 수는 있지만(그 뒤에
-        // 팔았으면), 매도 기록이 다 모여 있지 않거나 매매내역이 중복 저장되면
-        // 재구성 수량이 터무니없이 커진다(실사례: 중복으로 NVDY 448주 → 1,631주,
-        // 투자금이 2배로 부풀려짐). 매도를 거의 안 하는 배당 포트폴리오에선 오늘
-        // 수량이 사실상 상한이라 그걸로 묶는다.
-        qty = Math.min(qty, cost.quantity);
-        if (qty <= 0) continue;
-        const amount = qty * cost.avgCost;
-        if (cost.currency === 'USD') usd += amount;
-        else krw += amount;
-      }
-      result[brokerId] = { krw, usd };
+      // 연도 말 기준 투자금 재구성 — calc/dividends.ts(순수 함수, 테스트 있음).
+      result[brokerId] = investedAsOf(costs, tradesByBroker[brokerId] ?? [], cutoff);
     }
     return result;
   }, [year, investedByBroker, avgCostByBroker, tradesByBroker]);
@@ -996,10 +931,13 @@ export default function Dividends() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleRecords, effectiveFxRate, monthlyAvgFxRates]);
 
-  function investedPlaceholder(brokerError: string | null | undefined) {
-    if (investedLoading) return '불러오는 중...';
-    return brokerError ? '조회 실패' : '-';
-  }
+  const investedPlaceholder = useCallback(
+    (brokerError: string | null | undefined) => {
+      if (investedLoading) return '불러오는 중...';
+      return brokerError ? '조회 실패' : '-';
+    },
+    [investedLoading]
+  );
 
   // 달러 투자금/배당금이 있는 브로커는 원화/달러/합계(환산) 3줄로 나눠서
   // 보여준다 — 통화별 실제 수익률(원화 대비, 달러 대비)과 환산 합계를 각각
@@ -1079,7 +1017,7 @@ export default function Dividends() {
     }
 
     return lines;
-  }, [brokerDividendTotals, brokerDividendKrwByBroker, investedByBrokerForYear, investedErrors, investedLoading, effectiveFxRate]);
+  }, [brokerDividendTotals, brokerDividendKrwByBroker, investedByBrokerForYear, investedErrors, investedPlaceholder, effectiveFxRate]);
 
   // "총합계" 스탯 타일 — 증권사별 표는 이미 통화별 상세를 보여주므로, 여기서는
   // 환산된 단일 숫자만 보여준다(중복 표시 방지). 브로커 하나라도 투자금 조회가

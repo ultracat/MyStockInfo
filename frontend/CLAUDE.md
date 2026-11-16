@@ -370,9 +370,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `api.reportClientError`로 백엔드 로그 파일에.
 - **환율 규칙은 `fx.ts`(순수 함수, `frontend/test/fx.test.ts`)** — `effectiveRate(manual, live)`(수동 우선, 0·음수·NaN은 없음),
   `pickLiveRate`(midRate 우선), `toKrw`, `monthlyRateOr`. 받는 건 `fxLoader.ts`의 `loadUsdKrwRates()`(수동·실시간 **동시에**, 던지지 않음).
-  **배당금·매매내역·실현손익은 옮겼고, 대시보드·개요·종목별 수익은 아직 각자 구현**(다른 데이터와 한 흐름에서 받고 레이스 처리가
-  얽혀 있어 따로 옮긴다). 남은 린트 경고 8건(useMemo가 `toKrw`·`monthlyRateFor` 같은 함수를 의존성에 안 넣음 — 지금은 그 함수가
-  읽는 상태가 의존성에 있어 정확하다)도 그 화면들을 옮길 때 `useCallback`으로 정리한다.
+  **여섯 화면 모두 이걸 쓴다**(2026-11-17). 개요·종목별 수익은 증권사 목록과 `Promise.all`로 함께 받고, 렌더 시점 state가 아니라
+  막 받은 값으로 합계를 낸다(첫 진입 레이스 — Overview.tsx 주석). 새 화면도 `manualFxRate ?? liveFxRate`를 직접 쓰지 말 것.
+- **useMemo가 쓰는 헬퍼는 `useCallback`으로**(2026-11-17) — 예전엔 렌더마다 새로 만드는 함수(`toKrw`·`monthlyRateFor`·`taxTypeFor`)를
+  메모에서 부르면서 의존성엔 그 함수가 읽는 state를 대신 적었다(맞긴 했지만 함수를 고치면 깨지기 쉬움, 린트 경고 8건). 지금은 헬퍼를
+  `useCallback`으로 만들고 의존성에 헬퍼 자체를 넣는다. 대시보드의 `loadLivePortfolioAll`은 **계좌 목록을 ref로 읽는다** — 1분 자동
+  새로고침 타이머가 만들어질 때의 옛 계좌 목록을 붙잡던 문제를 같이 고쳤다. 린트 경고 0이 기준이다(CI는 경고로 실패하진 않는다).
+- **계산은 `src/calc/`의 순수 모듈로**(2026-11-17, 테스트 `frontend/test/`): `realizedGains.ts`(이동평균법 실현손익·양도세 추정·세금
+  상수), `dividends.ts`(평단가 맵·연도 말 투자금 재구성 — 오늘 수량 상한), `portfolio.ts`(CSV 보유종목 합산·전체 계좌 합치기·`ALL_ACCOUNTS`),
+  `trades.ts`(체결금액·키·월별 합계·`DisplayTrade`). 공통 표시 함수는 `format.ts`(`formatKrwValue`·`formatSignedKrw`·`formatDividendMeta` —
+  네 화면에 복사돼 있던 것). 화면 파일엔 상태·조회·렌더만 남기는 방향으로, 계산을 새로 쓸 땐 `calc/`에 두고 테스트를 붙인다.
 - **새 버전 알림**: App.tsx가 시작 때·6시간마다 `api.getUpdateStatus()` → 새 버전이면 사이드바 아래 `.nav-item.update-link`
   (`target="_blank"` → 시스템 브라우저). 정보 화면 "업데이트와 로그" 카드에 켜기/끄기·지금 확인·로그 폴더 열기.
 - **자동 백업 목록**: 설정 백업 카드 아래(`listAutoBackups`/`createAutoBackup`/`restoreAutoBackup`), 되돌리기는 확인 한 번 더.

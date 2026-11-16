@@ -1,6 +1,7 @@
 // 매매내역 계산(순수 함수) — Trades.tsx에서 옮겼다(2026-11-17, 테스트: frontend/test/trades.test.ts).
 import type { BrokerId, StoredTrade, TradeRecord } from '../types';
 import type { TradeSummaryBucket } from '../components/TradesChart';
+import { krw, usdFmt } from '../format';
 
 /** 매매내역 목록(하단 표) 한 행의 공용 모양 — 개별 브로커 모드(TradeRecord, 위쪽
  *  select가 이미 broker/accountId를 알고 있음)와 전체보기 모드(StoredTrade,
@@ -76,4 +77,88 @@ export function accumulate(row: TradeSummaryBucket, t: { side: 'BUY' | 'SELL'; c
     if (isUsd) row.sellUsd += t.amount;
     else row.sellKrw += t.amount;
   }
+}
+
+// ---------------------------------------------------------------- 매매내역 화면 집계(2026-11-17 Trades.tsx에서 뺐다)
+
+export type ViewMode = 'year' | 'month';
+
+/** 표·폼의 금액 표시 — 달러는 $, 원화는 반올림한 원. */
+export function formatTradeAmount(amount: number, currency: string) {
+  return currency === 'USD' ? usdFmt.format(amount) : `${krw.format(Math.round(amount))}원`;
+}
+
+/**
+ * 그래프 막대 — 연간 보기면 그 해 거래(periodTrades)를 12개월로, 월간 보기면 그 달 거래(visibleTrades)를 날짜 수만큼 일별로.
+ * 원화·달러는 합치지 않고 따로 쌓는다(TradesChart가 패널을 나눔).
+ */
+export function tradeBuckets(
+  periodTrades: TradeAmountLike[],
+  visibleTrades: TradeAmountLike[],
+  viewMode: ViewMode,
+  year: number,
+  month: number
+): TradeSummaryBucket[] {
+  const empty = (label: string): TradeSummaryBucket => ({ label, buyKrw: 0, buyUsd: 0, sellKrw: 0, sellUsd: 0 });
+  if (viewMode === 'year') {
+    const rows = Array.from({ length: 12 }, (_, i) => empty(String(i + 1).padStart(2, '0')));
+    for (const t of periodTrades) {
+      const monthIdx = Number(t.executedAt.slice(5, 7)) - 1;
+      if (monthIdx < 0 || monthIdx > 11) continue;
+      accumulate(rows[monthIdx], t);
+    }
+    return rows;
+  }
+  const numDays = daysInMonth(year, month);
+  const rows = Array.from({ length: numDays }, (_, i) => empty(String(i + 1)));
+  for (const t of visibleTrades) {
+    const day = Number(t.executedAt.slice(8, 10));
+    if (day < 1 || day > numDays) continue;
+    accumulate(rows[day - 1], t);
+  }
+  return rows;
+}
+
+type TradeAmountLike = { side: 'BUY' | 'SELL'; currency: string; amount: number; executedAt: string };
+
+/** 상단 타일 — 통화별 매수·매도 합계(원본 amount, 수수료·세금 제외)와 건수. */
+export function tradeTotals(trades: TradeAmountLike[]) {
+  let buyKrw = 0;
+  let buyUsd = 0;
+  let sellKrw = 0;
+  let sellUsd = 0;
+  let buyCount = 0;
+  let sellCount = 0;
+  for (const t of trades) {
+    const isUsd = t.currency === 'USD';
+    if (t.side === 'BUY') {
+      buyCount += 1;
+      if (isUsd) buyUsd += t.amount;
+      else buyKrw += t.amount;
+    } else {
+      sellCount += 1;
+      if (isUsd) sellUsd += t.amount;
+      else sellKrw += t.amount;
+    }
+  }
+  return { buyKrw, buyUsd, sellKrw, sellUsd, buyCount, sellCount };
+}
+
+/** 개별 브로커 모드의 TradeRecord(브로커·계좌 없음)를 목록이 쓰는 DisplayTrade로 — 위에서 고른 브로커·계좌를 채운다. */
+export function toDisplayTrades(trades: TradeRecord[], broker: BrokerId, accountId: string): DisplayTrade[] {
+  return trades.map((t) => ({
+    broker,
+    accountId,
+    id: t.id,
+    symbol: t.symbol,
+    name: t.name,
+    side: t.side,
+    quantity: t.quantity,
+    price: t.price,
+    amount: t.amount,
+    currency: t.currency,
+    commission: t.commission,
+    tax: t.tax,
+    executedAt: t.executedAt,
+  }));
 }

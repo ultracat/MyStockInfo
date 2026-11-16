@@ -156,3 +156,16 @@ test('환율 인증키: 비밀번호 백업에만 암호화돼 들어가고, 복
   await restoreBackupZip(buffer, PASSWORD);
   assert.equal(getEximbankAuthKey(), 'EXIMKEY1234567890abcdef');
 });
+
+test('Google OAuth 클라이언트: 비밀번호 백업에만 암호화돼 들어가고, 복원하면 되살아난다', async () => {
+  const gc = await import('../src/google/clientCredentials');
+  gc.setGoogleClientCredentials({ clientId: '123-abc.apps.googleusercontent.com', clientSecret: 'GOCSPX-testsecret123' });
+  assert.ok(!entryNames((await createBackupZip()).buffer).includes('google-client.json'));
+  const { buffer } = await createBackupZip(PASSWORD);
+  const all = new AdmZip(buffer).getEntries().map((e) => e.getData().toString('utf-8')).join('\n');
+  assert.ok(!all.includes('GOCSPX-testsecret123'));
+
+  gc.clearGoogleClientCredentials();
+  await restoreBackupZip(buffer, PASSWORD);
+  assert.equal(gc.getGoogleClientCredentials()?.clientSecret, 'GOCSPX-testsecret123');
+});

@@ -10,6 +10,13 @@ import type { GoogleAccountState } from './google/store';
 import { getSecureStorageState } from './secureStorage';
 import { BROKER_IDS } from './brokers/knownBrokers';
 import { clearEximbankAuthKey, EXIMBANK_KEY_FILE, getEximbankAuthKey, setEximbankAuthKey } from './fx/eximbankKey';
+import {
+  clearGoogleClientCredentials,
+  getGoogleClientCredentials,
+  GOOGLE_CLIENT_FILE,
+  setGoogleClientCredentials,
+  type GoogleClientCredentials,
+} from './google/clientCredentials';
 import type { BrokerId } from './brokers/types';
 
 /** 데이터 폴더 안의 파일만 백업 대상으로 인정한다 — 영문/숫자/점/하이픈/밑줄로
@@ -21,14 +28,15 @@ export const SAFE_FILENAME_RE = /^[\w.-]+\.(json|sqlite)$/;
 // ─── 비밀 파일 다루기 ──────────────────────────────────────────────────────────
 // 데이터 폴더의 비밀 파일은 zip에 원본 그대로 넣지 않는다.
 // - 접속 토큰(`<브로커>-token.json`): 하루 안팎이면 만료되고 없으면 앱이 다시 받는다 — 아예 뺀다.
-// - API 키·Google 연결·환율 인증키(credentials.json, google-account.json, eximbank-key.json): OS 키체인으로 잠겨 있어
+// - API 키·Google 연결·환율 인증키·Google OAuth 클라이언트(credentials.json, google-account.json, eximbank-key.json,
+//   google-client.json): OS 키체인으로 잠겨 있어
 //   다른 PC에선 못 연다. 사용자가 백업 비밀번호를 주면 풀어서 그 비밀번호로 다시 잠근
 //   `secrets.enc.json` 하나로 넣는다(backupCrypto.ts). 비밀번호를 안 주면 넣지 않는다.
 // 증권사가 늘 때마다 목록을 고치다 NH·키움 토큰이 백업에 평문으로 들어간 적이 있어(2026-11-16 보안 검토)
 // 이름 규칙(`<브로커>-token.json`)으로 고른다 — 새 브로커 토큰 파일도 이 이름이면 자동으로 빠진다.
 const ACCESS_TOKEN_FILE_RE = /^[a-z0-9]+-token\.json$/;
 const isAccessTokenFile = (name: string) => ACCESS_TOKEN_FILE_RE.test(name);
-const KEYCHAIN_FILES = new Set(['credentials.json', 'google-account.json', EXIMBANK_KEY_FILE]);
+const KEYCHAIN_FILES = new Set(['credentials.json', 'google-account.json', EXIMBANK_KEY_FILE, GOOGLE_CLIENT_FILE]);
 const SECRETS_ENTRY = 'secrets.enc.json';
 
 interface SecretsPayload {
@@ -36,6 +44,8 @@ interface SecretsPayload {
   google: GoogleAccountState;
   /** 한국수출입은행 환율 인증키(사용자 입력). 이 필드가 생기기 전 백업엔 없다(undefined → 지금 키를 그대로 둔다). */
   eximbankKey?: string | null;
+  /** Google OAuth 클라이언트(사용자 입력). 없던 시절 백업은 undefined → 지금 값을 그대로 둔다. */
+  googleClient?: GoogleClientCredentials | null;
 }
 
 export class BackupRequestError extends Error {
@@ -60,7 +70,7 @@ function collectSecrets(): SecretsPayload {
     const fields = getCredentialFields(broker);
     if (fields) credentials[broker] = fields;
   }
-  return { credentials, google: googleStore.getState(), eximbankKey: getEximbankAuthKey() };
+  return { credentials, google: googleStore.getState(), eximbankKey: getEximbankAuthKey(), googleClient: getGoogleClientCredentials() };
 }
 
 function parseSecretsPayload(json: string): SecretsPayload {
@@ -75,7 +85,14 @@ function parseSecretsPayload(json: string): SecretsPayload {
   }
   const eximbankKey =
     raw.eximbankKey === undefined ? undefined : typeof raw.eximbankKey === 'string' && raw.eximbankKey ? raw.eximbankKey : null;
-  return { credentials, google: (raw.google ?? {}) as GoogleAccountState, eximbankKey };
+  const gc = raw.googleClient as Partial<GoogleClientCredentials> | null | undefined;
+  const googleClient =
+    gc === undefined
+      ? undefined
+      : gc && typeof gc.clientId === 'string' && typeof gc.clientSecret === 'string' && gc.clientId && gc.clientSecret
+        ? { clientId: gc.clientId, clientSecret: gc.clientSecret }
+        : null;
+  return { credentials, google: (raw.google ?? {}) as GoogleAccountState, eximbankKey, googleClient };
 }
 
 /** 데이터 폴더(`getDataDir()`)를 zip으로 묶는다 — 화이트리스트 없이 폴더에 실제로 있는
@@ -209,6 +226,8 @@ export async function restoreBackupZip(buf: Buffer, password?: string): Promise<
   googleStore.replaceState(payload.google);
   if (payload.eximbankKey === null) clearEximbankAuthKey();
   else if (payload.eximbankKey !== undefined) setEximbankAuthKey(payload.eximbankKey);
+  if (payload.googleClient === null) clearGoogleClientCredentials();
+  else if (payload.googleClient !== undefined) setGoogleClientCredentials(payload.googleClient);
   // 지금 PC에 남은 접속 토큰은 복원 전 키로 받은 것일 수 있다 — 지워서 새 키로 다시 받게 한다.
   for (const name of fs.readdirSync(dataDir)) {
     if (isAccessTokenFile(name)) fs.rmSync(path.join(dataDir, name), { force: true });

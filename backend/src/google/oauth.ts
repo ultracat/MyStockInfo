@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import * as store from './store';
-import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from './clientConfig';
+import { getGoogleClientCredentials } from './clientCredentials';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -40,13 +40,15 @@ export function getConnectStatus(): ConnectStatus {
   return currentStatus;
 }
 
-/** 이 빌드에 Google Client ID/Secret이 실제로 박혀 있는지 — 이 값을 채우지 않은
- *  채로 빌드하면(clientConfig.example.ts를 clientConfig.ts로 복사만 하고 값을
- *  안 채운 경우 등) 연결 시도 자체를 막아 알아보기 쉬운 에러를 준다. 정상
- *  배포된 앱에서는 항상 true여야 한다 — 일반 사용자는 이 값의 존재 자체를
- *  모른다(입력 UI가 없음). */
+/** 사용자가 설정에 OAuth 클라이언트(Client ID/Secret)를 넣었는지 — google/clientCredentials.ts. 없으면 연결 시도를 막는다. */
 export function isClientConfigured(): boolean {
-  return Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+  return getGoogleClientCredentials() !== null;
+}
+
+function requireClient(): { clientId: string; clientSecret: string } {
+  const c = getGoogleClientCredentials();
+  if (!c) throw new Error('Google OAuth 클라이언트(Client ID/Secret)가 없습니다. 설정 → Google Sheets 연동에서 먼저 넣어 주세요.');
+  return c;
 }
 
 export function resetStatus(): void {
@@ -112,12 +114,13 @@ function closeServer(server: http.Server): void {
 }
 
 async function exchangeCode(code: string, codeVerifier: string, redirectUri: string): Promise<void> {
+  const client = requireClient();
   const tokenRes = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
+      client_id: client.clientId,
+      client_secret: client.clientSecret,
       code,
       code_verifier: codeVerifier,
       grant_type: 'authorization_code',
@@ -153,7 +156,7 @@ const CALLBACK_FAILURE_HTML =
 /** 루프백 리디렉션 + PKCE로 OAuth 로그인을 시작한다 — 임시 로컬 서버를 임의
  *  포트에 띄우고 시스템 브라우저로 Google 로그인 페이지를 연다. 완료/실패 여부는
  *  `getConnectStatus()`를 폴링해서 확인한다(라우트가 이걸 그대로 응답). Client
- *  ID/Secret이 없으면(개발 빌드에 clientConfig.ts를 안 채운 경우) 호출부
+ *  ID/Secret이 없으면(사용자가 설정에 아직 안 넣은 경우) 호출부
  *  (routes/google.ts)가 먼저 걸러낸다는 전제. */
 export function startConnectFlow(): void {
   if (activeServer) return; // 이미 진행 중인 로그인 플로우가 있으면 중복 시작하지 않는다.
@@ -212,7 +215,13 @@ export function startConnectFlow(): void {
       return;
     }
     const redirectUri = `http://127.0.0.1:${address.port}/callback`;
-    const authUrl = buildAuthUrl(GOOGLE_CLIENT_ID, redirectUri, codeChallenge, expectedState);
+    const client = getGoogleClientCredentials();
+    if (!client) {
+      currentStatus = { state: 'error', message: 'Google OAuth 클라이언트(Client ID/Secret)가 없습니다.' };
+      closeServer(server);
+      return;
+    }
+    const authUrl = buildAuthUrl(client.clientId, redirectUri, codeChallenge, expectedState);
     const shell = getElectronShell();
     if (shell) {
       void shell.openExternal(authUrl);
@@ -282,16 +291,14 @@ export async function getValidAccessToken(): Promise<string> {
   if (state.accessToken && state.accessTokenExpiresAt && state.accessTokenExpiresAt - SKEW_MS > Date.now()) {
     return state.accessToken;
   }
-  if (!isClientConfigured()) {
-    throw new Error('앱에 Google Client ID/Secret이 설정되지 않았습니다.');
-  }
+  const client = requireClient();
 
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
+      client_id: client.clientId,
+      client_secret: client.clientSecret,
       refresh_token: state.refreshToken,
       grant_type: 'refresh_token',
     }),

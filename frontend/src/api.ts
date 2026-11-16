@@ -315,6 +315,7 @@ export const api = {
   getGoogleStatus: () =>
     request<{
       hasClientCredentials: boolean;
+      clientId: string | null;
       connected: boolean;
       email: string | null;
       spreadsheetUrl: string | null;
@@ -323,6 +324,13 @@ export const api = {
     }>('/google/status'),
   connectGoogle: () => request<{ started: boolean }>('/google/connect', { method: 'POST' }),
   disconnectGoogle: () => request<void>('/google/disconnect', { method: 'POST' }),
+  // 사용자 자신의 Google OAuth 클라이언트(Client ID/Secret) — Secret은 서버가 다시 돌려주지 않는다.
+  saveGoogleClient: (clientId: string, clientSecret: string) =>
+    request<{ configured: boolean; clientId: string; disconnected: boolean }>('/google/client', {
+      method: 'POST',
+      body: JSON.stringify({ clientId, clientSecret }),
+    }),
+  deleteGoogleClient: () => request<{ configured: boolean }>('/google/client', { method: 'DELETE' }),
   exportToGoogleSheet: (dataType: 'holdings' | 'trades' | 'dividends') =>
     request<{ spreadsheetUrl: string; rowCount: number }>(`/google/sync/${dataType}/export`, { method: 'POST' }),
   importFromGoogleSheet: (dataType: 'holdings' | 'trades' | 'dividends') =>

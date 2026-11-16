@@ -397,14 +397,47 @@ export default function Settings() {
     }
   }
 
-  // Google Sheets 연동 — Client ID/Secret은 앱 빌드에 미리 박혀 있어(백엔드
-  // google/clientConfig.ts) 일반 사용자는 입력할 필요도, 알 필요도 없다 — 여기서는
-  // 계정 연결/해제만 관리한다(보유종목/매매내역/배당금 화면은 이미 연결된
-  // 상태를 전제로 내보내기/가져오기 버튼만 낸다). connectGoogle()은 시스템
+  // Google Sheets 연동 — 사용자가 자기 Google Cloud 프로젝트에서 만든 OAuth 클라이언트(Client ID/Secret)를 먼저 넣고
+  // (백엔드 google/clientCredentials.ts, 2026-11-16부터 — 개발자 클라이언트를 빌드에 넣지 않는다), 그다음 계정을
+  // 연결한다(보유종목/매매내역/배당금 화면은 연결된 상태를 전제로 내보내기/가져오기 버튼만 낸다). connectGoogle()은 시스템
   // 브라우저에서 로그인 플로우를 시작만 시키고 즉시 응답하므로, 완료 여부는
   // 재귀 setTimeout으로 status를 폴링해 확인한다.
   const [googleStatus, setGoogleStatus] = useState<Awaited<ReturnType<typeof api.getGoogleStatus>> | null>(null);
   const [googleConnecting, setGoogleConnecting] = useState(false);
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [googleClientSecret, setGoogleClientSecret] = useState('');
+  const [googleClientEditing, setGoogleClientEditing] = useState(false);
+  const [googleClientNote, setGoogleClientNote] = useState<{ kind: 'good' | 'error'; text: string } | null>(null);
+
+  async function onSaveGoogleClient() {
+    setGoogleClientNote(null);
+    try {
+      const r = await api.saveGoogleClient(googleClientId.trim(), googleClientSecret.trim());
+      setGoogleClientId('');
+      setGoogleClientSecret('');
+      setGoogleClientEditing(false);
+      await refreshGoogleStatus();
+      setGoogleClientNote({
+        kind: 'good',
+        text: r.disconnected
+          ? '클라이언트를 바꿔서 기존 Google 연결을 끊었습니다. 아래에서 다시 연결해 주세요.'
+          : '저장했습니다. 이제 아래에서 Google 계정을 연결하세요.',
+      });
+    } catch (e) {
+      setGoogleClientNote({ kind: 'error', text: (e as Error).message });
+    }
+  }
+
+  async function onDeleteGoogleClient() {
+    setGoogleClientNote(null);
+    try {
+      await api.deleteGoogleClient();
+      await refreshGoogleStatus();
+      setGoogleClientNote({ kind: 'good', text: 'OAuth 클라이언트를 지우고 Google 연결도 끊었습니다.' });
+    } catch (e) {
+      setGoogleClientNote({ kind: 'error', text: (e as Error).message });
+    }
+  }
 
   async function refreshGoogleStatus() {
     const s = await api.getGoogleStatus();
@@ -712,13 +745,70 @@ export default function Settings() {
           실행합니다.
         </p>
 
-        {googleStatus && !googleStatus.hasClientCredentials && (
-          <p className="text-critical" style={{ fontSize: 13 }}>
-            지금은 Google Sheets 연동을 사용할 수 없습니다.
+        <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          연결하려면 먼저 <strong>본인 Google Cloud 프로젝트에서 만든 OAuth 클라이언트</strong>(애플리케이션 유형 "데스크톱 앱")의
+          Client ID와 Client Secret을 넣어야 합니다. 만드는 순서는 사용자 매뉴얼의 부록 "Google API 키(OAuth 클라이언트) 설정하기"에 있습니다.
+          값은 OS 키체인으로 암호화해 이 PC에만 저장하며, Secret은 다시 보여 주지 않습니다.
+        </p>
+
+        {googleStatus && (!googleStatus.hasClientCredentials || googleClientEditing) ? (
+          <div>
+            <div className="form-row">
+              <label>Client ID</label>
+              <input
+                autoComplete="off"
+                spellCheck={false}
+                value={googleClientId}
+                onChange={(e) => setGoogleClientId(e.target.value)}
+                placeholder="123456789012-xxxx.apps.googleusercontent.com"
+              />
+            </div>
+            <div className="form-row">
+              <label>Client Secret</label>
+              <input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={googleClientSecret}
+                onChange={(e) => setGoogleClientSecret(e.target.value)}
+                placeholder="GOCSPX-…"
+              />
+            </div>
+            <button
+              className="primary"
+              onClick={onSaveGoogleClient}
+              disabled={!googleClientId.trim() || !googleClientSecret.trim() || secureStorage?.available === false}
+              title={secureStorage?.available === false ? (secureStorage.message ?? undefined) : undefined}
+            >
+              클라이언트 저장
+            </button>{' '}
+            {googleClientEditing && (
+              <button className="ghost" onClick={() => setGoogleClientEditing(false)}>
+                취소
+              </button>
+            )}
+          </div>
+        ) : (
+          googleStatus?.hasClientCredentials && (
+            <p style={{ fontSize: 13 }}>
+              OAuth 클라이언트: <code>{googleStatus.clientId}</code>{' '}
+              <button className="ghost" onClick={() => setGoogleClientEditing(true)}>
+                바꾸기
+              </button>{' '}
+              <button className="ghost" onClick={onDeleteGoogleClient}>
+                지우기
+              </button>
+            </p>
+          )
+        )}
+        {googleClientNote && (
+          <p className={googleClientNote.kind === 'good' ? 'text-good' : 'text-critical'} style={{ fontSize: 13 }}>
+            {googleClientNote.text}
           </p>
         )}
 
         {googleStatus?.hasClientCredentials &&
+          !googleClientEditing &&
           (googleStatus.connected ? (
             <div>
               <p className="text-good" style={{ fontSize: 13 }}>

@@ -4,8 +4,7 @@ import { getDecryptor, getSafeStorage, getSecureStorageState, sealJson, shouldRe
 
 /**
  * 사용자별 Google 연결 상태(토큰 + 연결된 계정 이메일 + 연동된 스프레드시트) —
- * Client ID/Secret은 여기 없다(앱 빌드에 미리 박아 넣은 값, `clientConfig.ts`
- * 참고 — 일반 사용자가 입력하거나 알 필요가 없다). credentials.ts와 별도인
+ * Client ID/Secret은 여기 없다(사용자가 설정에 넣는 OAuth 클라이언트, `clientCredentials.ts`). credentials.ts와 별도인
  * 이유는 그 파일의 CredentialsFile이 BrokerId로만 키가 잡혀 있어서 Google을
  * 억지로 브로커 취급하면 안 되기 때문. 전체를 하나의 blob으로 암호화해
  * 저장한다(credentials.ts와 같은 secureStorage.ts의 봉투 — 키링 없는 Linux에선

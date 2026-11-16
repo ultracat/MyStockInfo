@@ -76,27 +76,9 @@ jobs:
 
       - run: npm ci
 
-      # google/clientConfig.ts는 앱 빌드에 값을 박아 넣는 자격증명이라 저장소에 커밋되지 않는다
-      # (.gitignore, backend/CLAUDE.md의 "Google Sheets 연동" 절 참고). 러너엔 없으므로 Secrets에서
-      # 되살린다 — Secrets가 없어도 빌드 자체는 통과해야 하므로 .example 템플릿으로 폴백한다(그 경우
-      # Google Sheets 연동만 동작하지 않는다). 한국수출입은행 환율 키는 더 이상 빌드에 넣지 않는다 —
-      # 사용자가 설정에서 입력한다(2026-11-16, backend/src/fx/eximbankKey.ts).
-      - name: 빌드 전용 자격증명 파일 생성
-        shell: bash
-        env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-        run: |
-          if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ]; then
-            {
-              printf "export const GOOGLE_CLIENT_ID = '%s';\n" "$GOOGLE_CLIENT_ID"
-              printf "export const GOOGLE_CLIENT_SECRET = '%s';\n" "$GOOGLE_CLIENT_SECRET"
-            } > backend/src/google/clientConfig.ts
-            echo "google/clientConfig.ts: Secrets에서 생성"
-          else
-            cp backend/src/google/clientConfig.example.ts backend/src/google/clientConfig.ts
-            echo "::warning::GOOGLE_CLIENT_ID/SECRET이 없어 템플릿으로 빌드합니다 — Google Sheets 연동이 동작하지 않습니다."
-          fi
+      # 앱 빌드에 넣는 자격증명은 없다 — Google OAuth 클라이언트와 한국수출입은행 환율 키는 사용자가 설정에서 입력한다
+      # (2026-11-16, backend/src/google/clientCredentials.ts·fx/eximbankKey.ts). 예전엔 여기서 Secrets로 gitignore된
+      # 파일을 만들었는데, Secrets를 등록한 적이 없어 v1.0.0~v1.2.2 배포본은 둘 다 템플릿으로 빌드됐다.
 
       # `--` 뒤의 인자는 스크립트 문자열 맨 끝에 붙는다. package:* 스크립트는
       # `npm run build && electron-builder --<os>`로 끝나므로 electron-builder가 받는다.

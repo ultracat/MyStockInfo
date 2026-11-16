@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { getSecureStorageState, SECURE_STORAGE_UNAVAILABLE_MESSAGE } from '../secureStorage';
+import { getSecureStorageState, SECURE_STORAGE_UNAVAILABLE_MESSAGE, SecureStorageUnavailableError } from '../secureStorage';
+import {
+  clearGoogleClientCredentials,
+  getGoogleClientCredentials,
+  setGoogleClientCredentials,
+  validateGoogleClientInput,
+} from '../google/clientCredentials';
 import * as store from '../google/store';
 import * as oauth from '../google/oauth';
 import * as sheetsSync from '../google/sheetsSync';
@@ -11,11 +17,10 @@ googleRouter.get('/status', (_req, res) => {
   const state = store.getState();
   const connectStatus = oauth.getConnectStatus();
   res.json({
-    // 앱 빌드에 Client ID/Secret이 박혀 있는지 — 정상 배포된 앱에서는 항상
-    // true. false면 개발 빌드에 clientConfig.ts를 안 채운 경우뿐이라, 프론트는
-    // 이 경우 "Google 계정 연결" 버튼을 비활성화한다(일반 사용자는 Client ID
-    // 자체를 입력하는 UI가 없다 — google/clientConfig.ts 참고).
+    // 사용자가 설정에 OAuth 클라이언트를 넣었는지(google/clientCredentials.ts) — 없으면 프론트가 입력칸을 보여 주고
+    // "Google 계정 연결"을 막는다. Client ID는 비밀이 아니라 알아보기용으로 준다(Secret은 절대 안 준다).
     hasClientCredentials: oauth.isClientConfigured(),
+    clientId: getGoogleClientCredentials()?.clientId ?? null,
     connected: Boolean(state.refreshToken),
     email: state.email,
     spreadsheetUrl: state.spreadsheetUrl,
@@ -26,7 +31,7 @@ googleRouter.get('/status', (_req, res) => {
 
 googleRouter.post('/connect', (_req, res) => {
   if (!oauth.isClientConfigured()) {
-    return res.status(500).json({ error: '이 빌드에 Google Client ID가 설정되지 않았습니다 (개발자 설정 누락).' });
+    return res.status(400).json({ error: '먼저 Google OAuth 클라이언트(Client ID/Secret)를 넣어 주세요.' });
   }
   // 로그인을 다 마친 뒤 토큰 저장에서 실패하지 않도록, 브라우저를 열기 전에 먼저
   // 막는다(키링 없는 Linux 등 — secureStorage.ts).
@@ -35,6 +40,36 @@ googleRouter.post('/connect', (_req, res) => {
   }
   oauth.startConnectFlow();
   res.json({ started: true });
+});
+
+// ---- 사용자 OAuth 클라이언트(Client ID/Secret)
+googleRouter.post('/client', (req, res) => {
+  const clientId = typeof req.body?.clientId === 'string' ? req.body.clientId.trim() : '';
+  const clientSecret = typeof req.body?.clientSecret === 'string' ? req.body.clientSecret.trim() : '';
+  const invalid = validateGoogleClientInput(clientId, clientSecret);
+  if (invalid) return res.status(400).json({ error: invalid });
+  // 클라이언트가 바뀌면 이전 클라이언트로 받은 토큰은 새 클라이언트로 갱신할 수 없다 — 연결을 끊고 다시 로그인하게 한다.
+  // 같은 Client ID면(Secret만 다시 넣음) 연결을 그대로 둔다.
+  const previous = getGoogleClientCredentials();
+  try {
+    setGoogleClientCredentials({ clientId, clientSecret });
+  } catch (err) {
+    if (err instanceof SecureStorageUnavailableError) return res.status(409).json({ error: err.message });
+    throw err;
+  }
+  const disconnected = Boolean(previous && previous.clientId !== clientId && store.getState().refreshToken);
+  if (previous && previous.clientId !== clientId) {
+    oauth.cancelConnectFlow();
+    store.clearAccount();
+  }
+  res.json({ configured: true, clientId, disconnected });
+});
+
+googleRouter.delete('/client', (_req, res) => {
+  oauth.cancelConnectFlow();
+  store.clearAccount();
+  clearGoogleClientCredentials();
+  res.json({ configured: false });
 });
 
 googleRouter.post('/disconnect', (_req, res) => {

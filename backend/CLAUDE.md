@@ -735,6 +735,10 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
 설정에 저장된 수동 환율로 마지막 폴백한다(`manualFxRate ?? liveFxRate` 패턴,
 `Dashboard.tsx`/`Trades.tsx`/`Dividends.tsx`/`Overview.tsx` 전부 동일).
 
+⚠ 정정(2026-11-16): 한국수출입은행 공식 명세 페이지는 **`oapi.koreaexim.go.kr`이 신규 도메인**이고 기존 도메인이 2026-04-30에
+종료된다고 안내한다 — 아래 "구 도메인"이라는 표현은 당시 공지를 거꾸로 읽은 것이다. 어쨌든 지금 쓰는 `oapi`가 맞는 도메인이다.
+또 발급 키는 **개인정보 보유기간 2년이 지나면 파기**돼 `result: 3`(인증키 오류)이 나온다 — 사용자에게 재발급을 안내한다(매뉴얼 부록).
+
 **한국수출입은행 Open API**(`eximbankClient.ts`, `exchangeJSON`, `data=AP01`) —
 매 영업일 11시경 갱신되는 일별 매매기준율(`deal_bas_r`)을 준다. **도메인은
 `oapi.koreaexim.go.kr`(구 도메인)을 쓴다** — 공공데이터포털 공지는 "2025-06-25에
@@ -758,6 +762,15 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
 무너질 수 있다(최악의 경우도 총 대기 30초 안쪽으로 묶임).
 
 **인증키는 사용자가 설정에서 직접 입력한다**(2026-11-16 사용자 결정 — "내 키를 삽입해서 사용하는 것은 아닌 것 같다").
+- ⚠ **왜 이게 맞았나 — 빌드 내장 방식은 배포본에서 한 번도 동작하지 않았다.** ②(아래 이력) 시절 키는 gitignore된
+  `fx/eximbankConfig.ts`에 있었고 CI가 Secret `EXIMBANK_AUTH_KEY`로 그 파일을 만들게 돼 있었는데, **그 Secret을 등록한 적이
+  없어** v1.0.0~v1.2.2 여섯 번의 릴리스 빌드가 전부 `.example` 템플릿(`'YOUR_EXIMBANK_AUTH_KEY'`)으로 빌드됐다(각 run 로그의
+  `::warning::EXIMBANK_AUTH_KEY가 없어 템플릿으로…` 3건씩, 2026-11-16 확인). 개발자 PC의 로컬 빌드·dev 실행만 진짜 키를 써서
+  "잘 된다"고 보였을 뿐, 사용자에게는 수출입은행 환율(지급월 평균 환율·예비 환율)이 **처음부터 없었다**. 로컬 동작만 보고
+  배포본을 믿지 말 것 — **배포에 필요한 비밀값은 CI 로그의 경고까지 확인**해야 한다.
+- 덕분에 키가 GitHub(코드·이력·릴리스 파일·Secrets)에 올라간 적도 없다 — 2026-11-16 전 브랜치·태그·PR ref·reflog·dangling 객체,
+  릴리스 run 로그까지 확인. 개발자 PC의 `fx/eximbankConfig.ts`는 키를 설정(봉투)으로 옮긴 뒤 2026-11-16에 지웠다 —
+  tsconfig `exclude`는 같은 이름 파일이 다시 생겨도 배포에 안 실리게 남겨 둔다.
 - 저장: `fx/eximbankKey.ts` — `eximbank-key.json`에 증권사 키와 같은 키체인 봉투(`sealJson`)로. 키링 없는 Linux면 저장 거부(409).
   복호화 결과는 암호문을 키로 메모리 캐시. **값을 화면으로 돌려주지 않는다**(`GET /api/settings/eximbank-key`는 `{configured}`만).
 - 저장 전 확인: `POST /api/settings/eximbank-key` → `checkEximbankAuthKey()`가 최근 평일을 한 번 조회 — 응답 `result`
@@ -776,8 +789,8 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
   적이 없다(2026-11-16 전 브랜치·태그·PR ref 검색).
 
 **응답을 날짜별로 영구 캐시한다**(`fx/eximbankCache.ts`, `eximbank-cache.json`) —
-이 인증키가 앱에 공유로 박힌 개인 발급 키라, 테스트 배포 후 여러 사용자가 반복
-조회하면 요청량이 예상보다 커질 수 있어서 만들었다. `fetchEximbankRateForDate`가
+처음엔 앱에 박힌 공유 키의 요청량을 줄이려고 만들었고, 지금은 사용자 키의 일일 호출 한도(알려진 값 하루 1,000회)를
+아끼는 역할이다. 날짜별 환율은 키와 무관해서 키를 바꿔도 캐시를 그대로 쓴다. `fetchEximbankRateForDate`가
 실제 네트워크 호출 경계에서 캐시를 확인/기록한다 — **지난 날짜**는 환율이든
 "그날 데이터 없음"(주말/공휴일)이든 한 번 확인하면 영구 캐시(디스크, 앱 재시작
 후에도 유지)하고 다시는 API를 안 부른다. **오늘 날짜**는 값이 아직 없으면(매매기준율
@@ -890,13 +903,20 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
 배당금을 내보내거나 가져온다. googleapis 같은 SDK 없이 순수 `fetch`로 REST를
 직접 호출한다(Toss/KIS 클라이언트와 같은 이 프로젝트 관례).
 
-- **`clientConfig.ts`**(gitignored, `.example.ts`가 템플릿) — `GOOGLE_CLIENT_ID`/
-  `GOOGLE_CLIENT_SECRET`을 앱 빌드에 미리 박아 넣는다. **일반 사용자는 이 값을
-  입력하는 UI가 아예 없다** — Settings.tsx엔 "Google 계정 연결" 버튼만 있다
-  (`frontend/CLAUDE.md` 참고). Google이 "데스크톱 앱" 유형 OAuth 클라이언트를
-  애초에 "완전한 기밀은 아님, PKCE로 실제 보안을 건다"는 전제로 설계해서(그래서
-  이 유형은 secret이 코드에 노출돼도 공식적으로 허용됨) 가능한 방식 — 나중에
-  자체 서버에서 로그인시키는 방식으로 바꿀 계획이 있어 그 전까지의 과도기 설계다.
+- **`clientCredentials.ts`** — **사용자가 자기 Google Cloud 프로젝트에서 만든 OAuth 클라이언트**(데스크톱 앱 유형의 Client ID/Secret)를
+  설정에서 넣는다(2026-11-16 사용자 결정 — 수출입은행 키와 같은 이유, 루트 CLAUDE.md "API 자격증명" 줄). `google-client.json`에
+  키체인 봉투로 저장, 키링 없는 Linux면 거부(409). **Secret은 응답하지 않는다** — `GET /status`의 `clientId`만 알아보기용으로 준다.
+  `validateGoogleClientInput`은 형식만 본다(`<숫자>-<영숫자>.apps.googleusercontent.com`, Secret 영숫자·`_-`) — Google에 미리 맞는지
+  물어볼 API가 없어 실제 확인은 로그인 때 된다. 백업은 비밀번호 백업의 `secrets.enc.json`(`googleClient`)에만, 예전 백업엔 이 필드가
+  없어 복원해도 지금 값을 둔다.
+  - **클라이언트를 바꾸면 연결을 끊는다**(`POST /client`에서 이전 Client ID와 다르면 `clearAccount()`) — 이전 클라이언트로 받은
+    refresh_token은 새 클라이언트로 갱신되지 않는다. 같은 Client ID로 Secret만 다시 넣으면 연결을 둔다. `DELETE /client`는 연결까지 지운다.
+  - 사용자 클라이언트가 **테스트 게시 상태면 refresh_token이 7일 뒤 만료**된다(Google 정책) — 그때 `invalid_grant` → 아래
+    `reconnectAndGetAccessToken()`이 다시 로그인 창을 연다. 매뉴얼은 "프로덕션으로 게시하면 안 만료되고 '확인하지 않은 앱' 경고만"이라고 안내.
+  - 이력: 예전엔 gitignore된 `google/clientConfig.ts`에 개발자 클라이언트를 박아 빌드했다 — 그런데 CI Secret(`GOOGLE_CLIENT_ID`/`SECRET`)을
+    등록한 적이 없어 **v1.0.0~v1.2.2 배포본엔 들어간 적이 없고**(run 로그 템플릿 경고 3건씩, 2026-11-16 확인) 배포본 설정 화면은 "지금은
+    사용할 수 없습니다"였다. 개발자 PC의 로컬 빌드만 동작했다. 그 Client ID/Secret도 git 이력·reflog에 없다(2026-11-16 확인). 파일이 남아
+    있어도 `backend/tsconfig.json`의 `exclude`로 컴파일·배포에서 빠진다.
 - **`oauth.ts`** — 루프백 리디렉션 + PKCE(`crypto`로 code_verifier/code_challenge
   생성, SDK 불필요) + **`state`**(로그인 시도마다 무작위 — 콜백의 `state`가 다르면 400으로 무시하고 서버는 닫지 않은 채
   진짜 콜백을 기다린다. 다른 페이지가 루프백 콜백에 남의 code를 밀어 넣는 로그인 CSRF 대비, 2026-11-16). `startConnectFlow()`가 임시 로컬 서버를 임의 포트(`listen(0)`)에
@@ -997,10 +1017,9 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   호출에 그대로 필요), 시트로 내보낼 때만 `buildTossAccountNumberMap()`으로
   `accountNo`(실제 계좌번호)로 바꿔 보여주고, 가져올 때 역맵으로 다시
   `accountSeq`로 되돌린다.
-- **`routes/google.ts`** — `GET /status`, `POST /connect`, `POST /disconnect`,
-  `POST /sync/:dataType/export`, `POST /sync/:dataType/import`
-  (`dataType`은 `holdings`|`trades`|`dividends`). Client ID/Secret을 받는
-  라우트는 없다(위 `clientConfig.ts` 참고).
+- **`routes/google.ts`** — `GET /status`(`hasClientCredentials`, `clientId`, 연결 상태), `POST /client`·`DELETE /client`(사용자 OAuth
+  클라이언트, 위 `clientCredentials.ts`), `POST /connect`(클라이언트 없으면 400), `POST /disconnect`,
+  `POST /sync/:dataType/export`, `POST /sync/:dataType/import` (`dataType`은 `holdings`|`trades`|`dividends`).
 
 ## 백업/복원 (`src/backup.ts`, `src/backupCrypto.ts`, `src/routes/backup.ts`)
 
@@ -1099,8 +1118,12 @@ github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포
 (토스·KIS 분류, 우선주 코드, API 우선 교체·id 이어받기·멱등), 매매내역 중복
 제거(`removeImportedDuplicates`, 가져오기 id 이어받기, 실시간 조회의 UUID 사본 제거),
 `normalizeSymbol`, `SAFE_FILENAME_RE`, 백업 비밀번호 암호화·복원(비밀번호가 틀리면 아무것도
-안 바뀜, 접속 토큰은 zip에 안 들어감), KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tossCashFlows.test.ts`),
-장 상태·활성 경고·월말 종가·ETF 구성종목 섹터 쪼개기(`marketInsights.test.ts`).
+안 바뀜, 모든 브로커 접속 토큰은 zip에 안 들어감, 형식이 틀린 항목·평문 키 봉투는 건너뜀, 압축 폭탄 거절, 환율 인증키 왕복),
+KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tossCashFlows.test.ts`),
+장 상태·활성 경고·월말 종가·ETF 구성종목 섹터 쪼개기(`marketInsights.test.ts`), 보안 보조: 접속 토큰 봉투 저장·평문 마이그레이션
+(`secretJsonStore.test.ts`), 로그 가리기(`logRedact.test.ts`), 예전 평문 `settings.json` 환율 키 이전(`eximbankKey.test.ts`).
+- ⚠ 테스트는 Electron 밖이라 `sealJson`이 **평문 봉투**(`encrypted:false`)를 만든다 — 복원 검증은 키체인 파일에 `encrypted:true`만
+  받으므로, 예전 형식 백업을 흉내 낼 땐 `{ data, encrypted: true }` 모양을 직접 만든다(`backup.test.ts`).
 - **`test/setup.ts`를 각 테스트 파일에서 가장 먼저 import한다** — 임시 폴더를 만들어
   `MYSTOCK_DATA_DIR`로 넘긴다. `getDataDir()`는 처음 불린 값을 고정하므로 다른 모듈이
   먼저 데이터 폴더를 건드리면 `backend/data/`의 실제 데이터에 쓴다.

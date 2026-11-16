@@ -256,13 +256,19 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   동기화는 Dashboard.tsx/Trades.tsx에서 그 계좌를 선택할 때 자동으로 일어난다
   (아래 `kbSync.ts` 절 참고, 예전엔 여기 별도 카드에 수동 버튼이 있었지만
   "화면 들어가면 알아서 최신화"가 더 낫다는 피드백으로 없앴다).
-  "USD/KRW 환율" 카드는 이제 수동 환율(`1 USD = ? KRW`) 입력만 있다 — 한국수출입은행
-  Open API 인증키는 더 이상 여기서 입력받지 않는다(Google Client ID/Secret과 같은
-  이유로 앱 빌드에 미리 박아 넣는 방식으로 바뀜, `backend/CLAUDE.md`의 "환율 조회"
-  절 참고).
-  "Google Sheets 연동" 카드는 Client ID/Secret 입력칸이 없다(백엔드
-  `google/clientConfig.ts`에 미리 박혀 있음, `backend/CLAUDE.md`의 "Google Sheets
-  연동" 절 참고) — `api.getGoogleStatus()`로 연결 상태(`connectStatus`: `idle`/
+  **"한국수출입은행 환율 인증키" 카드**(2026-11-16 — 다시 사용자 입력으로): 제목 옆 "입력 필요/저장됨", password 입력칸,
+  "확인 후 저장"(백엔드가 실제 조회로 키를 확인 — 틀린 키는 400, 한도 마감·연결 실패는 저장 + `warning`), "지우기".
+  **키 값은 받아 오지 않는다**(`getEximbankKeyStatus()`는 `{configured}`뿐) — 저장 뒤 입력칸은 비우고 "바꿀 때만 입력".
+  결과 문구는 화면 맨 위 공용 message가 아니라 카드 안(`eximbankNote`)에 — 카드가 아래쪽이라 위 문구는 안 보인다.
+  키링 없는 Linux면 저장 버튼을 막는다(`secureStorage.available`). `Dividends.tsx`는 키가 없고 달러 배당이 있으면
+  화면 위 `notice`로 알린다(`loadEximbankStatus`, 다시 보일 때도 갱신 — 설정에서 키를 넣고 돌아오면 사라진다).
+  ⚠ 이력: 이 칸은 ① 처음엔 여기서 입력(평문 저장) → ② 개발자 키를 빌드에 내장하며 없앴다가 → ③ 다시 생겼다.
+  ②는 개발자 PC의 로컬 빌드에서만 동작했고 **GitHub Actions로 만든 배포본엔 키가 없어 원래 동작하지 않았다**
+  (`backend/CLAUDE.md`의 "환율 조회" 절). 그 아래 "USD/KRW 환율" 카드는 수동 환율(`1 USD = ? KRW`) 입력이다.
+  "Google Sheets 연동" 카드는 **먼저 사용자 OAuth 클라이언트(Client ID/Secret)를 넣는다**(2026-11-16 — 예전엔 빌드에 박혀 입력칸이
+  없었지만 배포본엔 실제로 들어간 적이 없었다, `backend/CLAUDE.md`의 "Google Sheets 연동" 절). 클라이언트가 없거나 "바꾸기" 중이면
+  입력칸(`googleClientEditing`), 있으면 `clientId`만 보여 주고 "바꾸기/지우기". Secret은 받아 오지 않는다. 클라이언트를 바꾸면 서버가
+  연결을 끊고 `disconnected: true`를 준다 → 카드 안 문구(`googleClientNote`)로 다시 연결하라고 알린다. 그다음 `api.getGoogleStatus()`로 연결 상태(`connectStatus`: `idle`/
   `waiting`/`connected`/`error`)를 1.5초 간격 재귀 `setTimeout`으로 폴링하다가
   `waiting`이 아니게 되면 멈춘다. "Google 계정 연결" 클릭 시 `api.connectGoogle()`이
   시스템 브라우저를 열게 만들고(백엔드가 즉시 응답, 실제 로그인은 그 브라우저에서),

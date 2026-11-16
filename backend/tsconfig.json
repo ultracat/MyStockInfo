@@ -14,7 +14,7 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src"],
-  // 예전 빌드 내장 인증키 파일(gitignore, 개발자 PC에만 남아 있을 수 있음) — 이제 쓰지 않는다. 남아 있어도
+  // 예전 빌드 내장 키 파일들(수출입은행 인증키·Google OAuth 클라이언트 — gitignore, 개발자 PC에만 남아 있을 수 있음) — 이제 쓰지 않는다. 남아 있어도
   // dist에 컴파일돼 앱에 실리지 않게 뺀다(2026-11-16, 인증키는 설정에서 사용자가 입력).
-  "exclude": ["src/fx/eximbankConfig.ts"]
+  "exclude": ["src/fx/eximbankConfig.ts", "src/google/clientConfig.ts"]
 }

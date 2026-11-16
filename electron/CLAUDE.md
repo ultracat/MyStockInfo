@@ -265,14 +265,14 @@ plan (ubuntu)   고른 플랫폼만 담은 matrix JSON 출력
   산출물 없이 "성공"하는 것을 막고, `fail-fast: false`로 한 OS가 실패해도 나머지는 받는다.
 - 릴리스는 **초안(draft)**이다 — 되돌리기 어려운 공개 배포만 사람이 눌러서 확정한다.
 
-### 커밋되지 않는 자격증명을 CI에서 되살린다
-`backend/src/google/clientConfig.ts`는 빌드에 값을 박아 넣는 파일이라 `.gitignore`에 있다 — **러너엔 없으므로
-빌드가 `Cannot find module`로 죽는다.** 워크플로가 Secrets(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`)에서 만들고,
-없으면 `.example.ts` 템플릿으로 폴백해 빌드 자체는 통과시킨다(그 경우 Google Sheets 연동만 동작하지 않고 `::warning::`).
-한국수출입은행 환율 키(`fx/eximbankConfig.ts`, `EXIMBANK_AUTH_KEY`)도 예전엔 이렇게 넣었지만 **2026-11-16부터 빌드에
-넣지 않는다** — 사용자가 설정에서 입력한다(`backend/src/fx/eximbankKey.ts`). 참고로 v1.0.0~v1.2.2 릴리스 빌드는 이
-Secret이 없어 전부 템플릿으로 빌드됐다(로그의 `::warning::` 확인) — 배포된 설치 파일에는 키가 없었고, 그래서 배포본은
-수출입은행 환율이 원래 동작하지 않았다.
+### 빌드에 넣는 자격증명은 없다
+예전엔 gitignore된 `backend/src/google/clientConfig.ts`(Google OAuth 클라이언트)와 `backend/src/fx/eximbankConfig.ts`(수출입은행
+환율 키)를 워크플로가 Secrets(`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`EXIMBANK_AUTH_KEY`)로 만들어 빌드에 넣었다(없으면
+`.example.ts` 템플릿 + `::warning::`). **2026-11-16부터 둘 다 사용자가 설정에서 입력**하고(`google/clientCredentials.ts`,
+`fx/eximbankKey.ts`) 이 단계와 템플릿 파일을 지웠다 — 이제 러너에 만들 파일이 없다.
+⚠ 바꾼 계기: **그 Secrets를 등록한 적이 없어서 v1.0.0~v1.2.2 여섯 번의 릴리스가 전부 템플릿으로 빌드됐다**(각 run에 경고 3건씩) —
+배포본에서는 Google Sheets 연동도, 수출입은행 환율도 처음부터 동작하지 않았고, 개발자 PC의 로컬 빌드만 진짜 값으로 동작해서
+몰랐다. "경고만 남기고 통과"하는 단계는 놓치기 쉽다 — 다시 빌드에 비밀값을 넣게 되면 릴리스 뒤 run 로그의 `::warning::`까지 확인할 것.
 
 ### 릴리스 절차
 1. 루트 `version.json`의 `version`을 올린다(**단일 원천** — `generate-app-info.cjs`가

@@ -88,7 +88,8 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - **각 증권사 API는 실제 공식 문서/레포를 확인하고 반영한다** — 필드명, 엔드포인트,
   에러 처리 방식을 추측하지 않는다 (토스: developers.tossinvest.com/docs, KIS:
   github.com/koreainvestment/open-trading-api).
-- **API 자격증명은 절대 커밋하지 않는다.** 실제 저장 위치는 Electron의 userData
+- **API 자격증명은 절대 커밋하지 않는다.** **빌드에 넣는 비밀값은 없다** — 외부 서비스 키(Google OAuth 클라이언트,
+  수출입은행 환율)는 개발자 키를 넣지 않고 사용자가 설정에서 입력한다(`backend/CLAUDE.md` "환율 조회"·"Google Sheets 연동"). 실제 저장 위치는 Electron의 userData
   디렉터리(`app.getPath('userData')`)이고, `backend/data/`는 Electron 밖에서 백엔드를
   단독 실행할 때(dev/테스트)만 쓰는 로컬 폴백 경로다 — `.gitignore`에서 제외됨.
 - **커밋 작성자는 저장소 소유자 한 사람**(`ultracat <ultracat.lcw@gmail.com>`)이다 — Claude 공동작성자

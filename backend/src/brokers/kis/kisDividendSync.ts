@@ -61,7 +61,7 @@ export function syncKisDividends(): Promise<DividendSyncResult> {
 }
 
 async function runSync(): Promise<DividendSyncResult> {
-  const accountId = getKisAccountId();
+  const accountId = await getKisAccountId();
   const rows = await fetchKisPeriodRights();
   const { candidates, upcoming } = classifyKisRights(rows, todayKst());
 

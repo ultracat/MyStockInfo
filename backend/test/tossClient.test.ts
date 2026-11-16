@@ -67,11 +67,11 @@ globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
 }) as typeof fetch;
 process.on('exit', () => (globalThis.fetch = realFetch));
 
-beforeEach(() => {
+beforeEach(async () => {
   resetDataDir();
   calls = [];
   handlers = defaultHandlers();
-  setCredentialFields('toss', { clientId: 'toss-client', clientSecret: 'toss-secret' });
+  await setCredentialFields('toss', { clientId: 'toss-client', clientSecret: 'toss-secret' });
 });
 const pathCalls = (p: string) => calls.filter((c) => c.path === p);
 

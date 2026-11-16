@@ -35,7 +35,7 @@ GitHub 릴리스에서 OS에 맞는 파일을 받아 설치합니다.
 
 | OS | 파일 | 지원 환경 |
 |---|---|---|
-| macOS | `MyStock-<버전>-arm64.dmg` | Apple 칩(M1 이후) Mac. Intel Mac용 설치본은 없습니다. |
+| macOS | `MyStock-<버전>-arm64.dmg` | Apple 칩(M1 이후) Mac, **macOS 13(Ventura) 이상**. Intel Mac용 설치본은 없습니다. |
 | Windows | `MyStock.Setup.<버전>.exe` | 64비트 Windows. 지금 사용자 계정에만 설치됩니다. |
 | Linux | `MyStock-<버전>.AppImage` | 64비트(x86_64) 배포판 |
 

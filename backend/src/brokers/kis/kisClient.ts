@@ -115,8 +115,8 @@ export class KisApiError extends Error {
   }
 }
 
-function requireCredentials() {
-  const creds = getCredentialFields('kis');
+async function requireCredentials() {
+  const creds = await getCredentialFields('kis');
   if (!creds) {
     throw new Error('한국투자증권 API 키가 설정되지 않았습니다. 설정 화면에서 앱키/앱시크릿/계좌번호를 입력해주세요.');
   }
@@ -137,9 +137,9 @@ interface StoredKisToken {
 const tokenStore = () => new SecretJsonStore<StoredKisToken>('kis-token.json', getDataDir());
 let cachedToken: StoredKisToken | null = null;
 
-function loadCachedToken(): StoredKisToken | null {
+async function loadCachedToken(): Promise<StoredKisToken | null> {
   if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken;
-  const persisted = tokenStore().read();
+  const persisted = await tokenStore().read();
   if (persisted && persisted.expiresAt > Date.now()) {
     cachedToken = persisted;
     return cachedToken;
@@ -148,7 +148,7 @@ function loadCachedToken(): StoredKisToken | null {
 }
 
 async function fetchTokenUncached(): Promise<string> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
 
   const res = await kisLimiter.schedule(() =>
     fetch(`${BASE_URL}/oauth2/tokenP`, {
@@ -171,7 +171,7 @@ async function fetchTokenUncached(): Promise<string> {
   const expiresInSec = data.expires_in ?? 86400;
   // 60s safety buffer before expiry.
   cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
-  tokenStore().write(cachedToken);
+  await tokenStore().write(cachedToken);
   return cachedToken.accessToken;
 }
 
@@ -192,7 +192,7 @@ function fetchToken(): Promise<string> {
 
 async function getToken(forceRefresh = false): Promise<string> {
   if (!forceRefresh) {
-    const token = loadCachedToken();
+    const token = await loadCachedToken();
     if (token) return token.accessToken;
   }
   return fetchToken();
@@ -223,7 +223,7 @@ async function kisGet(
   limiter: RateLimiter = kisLimiter,
   maxRetries = 3
 ): Promise<KisEnvelope & { trCont: string }> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   const query = new URLSearchParams(params);
 
   const doFetch = async (token: string) =>
@@ -311,7 +311,7 @@ export function isKisConfigured(): boolean {
 }
 
 async function fetchKisBalanceUncached(): Promise<{ items: KisHoldingItem[]; summary: KisAccountSummary }> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
 
   const data = await kisGet('/uapi/domestic-stock/v1/trading/inquire-balance', 'TTTC8434R', {
     CANO: creds.accountNumber,
@@ -377,15 +377,15 @@ export interface KisPeriodRight {
 }
 
 /** 이 앱이 쓰는 KIS 계좌 id(`CANO-상품코드`) — kisAdapter의 계좌 목록과 같은 형식. */
-export function getKisAccountId(): string {
-  const creds = requireCredentials();
+export async function getKisAccountId(): Promise<string> {
+  const creds = await requireCredentials();
   return `${creds.accountNumber}-${creds.accountProductCode}`;
 }
 
 /** 계좌의 권리 내역 전체(기본 2000-01-01부터) — 25건씩 연속조회(`tr_cont` M/F)로 끝까지 받는다.
  *  긴 기간을 한 번에 조회해도 된다(실측 2026-11-09). 매매내역 TR과 같은 1tps 리미터를 쓴다. */
 export async function fetchKisPeriodRights(from = '2000-01-01', to = '2099-12-31'): Promise<KisPeriodRight[]> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   const items: KisPeriodRight[] = [];
   let fk100 = '';
   let nk100 = '';
@@ -438,7 +438,7 @@ export interface KisTradeProfitRow {
 
 /** 기간 내 국내 매도 실현손익 전체(50건씩 연속조회). 합계(output2)는 쓰지 않고 행을 더해 쓴다(페이지가 나뉘어서). */
 export async function fetchKisPeriodTradeProfit(from: string, to: string): Promise<KisTradeProfitRow[]> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   const rows: KisTradeProfitRow[] = [];
   let fk100 = '';
   let nk100 = '';
@@ -586,7 +586,7 @@ async function fetchDailyCcldAllPages(
 }
 
 async function fetchKisTradeHistoryUncached(from: string, to: string): Promise<KisDailyCcldItem[]> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   const fromDate = parseYmd(from);
   const toDate = parseYmd(to);
   if (fromDate > toDate) return [];
@@ -830,7 +830,7 @@ const n0 = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 /** 해외주식 체결기준현재잔고(`CTRP6504R`, 미국·외화 기준) — 보유 종목(output1) + 달러 예수금(output2의
  *  `frcr_dncl_amt_2` 외화예수금액, 통화코드 USD 줄). 잔고(`TTTS3012R`)와 달리 예수금까지 한 번에 준다. */
 async function fetchKisOverseasBalanceUncached(): Promise<{ positions: KisOverseasPosition[]; cashUsd: number | null }> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   const res = await kisGet('/uapi/overseas-stock/v1/trading/inquire-present-balance', 'CTRP6504R', {
     CANO: creds.accountNumber,
     ACNT_PRDT_CD: creds.accountProductCode,
@@ -878,7 +878,7 @@ export async function fetchKisOverseasTrades(from: string, to: string, opts: Fet
     `kis:overseas-trades:${from}:${to}`,
     PORTFOLIO_TTL_MS,
     async () => {
-      const creds = requireCredentials();
+      const creds = await requireCredentials();
       const { rows } = await fetchAllPages200(
         '/uapi/overseas-stock/v1/trading/inquire-ccnl',
         'TTTS3035R',
@@ -923,7 +923,7 @@ export async function fetchKisOverseasTrades(from: string, to: string, opts: Fet
 /** 해외주식 기간손익(`TTTS3039R`, 미국 `NASD`, **원화 기준** `WCRC_FRCR_DVSN_CD=02`) — 매도 한 줄씩. 실현손익 화면의
  *  공식 값 비교용(앱 추정치도 원화라 바로 비교된다). `ovrs_rlzt_pfls_amt`는 제비용 차감 손익. */
 export async function fetchKisOverseasPeriodProfit(from: string, to: string): Promise<Record<string, string>[]> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   const { rows } = await fetchAllPages200(
     '/uapi/overseas-stock/v1/trading/inquire-period-profit',
     'TTTS3039R',

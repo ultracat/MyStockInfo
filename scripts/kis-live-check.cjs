@@ -21,7 +21,7 @@ runLiveCheck('한국투자증권 Open API 실서버 점검 (조회 TR만, 개인
   // 토큰 파일은 키체인 봉투라(SecretJsonStore) 직접 JSON.parse하지 않는다.
   const { SecretJsonStore } = ctx.require('secretJsonStore.js');
   const readToken = () => new SecretJsonStore('kis-token.json', getDataDir()).read();
-  const before = readToken();
+  const before = await readToken();
   if (!before || before.expiresAt <= Date.now()) log('INFO', '토큰', '유효한 저장 토큰이 없어 한 번 발급합니다(하루 1회 제한 중 1회 사용)');
 
   const accounts = await kisAdapter.listAccounts();
@@ -31,7 +31,7 @@ runLiveCheck('한국투자증권 Open API 실서버 점검 (조회 TR만, 개인
 
   // 1) 국내 잔고(TTTC8434R)
   const bal = await check.step('국내 잔고 TTTC8434R', () => kis.fetchKisBalance({ forceRefresh: true }));
-  const after = readToken();
+  const after = await readToken();
   if (after) {
     log(before && after.accessToken === before.accessToken ? 'PASS' : 'INFO', '토큰 재사용', before && after.accessToken === before.accessToken ? '저장된 토큰 그대로' : '새로 발급해 저장함');
     log(after.expiresAt > Date.now() ? 'PASS' : 'FAIL', '토큰 만료', `남은 시간 약 ${((after.expiresAt - Date.now()) / 3600_000).toFixed(1)}시간`);

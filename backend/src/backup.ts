@@ -64,13 +64,18 @@ export interface RestoreResult {
   secrets: 'restored' | 'not-in-backup' | 'keyring-unavailable';
 }
 
-function collectSecrets(): SecretsPayload {
+async function collectSecrets(): Promise<SecretsPayload> {
   const credentials: SecretsPayload['credentials'] = {};
   for (const broker of listConfiguredBrokers()) {
-    const fields = getCredentialFields(broker);
+    const fields = await getCredentialFields(broker);
     if (fields) credentials[broker] = fields;
   }
-  return { credentials, google: googleStore.getState(), eximbankKey: getEximbankAuthKey(), googleClient: getGoogleClientCredentials() };
+  return {
+    credentials,
+    google: await googleStore.getState(),
+    eximbankKey: await getEximbankAuthKey(),
+    googleClient: await getGoogleClientCredentials(),
+  };
 }
 
 function parseSecretsPayload(json: string): SecretsPayload {
@@ -114,7 +119,7 @@ export async function createBackupZip(password?: string): Promise<{ buffer: Buff
 
   const includesSecrets = password !== undefined;
   if (includesSecrets) {
-    const sealed = await sealSecrets(JSON.stringify(collectSecrets()), password);
+    const sealed = await sealSecrets(JSON.stringify(await collectSecrets()), password);
     zip.addFile(SECRETS_ENTRY, Buffer.from(JSON.stringify(sealed, null, 2)));
   }
 
@@ -214,20 +219,20 @@ export async function restoreBackupZip(buf: Buffer, password?: string): Promise<
   }
 
   if (!payload) return { restored, skipped, secrets: 'not-in-backup' };
-  if (getSecureStorageState().kind === 'unavailable') return { restored, skipped, secrets: 'keyring-unavailable' };
+  if ((await getSecureStorageState()).kind === 'unavailable') return { restored, skipped, secrets: 'keyring-unavailable' };
 
   // 백업의 비밀 정보가 기준이다 — 백업에 없는 브로커 키는 지운다.
   for (const broker of listConfiguredBrokers()) {
     if (!payload.credentials[broker]) clearCredential(broker);
   }
   for (const [broker, fields] of Object.entries(payload.credentials)) {
-    setCredentialFields(broker as BrokerId, fields!);
+    await setCredentialFields(broker as BrokerId, fields!);
   }
-  googleStore.replaceState(payload.google);
+  await googleStore.replaceState(payload.google);
   if (payload.eximbankKey === null) clearEximbankAuthKey();
-  else if (payload.eximbankKey !== undefined) setEximbankAuthKey(payload.eximbankKey);
+  else if (payload.eximbankKey !== undefined) await setEximbankAuthKey(payload.eximbankKey);
   if (payload.googleClient === null) clearGoogleClientCredentials();
-  else if (payload.googleClient !== undefined) setGoogleClientCredentials(payload.googleClient);
+  else if (payload.googleClient !== undefined) await setGoogleClientCredentials(payload.googleClient);
   // 지금 PC에 남은 접속 토큰은 복원 전 키로 받은 것일 수 있다 — 지워서 새 키로 다시 받게 한다.
   for (const name of fs.readdirSync(dataDir)) {
     if (isAccessTokenFile(name)) fs.rmSync(path.join(dataDir, name), { force: true });

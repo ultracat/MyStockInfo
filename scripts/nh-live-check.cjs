@@ -77,7 +77,7 @@ async function run() {
   // 토큰 파일은 키체인 봉투라(SecretJsonStore) 직접 JSON.parse하지 않는다.
   const { SecretJsonStore } = require(path.join(DIST, 'secretJsonStore.js'));
   const readToken = () => new SecretJsonStore('nh-token.json', getDataDir()).read();
-  const before = readToken();
+  const before = await readToken();
 
   // 2) 계좌 목록
   let accounts;
@@ -87,7 +87,7 @@ async function run() {
     log('FAIL', '계좌 목록 /n2/acctinfo', `${e.message} ${String(e.body || '').slice(0, 200)}`);
     return;
   }
-  const after = readToken();
+  const after = await readToken();
   if (!after) log('FAIL', '토큰 저장', 'nh-token.json이 없다');
   else if (before && before.accessToken === after.accessToken) log('PASS', '토큰', '저장된 토큰 재사용(보안 알림 없음)');
   else log('INFO', '토큰', '새로 발급해 저장함 — NH 보안 알림이 한 번 갔을 것');

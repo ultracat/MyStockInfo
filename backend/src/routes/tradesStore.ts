@@ -8,7 +8,7 @@ import {
   type ImportTradeInput,
 } from '../db/tradesStore';
 import { BROKER_IDS } from '../brokers/knownBrokers';
-import { isSyncOwned } from '../brokers/rowOwnership';
+import { loadSyncOwnership } from '../brokers/rowOwnership';
 import type { ImportResult } from './importResult';
 import type { BrokerId } from '../brokers/types';
 import { resolveStockNames } from '../stockNameResolver';
@@ -114,6 +114,7 @@ export async function importTradesRecords(
   records: unknown[],
   options?: { fullReplace?: boolean }
 ): Promise<ImportResult> {
+  const isSyncOwned = await loadSyncOwnership();
   const shapeResults = records.map((r, i) => ({ row: i + 1, ...parseImportRowShape(r) }));
   const shapedRows = shapeResults.filter((r): r is { row: number; input: ImportTradeInput } => 'input' in r);
   const validRows = shapedRows.filter((r) => !isSyncOwned(r.input.broker, r.input.accountId));

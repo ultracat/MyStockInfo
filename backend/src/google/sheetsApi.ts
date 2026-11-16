@@ -54,7 +54,7 @@ async function sheetsFetch(path: string, init?: RequestInit): Promise<any> {
     return await rawFetch(path, init, token);
   } catch (err) {
     if (err instanceof SheetsApiError && err.status === 401) {
-      invalidateAccessToken();
+      await invalidateAccessToken();
       const freshToken = await getValidAccessToken();
       return rawFetch(path, init, freshToken);
     }
@@ -150,7 +150,7 @@ export async function findSpreadsheetByName(title: string): Promise<SpreadsheetI
   // 위 sheetsFetch와 같은 이유(캐시된 토큰이 만료 시각과 무관하게 이미 무효화된
   // 경우) — 캐시를 버리고 한 번만 더 시도한다.
   if (res.status === 401) {
-    invalidateAccessToken();
+    await invalidateAccessToken();
     const freshToken = await getValidAccessToken();
     res = await search(freshToken);
   }

@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 import * as store from './store';
-import { getGoogleClientCredentials } from './clientCredentials';
+import { getGoogleClientCredentials, hasGoogleClientCredentials } from './clientCredentials';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -42,11 +42,12 @@ export function getConnectStatus(): ConnectStatus {
 
 /** 사용자가 설정에 OAuth 클라이언트(Client ID/Secret)를 넣었는지 — google/clientCredentials.ts. 없으면 연결 시도를 막는다. */
 export function isClientConfigured(): boolean {
-  return getGoogleClientCredentials() !== null;
+  // 파일이 있는지만 본다(복호화 없이) — 풀 수 없으면 연결 시도 때 알려 준다.
+  return hasGoogleClientCredentials();
 }
 
-function requireClient(): { clientId: string; clientSecret: string } {
-  const c = getGoogleClientCredentials();
+async function requireClient(): Promise<{ clientId: string; clientSecret: string }> {
+  const c = await getGoogleClientCredentials();
   if (!c) throw new Error('Google OAuth 클라이언트(Client ID/Secret)가 없습니다. 설정 → Google Sheets 연동에서 먼저 넣어 주세요.');
   return c;
 }
@@ -114,7 +115,7 @@ function closeServer(server: http.Server): void {
 }
 
 async function exchangeCode(code: string, codeVerifier: string, redirectUri: string): Promise<void> {
-  const client = requireClient();
+  const client = await requireClient();
   const tokenRes = await fetch(TOKEN_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -138,12 +139,12 @@ async function exchangeCode(code: string, codeVerifier: string, redirectUri: str
     throw new Error(body.error_description ?? body.error ?? `토큰 교환 실패: ${tokenRes.status}`);
   }
 
-  store.setTokens({
+  await store.setTokens({
     refreshToken: body.refresh_token,
     accessToken: body.access_token,
     expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000,
   });
-  store.setEmail(await fetchUserEmail(body.access_token));
+  await store.setEmail(await fetchUserEmail(body.access_token));
 }
 
 const CALLBACK_SUCCESS_HTML =
@@ -158,8 +159,14 @@ const CALLBACK_FAILURE_HTML =
  *  `getConnectStatus()`를 폴링해서 확인한다(라우트가 이걸 그대로 응답). Client
  *  ID/Secret이 없으면(사용자가 설정에 아직 안 넣은 경우) 호출부
  *  (routes/google.ts)가 먼저 걸러낸다는 전제. */
-export function startConnectFlow(): void {
+export async function startConnectFlow(): Promise<void> {
   if (activeServer) return; // 이미 진행 중인 로그인 플로우가 있으면 중복 시작하지 않는다.
+  const client = await getGoogleClientCredentials();
+  if (!client) {
+    currentStatus = { state: 'error', message: 'Google OAuth 클라이언트(Client ID/Secret)를 읽지 못했습니다. 설정에서 다시 넣어 주세요.' };
+    return;
+  }
+  if (activeServer) return; // 위에서 기다리는 사이 다른 호출이 먼저 시작했을 수 있다
 
   const codeVerifier = base64url(crypto.randomBytes(32));
   const codeChallenge = base64url(crypto.createHash('sha256').update(codeVerifier).digest());
@@ -215,12 +222,6 @@ export function startConnectFlow(): void {
       return;
     }
     const redirectUri = `http://127.0.0.1:${address.port}/callback`;
-    const client = getGoogleClientCredentials();
-    if (!client) {
-      currentStatus = { state: 'error', message: 'Google OAuth 클라이언트(Client ID/Secret)가 없습니다.' };
-      closeServer(server);
-      return;
-    }
     const authUrl = buildAuthUrl(client.clientId, redirectUri, codeChallenge, expectedState);
     const shell = getElectronShell();
     if (shell) {
@@ -257,8 +258,8 @@ function sleep(ms: number): Promise<void> {
  *  뜬 브라우저에서 로그인/동의만 다시 하면 되고, 설정 화면에서 수동으로 "연결
  *  해제 → 재연결"을 할 필요가 없다. */
 export async function reconnectAndGetAccessToken(): Promise<string> {
-  store.clearAccount();
-  startConnectFlow();
+  await store.clearAccount();
+  await startConnectFlow();
 
   const POLL_INTERVAL_MS = 1000;
   const start = Date.now();
@@ -266,7 +267,7 @@ export async function reconnectAndGetAccessToken(): Promise<string> {
     await sleep(POLL_INTERVAL_MS);
     const status = currentStatus;
     if (status.state === 'connected') {
-      const token = store.getState().accessToken;
+      const token = (await store.getState()).accessToken;
       if (!token) throw new Error('Google 재연결 후 액세스 토큰을 확인하지 못했습니다.');
       return token;
     }
@@ -282,7 +283,7 @@ export async function reconnectAndGetAccessToken(): Promise<string> {
  *  (`invalid_grant`) 위 `reconnectAndGetAccessToken()`으로 자동 재로그인까지
  *  시도한다. */
 export async function getValidAccessToken(): Promise<string> {
-  const state = store.getState();
+  const state = await store.getState();
   if (!state.refreshToken) {
     throw new Error('Google 계정이 연결되어 있지 않습니다. 설정에서 먼저 연결해주세요.');
   }
@@ -291,7 +292,7 @@ export async function getValidAccessToken(): Promise<string> {
   if (state.accessToken && state.accessTokenExpiresAt && state.accessTokenExpiresAt - SKEW_MS > Date.now()) {
     return state.accessToken;
   }
-  const client = requireClient();
+  const client = await requireClient();
 
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
@@ -318,7 +319,7 @@ export async function getValidAccessToken(): Promise<string> {
     );
   }
 
-  store.setTokens({ accessToken: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 });
+  await store.setTokens({ accessToken: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 });
   return body.access_token;
 }
 
@@ -327,6 +328,6 @@ export async function getValidAccessToken(): Promise<string> {
  *  주로 사용자가 Google 계정 설정에서 이 앱 접근 권한을 방금 취소한 직후) 다음
  *  `getValidAccessToken()` 호출이 죽은 캐시를 다시 쓰지 않고 강제로 갱신을
  *  시도하게 만든다. */
-export function invalidateAccessToken(): void {
-  store.invalidateAccessToken();
+export async function invalidateAccessToken(): Promise<void> {
+  await store.invalidateAccessToken();
 }

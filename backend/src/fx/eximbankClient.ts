@@ -16,8 +16,8 @@ import { getCachedRate, setCachedRate } from './eximbankCache';
 const BASE_URL = 'https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON';
 
 // 인증키는 사용자가 설정에서 입력한다(fx/eximbankKey.ts) — 없으면 이 파일의 조회는 전부 즉시 null이다.
-export function isEximbankConfigured(): boolean {
-  return getEximbankAuthKey() !== null;
+export async function isEximbankConfigured(): Promise<boolean> {
+  return (await getEximbankAuthKey()) !== null;
 }
 
 interface EximbankRateItem {
@@ -140,7 +140,7 @@ async function fetchEximbankRateForDate(authKey: string, searchdate: string): Pr
  * 최악의 경우 총 대기가 30초 안쪽이다). 인증키가 설정 안 돼 있으면 즉시 null.
  */
 export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: string } | null> {
-  const authKey = getEximbankAuthKey();
+  const authKey = await getEximbankAuthKey();
   if (!authKey) return null;
 
   for (let daysAgo = 0; daysAgo <= 5; daysAgo++) {
@@ -208,7 +208,7 @@ const CURRENT_MONTH_TTL_MS = 4 * 60 * 60 * 1000;
 export async function fetchEximbankMonthlyAvgUsdKrwRate(
   month: string
 ): Promise<{ rate: number; sampleCount: number } | null> {
-  const authKey = getEximbankAuthKey();
+  const authKey = await getEximbankAuthKey();
   if (!authKey) return null; // 키 없음은 캐시하지 않는다 — 키를 넣는 즉시 다음 요청부터 받아진다
   const now = new Date();
   const isCurrentMonth = month === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

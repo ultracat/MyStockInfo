@@ -42,8 +42,8 @@ export function isKiwoomConfigured(): boolean {
   return hasCredential('kiwoom');
 }
 
-function requireCredentials() {
-  const creds = getCredentialFields('kiwoom');
+async function requireCredentials() {
+  const creds = await getCredentialFields('kiwoom');
   if (!creds) throw new Error('키움증권 API 키가 설정되지 않았습니다. 설정 화면에서 앱키/시크릿키를 입력해주세요.');
   return creds;
 }
@@ -71,16 +71,16 @@ export function parseKiwoomExpiry(value: unknown): number {
   return Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+09:00`);
 }
 
-function loadCachedToken(hash: string): StoredKiwoomToken | null {
+async function loadCachedToken(hash: string): Promise<StoredKiwoomToken | null> {
   const valid = (t: StoredKiwoomToken | null) => t && t.keyHash === hash && t.expiresAt > Date.now();
   if (valid(cachedToken)) return cachedToken;
-  const persisted = tokenStore().read();
+  const persisted = await tokenStore().read();
   if (valid(persisted)) return (cachedToken = persisted);
   return null;
 }
 
 async function issueToken(): Promise<string> {
-  const creds = requireCredentials();
+  const creds = await requireCredentials();
   const res = await kiwoomLimiter.schedule(() =>
     fetch(`${BASE_URL}/oauth2/token`, {
       method: 'POST',
@@ -101,13 +101,13 @@ async function issueToken(): Promise<string> {
   }
   // 만료 1분 전부터는 새로 받는다.
   cachedToken = { accessToken: data.token, expiresAt: parseKiwoomExpiry(data.expires_dt) - 60_000, keyHash: keyHash(creds.appKey) };
-  tokenStore().write(cachedToken);
+  await tokenStore().write(cachedToken);
   return cachedToken.accessToken;
 }
 
 async function getToken(force = false): Promise<string> {
   if (!force) {
-    const t = loadCachedToken(keyHash(requireCredentials().appKey));
+    const t = await loadCachedToken(keyHash((await requireCredentials()).appKey));
     if (t) return t.accessToken;
   }
   if (!inFlightToken) inFlightToken = issueToken().finally(() => (inFlightToken = null));

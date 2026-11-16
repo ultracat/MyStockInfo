@@ -79,11 +79,11 @@ globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
 process.on('exit', () => (globalThis.fetch = realFetch));
 
 let keySeq = 0;
-beforeEach(() => {
+beforeEach(async () => {
   resetDataDir();
   calls = [];
   reset();
-  setCredentialFields('kiwoom', { appKey: `kw-app-${++keySeq}`, appSecret: 'kw-secret' });
+  await setCredentialFields('kiwoom', { appKey: `kw-app-${++keySeq}`, appSecret: 'kw-secret' });
 });
 const apiCalls = (id: string) => calls.filter((c) => c.headers['api-id'] === id);
 
@@ -103,7 +103,7 @@ test('키움 숫자·코드: 0 채움 부호 문자열, 쉼표, 소수, 접두�
   assert.deepEqual(yearWindows('2024-05-01', '2026-02-03'), [['2024-05-01', '2024-12-31'], ['2025-01-01', '2025-12-31'], ['2026-01-01', '2026-02-03']]);
 });
 
-test('키움 국내 잔고(공식 예시 kt00018): 같은 종목 여러 줄을 합치고 평균가·수익률을 다시 구한다', () => {
+test('키움 국내 잔고(공식 예시 kt00018): 같은 종목 여러 줄을 합치고 평균가·수익률을 다시 구한다', async () => {
   const items = EX.kt00018.acnt_evlt_remn_indv_tot as Record<string, unknown>[];
   const p = mapKiwoomDomesticPositions(items);
   const sum = (k: string) => items.reduce((s, r) => s + kwNum(r[k]), 0);
@@ -133,7 +133,7 @@ test('키움 매매(공식 예시 kt00015 장내매도): 거래번호 id, 단가
   assert.equal(mapKiwoomTrades([{ trde_dt: '20260105', trde_no: '1', stk_cd: 'X', trde_qty_jwa_cnt: '1', crnc_cd: 'JPY' }], 'BUY').length, 0);
 });
 
-test('키움 실현손익(공식 예시 ka10073): tdy_sel_pl은 수수료·세금 차감 후(158200 − 97602.96 − 500 − 284)', () => {
+test('키움 실현손익(공식 예시 ka10073): tdy_sel_pl은 수수료·세금 차감 후(158200 − 97602.96 − 500 − 284)', async () => {
   const rows = mapKiwoomDomesticRealized(EX.ka10073.dt_stk_rlzt_pl);
   const r = rows[0];
   assert.equal(r.symbol, '005930');
@@ -188,7 +188,7 @@ test('키움 토큰: JSON 본문(grant_type·appkey·secretkey)으로 한 번 �
     assert.ok(c.headers['api-id'], 'api-id 헤더');
     assert.match(c.headers['content-type'], /^application\/json/);
   }
-  const stored = readSecretJson<{ accessToken: string; expiresAt: number }>('kiwoom-token.json');
+  const stored = await readSecretJson<{ accessToken: string; expiresAt: number }>('kiwoom-token.json');
   assert.equal(stored.accessToken, `kw-tok-${tokenSeq}`);
   assert.ok(!JSON.stringify(stored).includes('kw-app'));
 });

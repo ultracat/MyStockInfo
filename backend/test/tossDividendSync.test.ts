@@ -11,7 +11,7 @@ import { isDividendSyncOwned } from '../src/brokers/rowOwnership';
 import { importDividendsRecords } from '../src/routes/dividends';
 import { cacheStockName } from '../src/db/stockNames';
 
-beforeEach(() => resetDataDir());
+beforeEach(async () => resetDataDir());
 
 // 거래 한 건을 만든다 — 테스트에 필요한 필드만 덮어쓴다(값은 모두 가상).
 function tx(over: Partial<TossTransaction>): TossTransaction {
@@ -54,7 +54,7 @@ test('토스 분류: 종목 붙은 원화 입금은 국내 ETF 분배금, 달러
   assert.equal(candidates[1].memo, TAX_REFUND_MEMO);
 });
 
-test('토스 분류: 종목 없는 입금(은행 입금)·미결제·취소·다른 유형은 건너뛴다', () => {
+test('토스 분류: 종목 없는 입금(은행 입금)·미결제·취소·다른 유형은 건너뛴다', async () => {
   const r = classifyTossTransactions([
     tx({ transactionType: 'DEPOSIT', currency: 'KRW', symbol: null, netAmount: '1000000' }),
     tx({ settled: false }),
@@ -65,7 +65,7 @@ test('토스 분류: 종목 없는 입금(은행 입금)·미결제·취소·다
   assert.deepEqual(r.skipped, { unsettled: 1, cancellation: 1, other: 2 });
 });
 
-test('toHeldShareClass: API의 보통주 코드를 사용자가 보유·매매한 우선주 코드로 바꾼다', () => {
+test('toHeldShareClass: API의 보통주 코드를 사용자가 보유·매매한 우선주 코드로 바꾼다', async () => {
   assert.equal(toHeldShareClass('123450', new Set(['123455'])), '123455');
   // 보유·매매가 우선 — 배당 기록에 두 코드가 섞여 있어도 매매한 코드를 쓴다(실데이터 사례)
   assert.equal(toHeldShareClass('123450', new Set(['123455']), new Set(['123450', '123455'])), '123455');
@@ -103,7 +103,7 @@ test('KIS 분류: 세후 = 배정금액(세전) − 세금, 지급일은 현금�
   assert.equal(candidates[1].kind, 'dividend');
 });
 
-test('KIS 분류: 지급 예정(오늘 이후)·현금 배정 없는 권리는 넣지 않는다', () => {
+test('KIS 분류: 지급 예정(오늘 이후)·현금 배정 없는 권리는 넣지 않는다', async () => {
   const r = classifyKisRights(
     [right({ cash_dfrm_dt: '20261127' }), right({ last_alct_amt: '0' }), right({ cash_dfrm_dt: '' })],
     '2026-11-09'
@@ -136,8 +136,8 @@ test('replaceSyncedDividends: 그 계좌 기록만 API 내용으로 교체하고
   assert.deepEqual(again, { added: 0, removed: 0, unchanged: 2 });
 });
 
-test('KIS 동기화 소유는 원화 기록만 — 직접 적은 달러(미국 주식) 배당은 교체·가져오기 대상이 아니다', () => {
-  setCredentialFields('kis', { appKey: 'k', appSecret: 's', accountNumber: '11111111', accountProductCode: '01' });
+test('KIS 동기화 소유는 원화 기록만 — 직접 적은 달러(미국 주식) 배당은 교체·가져오기 대상이 아니다', async () => {
+  await setCredentialFields('kis', { appKey: 'k', appSecret: 's', accountNumber: '11111111', accountProductCode: '01' });
   assert.equal(isDividendSyncOwned({ broker: 'kis', currency: 'KRW' }), true);
   assert.equal(isDividendSyncOwned({ broker: 'kis', currency: 'USD' }), false);
 
@@ -155,7 +155,7 @@ test('KIS 동기화 소유는 원화 기록만 — 직접 적은 달러(미국 �
 });
 
 test('가져오기: API 동기화 증권사(키가 있는 토스)의 배당 행은 건너뛰고, 전체 교체에서도 남긴다', async () => {
-  setCredentialFields('toss', { clientId: 'test-id', clientSecret: 'test-secret' });
+  await setCredentialFields('toss', { clientId: 'test-id', clientSecret: 'test-secret' });
   cacheStockName({ symbol: 'MANUAL', name: '수동 종목', market: 'KR', currency: 'KRW', cachedAt: new Date().toISOString() });
   const synced = addDividend({ broker: 'toss', accountId: '1', symbol: 'SYNC', name: 's', currency: 'USD', amount: 1, paidDate: '2026-01-01' });
 

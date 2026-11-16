@@ -1,7 +1,7 @@
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
-import { JsonStore } from '../../jsonStore';
+import { SecretJsonStore } from '../../secretJsonStore';
 import type { HoldingPosition, TradeRecord } from '../types';
 
 // kbsecurities/kb-openapi(공식 레포, example/python/README.md) 확인 — B2C(개인용)
@@ -55,7 +55,7 @@ interface StoredKbToken {
 // 백엔드를 고칠 때마다 Electron을 재시작하므로, 메모리 캐시만 쓰면 재시작마다
 // 토큰을 새로 발급받게 된다. KB의 토큰 발급 빈도 제한은 공식 문서에 수치가 없어
 // (KIS의 EGW00133 1일 1회 같은 규정은 확인 못함) 일단 안전하게 영속화해둔다.
-const tokenStore = () => new JsonStore<StoredKbToken | null>('kb-token.json', getDataDir(), null);
+const tokenStore = () => new SecretJsonStore<StoredKbToken>('kb-token.json', getDataDir());
 let cachedToken: StoredKbToken | null = null;
 
 function loadCachedToken(): StoredKbToken | null {

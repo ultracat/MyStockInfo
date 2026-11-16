@@ -67,9 +67,9 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -114,7 +114,7 @@ jobs:
         shell: bash
         run: npm run ${{ matrix.script }} -- --publish never
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mystock-${{ matrix.name }}
           path: ${{ matrix.glob }}
@@ -130,15 +130,29 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
           merge-multiple: true
 
       - name: 받은 산출물
         run: ls -lh artifacts
+
+      # 설치 파일 SHA-256 — 코드 서명이 없는 지금, 사용자가 받은 파일이 이 릴리스의 것인지 확인할 수 있는
+      # 유일한 수단이다(README "설치"에 확인 방법). 릴리스에 같이 올라간다(아래 artifacts/*).
+      - name: 체크섬(SHA256SUMS.txt)
+        working-directory: artifacts
+        shell: bash
+        run: |
+          # GitHub은 올릴 때 파일명의 공백을 .으로 바꾼다("MyStock Setup 1.2.2.exe" → "MyStock.Setup.1.2.2.exe").
+          # 체크섬 파일의 이름이 사용자가 받는 이름과 같도록 먼저 바꿔 둔다.
+          shopt -s nullglob
+          for f in *\ *; do mv -- "$f" "${f// /.}"; done
+          sha256sum -- * > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+          cat SHA256SUMS.txt
 
       # 릴리스 노트는 CHANGELOG.md의 그 버전 절("## vX.Y.Z"부터 다음 "## v" 전까지). 없으면 자동 생성 노트로.
       # (자동 생성 노트는 PR 기준이라 main에 직접 push하는 이 저장소에선 Full Changelog 한 줄뿐이다.)

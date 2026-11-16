@@ -24,7 +24,10 @@ export const SAFE_FILENAME_RE = /^[\w.-]+\.(json|sqlite)$/;
 // - API 키·Google 연결(credentials.json, google-account.json): OS 키체인으로 잠겨 있어
 //   다른 PC에선 못 연다. 사용자가 백업 비밀번호를 주면 풀어서 그 비밀번호로 다시 잠근
 //   `secrets.enc.json` 하나로 넣는다(backupCrypto.ts). 비밀번호를 안 주면 넣지 않는다.
-const ACCESS_TOKEN_FILES = new Set(['kis-token.json', 'kb-token.json']);
+// 증권사가 늘 때마다 목록을 고치다 NH·키움 토큰이 백업에 평문으로 들어간 적이 있어(2026-11-16 보안 검토)
+// 이름 규칙(`<브로커>-token.json`)으로 고른다 — 새 브로커 토큰 파일도 이 이름이면 자동으로 빠진다.
+const ACCESS_TOKEN_FILE_RE = /^[a-z0-9]+-token\.json$/;
+const isAccessTokenFile = (name: string) => ACCESS_TOKEN_FILE_RE.test(name);
 const KEYCHAIN_FILES = new Set(['credentials.json', 'google-account.json']);
 const SECRETS_ENTRY = 'secrets.enc.json';
 
@@ -84,7 +87,7 @@ export async function createBackupZip(password?: string): Promise<{ buffer: Buff
 
   for (const name of fs.readdirSync(dataDir)) {
     if (!SAFE_FILENAME_RE.test(name)) continue; // 혹시 모를 임시 파일(.tmp 등) 제외
-    if (ACCESS_TOKEN_FILES.has(name) || KEYCHAIN_FILES.has(name)) continue;
+    if (isAccessTokenFile(name) || KEYCHAIN_FILES.has(name)) continue;
     zip.addLocalFile(path.join(dataDir, name));
   }
 
@@ -133,11 +136,11 @@ export async function restoreBackupZip(buf: Buffer, password?: string): Promise<
     // 접속 토큰은 예전 백업에 들어 있어도 쓰지 않는다(없으면 다시 받는다).
     // 키체인 파일은 예전 형식 백업(secrets.enc.json 없음)에서만 받는다 — 같은 PC면 열린다.
     const unsafe = !SAFE_FILENAME_RE.test(name);
-    if (unsafe || ACCESS_TOKEN_FILES.has(name) || (secretsEntry && KEYCHAIN_FILES.has(name))) {
+    if (unsafe || isAccessTokenFile(name) || (secretsEntry && KEYCHAIN_FILES.has(name))) {
       skipped.push(name);
       continue;
     }
-    fs.writeFileSync(path.join(dataDir, name), entry.getData());
+    fs.writeFileSync(path.join(dataDir, name), entry.getData(), { mode: 0o600 });
     restored.push(name);
   }
 
@@ -153,7 +156,9 @@ export async function restoreBackupZip(buf: Buffer, password?: string): Promise<
   }
   googleStore.replaceState(payload.google);
   // 지금 PC에 남은 접속 토큰은 복원 전 키로 받은 것일 수 있다 — 지워서 새 키로 다시 받게 한다.
-  for (const name of ACCESS_TOKEN_FILES) fs.rmSync(path.join(dataDir, name), { force: true });
+  for (const name of fs.readdirSync(dataDir)) {
+    if (isAccessTokenFile(name)) fs.rmSync(path.join(dataDir, name), { force: true });
+  }
 
   return { restored, skipped, secrets: 'restored' };
 }

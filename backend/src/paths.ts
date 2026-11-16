@@ -32,7 +32,17 @@ export function getDataDir(): string {
     dir = override || path.join(__dirname, '..', 'data');
   }
 
-  fs.mkdirSync(dir, { recursive: true });
+  // 보유 내역·거래·토큰 봉투가 들어 있는 폴더 — 같은 PC의 다른 사용자가 못 읽게 소유자 전용(0700)으로.
+  // Mac은 ~/Library가 이미 막혀 있지만 Linux는 ~/.config가 755인 배포판이 있다. 이미 있는 폴더도
+  // 맞춘다(예전 버전이 기본 권한으로 만든 것). Windows는 POSIX 권한이 없어 무시된다.
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (process.platform !== 'win32') {
+    try {
+      fs.chmodSync(dir, 0o700);
+    } catch {
+      // 남이 만든 폴더 등 — 권한을 못 바꿔도 앱은 계속 동작해야 한다.
+    }
+  }
   resolvedDir = dir;
   return dir;
 }

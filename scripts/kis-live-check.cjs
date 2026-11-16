@@ -18,8 +18,9 @@ runLiveCheck('한국투자증권 Open API 실서버 점검 (조회 TR만, 개인
 
   if (!kis.isKisConfigured()) return log('FAIL', '자격증명', '설정 → API 키 등록에서 한국투자증권 키를 먼저 저장하세요');
   log('PASS', '자격증명', '저장돼 있음');
-  const tokenFile = path.join(getDataDir(), 'kis-token.json');
-  const readToken = () => (fs.existsSync(tokenFile) ? JSON.parse(fs.readFileSync(tokenFile, 'utf8')) : null);
+  // 토큰 파일은 키체인 봉투라(SecretJsonStore) 직접 JSON.parse하지 않는다.
+  const { SecretJsonStore } = ctx.require('secretJsonStore.js');
+  const readToken = () => new SecretJsonStore('kis-token.json', getDataDir()).read();
   const before = readToken();
   if (!before || before.expiresAt <= Date.now()) log('INFO', '토큰', '유효한 저장 토큰이 없어 한 번 발급합니다(하루 1회 제한 중 1회 사용)');
 

@@ -2,6 +2,7 @@ import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
 import { JsonStore } from '../../jsonStore';
+import { SecretJsonStore } from '../../secretJsonStore';
 import { DEFAULT_TTL_MS, PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
 
@@ -132,7 +133,7 @@ interface StoredKisToken {
 // Electron on every backend change (see CLAUDE.md), which previously reset
 // an in-memory-only cache and immediately re-hit the 1/min limit on the next
 // holdings load.
-const tokenStore = () => new JsonStore<StoredKisToken | null>('kis-token.json', getDataDir(), null);
+const tokenStore = () => new SecretJsonStore<StoredKisToken>('kis-token.json', getDataDir());
 let cachedToken: StoredKisToken | null = null;
 
 function loadCachedToken(): StoredKisToken | null {

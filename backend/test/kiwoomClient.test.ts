@@ -1,4 +1,4 @@
-import { DATA_DIR, readJson, resetDataDir } from './setup';
+import { DATA_DIR, readJson, readSecretJson, resetDataDir } from './setup';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -188,7 +188,7 @@ test('키움 토큰: JSON 본문(grant_type·appkey·secretkey)으로 한 번 �
     assert.ok(c.headers['api-id'], 'api-id 헤더');
     assert.match(c.headers['content-type'], /^application\/json/);
   }
-  const stored = readJson<{ accessToken: string; expiresAt: number }>('kiwoom-token.json');
+  const stored = readSecretJson<{ accessToken: string; expiresAt: number }>('kiwoom-token.json');
   assert.equal(stored.accessToken, `kw-tok-${tokenSeq}`);
   assert.ok(!JSON.stringify(stored).includes('kw-app'));
 });

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
-import { JsonStore } from '../../jsonStore';
+import { SecretJsonStore } from '../../secretJsonStore';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
 
@@ -57,7 +57,7 @@ interface StoredKiwoomToken {
   keyHash: string;
 }
 
-const tokenStore = () => new JsonStore<StoredKiwoomToken | null>('kiwoom-token.json', getDataDir(), null);
+const tokenStore = () => new SecretJsonStore<StoredKiwoomToken>('kiwoom-token.json', getDataDir());
 let cachedToken: StoredKiwoomToken | null = null;
 let inFlightToken: Promise<string> | null = null;
 

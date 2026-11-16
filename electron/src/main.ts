@@ -1,7 +1,8 @@
-import { app, BrowserWindow, dialog, Menu, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeImage, session, shell } from 'electron';
 import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { startServer } from '@mystock/backend';
 
 // 백엔드는 4317을 먼저 시도하고, 다른 프로그램이 쓰고 있으면 그 위의 빈 포트로 옮긴다
@@ -55,6 +56,18 @@ const APP_ICON_PATH = path.join(__dirname, '../assets/icon.png');
 // local data keeps working without migration.
 app.setName('@mystock/electron');
 
+// 패키징된 앱은 원격 디버깅 옵션을 붙여 실행하면 바로 끝낸다. Chromium의
+// `--remote-debugging-port`/`--remote-debugging-pipe`는 fuses(scripts/afterPack.cjs)로 막을 수 없는데,
+// 이걸 붙여 띄우면 같은 PC의 다른 프로그램이 화면(백엔드 토큰을 든 렌더러)을 그대로 조종할 수 있다 —
+// 예컨대 자기 비밀번호로 "데이터 백업"을 눌러 키체인 확인 없이 모든 API 키를 풀어 가져간다(2026-11-16 보안 검토).
+// 창·백엔드를 만들기 전, 모듈을 읽자마자 확인한다. dev 실행(app.isPackaged=false)과 매뉴얼 스크린샷용
+// 인스턴스(개발용 Electron으로 띄움)는 그대로 쓸 수 있다.
+const REMOTE_DEBUG_SWITCHES = ['remote-debugging-port', 'remote-debugging-pipe', 'remote-debugging-address'];
+if (app.isPackaged && REMOTE_DEBUG_SWITCHES.some((s) => app.commandLine.hasSwitch(s))) {
+  console.error('[electron] 원격 디버깅 옵션으로 실행되어 종료합니다.');
+  app.exit(1);
+}
+
 // Mac은 기본 메뉴가 창 안이 아니라 OS 전역 메뉴바로 가서 눈에 안 띄지만(Cmd+Q 등
 // 표준 단축키도 거기 얹혀 있어서 그대로 둔다), Windows/Linux는 기본 메뉴(File/Edit/
 // View/Window)가 창 안에 그대로 그려져서 커스텀 메뉴 항목이 하나도 없는 이 앱에선
@@ -80,7 +93,8 @@ if (process.platform !== 'darwin') {
         submenu: [
           { role: 'reload' },
           { role: 'forceReload' },
-          { role: 'toggleDevTools' },
+          // 개발자 도구는 dev에서만 — 패키징본은 아래 webPreferences.devTools도 꺼 둔다.
+          ...(app.isPackaged ? [] : [{ role: 'toggleDevTools' } as const]),
           { type: 'separator' },
           { role: 'togglefullscreen' },
           // 화면 확대/축소(⌘+ · ⌘- · ⌘0)는 렌더러가 직접 처리한다 —
@@ -119,6 +133,9 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // 패키징본은 개발자 도구를 열 수 없게 한다(메뉴·단축키·openDevTools 모두) — 열리면 토큰을 든 화면에서
+      // 아무 코드나 실행할 수 있다. 원격 디버깅 옵션은 위 REMOTE_DEBUG_SWITCHES가 막는다.
+      devTools: !app.isPackaged,
     },
   });
 
@@ -157,6 +174,25 @@ function createWindow() {
     }
     return { action: 'deny' };
   });
+
+  // 창이 앱 화면 밖으로 이동하지 못하게 한다 — 이 창은 백엔드 토큰(URL 해시)을 들고 있어서,
+  // 링크·리다이렉트로 다른 페이지가 여기 뜨면 그 페이지가 로컬 백엔드를 호출할 수 있다.
+  // 외부 링크는 위 setWindowOpenHandler처럼 시스템 브라우저로 넘긴다. 해시만 바뀌는 이동과
+  // 새로고침은 같은 문서라 막지 않는다. CSP(frontend/vite.config.ts)와 같은 목적의 두 번째 선.
+  const appUrlBase = app.isPackaged
+    ? pathToFileURL(path.join(__dirname, '../../frontend/dist/index.html')).href
+    : `${FRONTEND_DEV_ORIGIN}/`;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.split('#')[0] === appUrlBase) return;
+    event.preventDefault();
+    if (url.startsWith('http://') || url.startsWith('https://')) shell.openExternal(url);
+  });
+}
+
+// 카메라·마이크·위치·알림 같은 브라우저 권한은 이 앱이 하나도 쓰지 않는다 — 전부 거절한다.
+function denyAllPermissions() {
+  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
 }
 
 // 앱은 한 번에 하나만 뜨게 한다. 두 번째 인스턴스는 백엔드 포트(4317)를 못 잡아
@@ -183,6 +219,8 @@ app.whenReady().then(async () => {
   // 락을 못 잡은 두 번째 인스턴스는 app.quit()이 끝나기 전에 ready가 올 수 있다 —
   // 백엔드·창을 띄우지 않는다.
   if (!gotSingleInstanceLock) return;
+
+  denyAllPermissions();
 
   // 패키징된 mac 앱은 번들의 .icns를 쓰므로 건드리지 않는다 — dev 실행만
   // Electron 기본 아이콘으로 뜨기 때문에 여기서 Dock 아이콘을 채워준다.

@@ -32,12 +32,21 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   허용된다. 이미 평문으로 저장된 항목은 그대로 읽히고(사용자가 해제할 수 있게),
   나중에 키링이 생기면 다음 읽기 때 암호화해 다시 쓴다(`shouldReseal`). 토큰이 없는
   Google 상태(연결 해제 후)는 비밀이 아니라 평문으로 쓸 수 있다 — 그래야 키링 없이도
-  "연결 해제"가 동작한다. KIS/KB 토큰 파일(`kis-token.json`/`kb-token.json`)은 여전히
-  평문이다(이 규칙 범위 밖) — 대신 백업 zip에는 넣지 않는다("백업/복원" 절).
+  "연결 해제"가 동작한다.
+- `src/secretJsonStore.ts` — `SecretJsonStore<T>`: **증권사 접속 토큰**(`kis/kb/nh/kiwoom-token.json`)을 위
+  봉투(`sealJson`)로 암호화해 쓰는 저장소(2026-11-16 — 그 전엔 평문이라 같은 사용자 권한의 아무 프로그램이 파일만
+  읽어도 하루짜리 계좌 토큰을 가져갈 수 있었다). 자격증명과 달리 토큰은 **캐시**라서: 풀 수 없으면(키체인 거부·손상)
+  던지지 않고 `null`(→ 새로 발급), 키링 없는 Linux면 평문으로 쓰지 않고 **파일을 지운다**(그 실행 동안 메모리에만 —
+  KIS는 재실행 때 한 번 더 발급), 예전 평문 파일은 읽으면서 봉투로 다시 쓴다. ⚠ 토큰 파일을 직접 `JSON.parse`하지
+  말 것 — 테스트는 `test/setup.ts`의 `readSecretJson`, 실서버 점검 스크립트(`check:kis`/`check:nh`)도 이 클래스로 읽는다.
+  새 브로커 토큰도 **`<브로커>-token.json` 이름 + 이 클래스**로 — 백업이 이름 규칙으로 뺀다("백업/복원" 절).
 - `src/paths.ts` — `getDataDir()`: Electron 안에서 `app.getPath('userData')/data`,
   단독 실행 시 `backend/data/`(gitignore). 단독 실행에서 `MYSTOCK_DATA_DIR` 환경변수가
   있으면 그 폴더를 쓴다 — 테스트가 실제 dev 데이터를 건드리지 않게 하는 용도(Electron
   안에서는 무시된다).
+- **데이터 폴더는 0700, `JsonStore`가 쓰는 파일은 0600**(2026-11-16) — `paths.ts`가 폴더를 만들 때와 이미 있을 때
+  모두 0700으로 맞추고(Linux는 `~/.config`가 755인 배포판이 있다), `JsonStore.write`의 임시 파일을 0600으로 만들어
+  rename 뒤에도 그 권한이 남는다. Windows는 POSIX 권한이 없어 무시된다.
 - `src/jsonStore.ts` — `JsonStore<T>`: atomic write(tmp+rename) JSON 파일 저장 헬퍼.
   자격증명/배당/보유종목/매매내역/설정이 전부 이걸 쓴다. **파싱 결과를 파일 경로별로
   메모리에 캐시한다**(mtime/size가 같으면 재파싱 안 함) — 이 백엔드는 Electron 메인
@@ -876,7 +885,8 @@ CSV export/import를 향후 대체할 목적으로 만들었다 — Drive 루트
   이 유형은 secret이 코드에 노출돼도 공식적으로 허용됨) 가능한 방식 — 나중에
   자체 서버에서 로그인시키는 방식으로 바꿀 계획이 있어 그 전까지의 과도기 설계다.
 - **`oauth.ts`** — 루프백 리디렉션 + PKCE(`crypto`로 code_verifier/code_challenge
-  생성, SDK 불필요). `startConnectFlow()`가 임시 로컬 서버를 임의 포트(`listen(0)`)에
+  생성, SDK 불필요) + **`state`**(로그인 시도마다 무작위 — 콜백의 `state`가 다르면 400으로 무시하고 서버는 닫지 않은 채
+  진짜 콜백을 기다린다. 다른 페이지가 루프백 콜백에 남의 code를 밀어 넣는 로그인 CSRF 대비, 2026-11-16). `startConnectFlow()`가 임시 로컬 서버를 임의 포트(`listen(0)`)에
   띄우고 `shell.openExternal`로 시스템 브라우저를 연다(Electron 밖 dev 실행이면
   콘솔에 URL만 출력). 진행 상태(`idle`/`waiting`/`connected`/`error`)는 모듈
   전역 변수로 관리 — 프론트가 `GET /status`를 폴링해서 확인한다(별도 push
@@ -986,8 +996,10 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
 수단이 따로 필요해서 추가했다.
 
 - **비밀 파일 넷은 zip에 원본 그대로 넣지 않는다**(2026-10-30, EGM 리뷰 S2):
-  - `kis-token.json`/`kb-token.json`(접속 토큰, 평문): **항상 뺀다.** 하루 안팎이면
-    만료되고 없으면 앱이 다시 받는다. 복원할 때도 예전 백업에 들어 있으면 건너뛴다.
+  - 접속 토큰(`<브로커>-token.json` — KIS·KB·NH·키움): **항상 뺀다.** 하루 안팎이면
+    만료되고 없으면 앱이 다시 받는다. 복원할 때도 예전 백업에 들어 있으면 건너뛰고, 비밀번호 복원 뒤엔 남은 토큰을 지운다.
+    ⚠ 예전엔 파일 이름 목록(KIS·KB)으로 골라서 **NH·키움 토큰이 평문으로 백업에 들어갔다** — 지금은 이름 규칙
+    `/^[a-z0-9]+-token\.json$/`(`isAccessTokenFile`)으로 고른다(2026-11-16). 토큰 자체도 이제 `SecretJsonStore`로 암호화돼 있다.
   - `credentials.json`/`google-account.json`(OS 키체인으로 암호화): 그 열쇠는 PC 밖으로
     못 나가서 그대로 넣으면 다른 PC에선 못 연다. **사용자가 백업 비밀번호를 주면** 풀어서
     그 비밀번호로 다시 잠근 `secrets.enc.json` 하나로 넣는다(`backupCrypto.ts` —

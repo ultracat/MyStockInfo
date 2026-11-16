@@ -1,4 +1,6 @@
-import type { StoredTrade } from '../types';
+import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
+import { krw, usdFmt } from '../format';
+import type { BrokerId, DividendRecord, MonthlySummaryRow, StoredTrade, UpcomingDividend } from '../types';
 
 // 배당금 화면의 투자금 계산(순수 함수) — Dividends.tsx에서 옮겼다(2026-11-17, 테스트: frontend/test/dividends.test.ts).
 
@@ -65,4 +67,211 @@ export function investedAsOf(costs: Map<string, BrokerSymbolCost>, trades: Store
     else krw += amount;
   }
   return { krw, usd };
+}
+
+// ---------------------------------------------------------------- 배당금 화면 요약(2026-11-17 Dividends.tsx에서 뺐다)
+
+// 그래프의 예상 배당을 배당 기록(세후)과 같은 기준으로 맞추는 원천징수율 가정 — 국내 배당소득세 15.4%, 미국 현지 15%.
+export const KR_WITHHOLDING = 0.154;
+export const US_WITHHOLDING = 0.15;
+
+export type YearFilter = 'ALL' | number;
+export type BrokerFilter = 'ALL' | BrokerId;
+
+/** 월별 배당 합계(통화별 원본 금액) — 막대 그래프 입력. */
+export function monthlySummaryRows(records: DividendRecord[]): MonthlySummaryRow[] {
+  const byMonth = new Map<string, { totalKrw: number; totalUsd: number; count: number }>();
+  for (const r of records) {
+    const month = r.paidDate.slice(0, 7);
+    const existing = byMonth.get(month) ?? { totalKrw: 0, totalUsd: 0, count: 0 };
+    if (r.currency === 'USD') existing.totalUsd += r.amount;
+    else existing.totalKrw += r.amount;
+    existing.count += 1;
+    byMonth.set(month, existing);
+  }
+  return Array.from(byMonth.entries())
+    .map(([month, v]) => ({ month, ...v }))
+    .sort((a, b) => (a.month < b.month ? -1 : 1));
+}
+
+/**
+ * 그래프의 흐린 "예상" 막대 — 아직 지급 전인 다가오는 배당(확정·예상·추정)을 지급월(없으면 기준월)로 묶는다.
+ * 배당 기록은 **세후**라 같은 기준으로 맞춘다: 확정은 세전 − 세금, 나머지는 원천징수를 가정해 국내 15.4%·미국 15%를 뺀다
+ * (ETF 분배금의 과세 대상분 차이 등은 무시한 근사). 그래프와 같은 증권사·연도 필터를 탄다.
+ */
+export function upcomingMonthlyRows(items: UpcomingDividend[], broker: BrokerFilter, year: YearFilter): MonthlySummaryRow[] {
+  const byMonth = new Map<string, MonthlySummaryRow>();
+  for (const i of items) {
+    if (broker !== 'ALL' && i.broker !== broker) continue;
+    const month = (i.payDate ?? i.recordDate ?? '').slice(0, 7);
+    if (!month || (year !== 'ALL' && !month.startsWith(String(year)))) continue;
+    const net = i.tax !== null ? i.grossAmount - i.tax : i.grossAmount * (1 - (i.currency === 'USD' ? US_WITHHOLDING : KR_WITHHOLDING));
+    const row = byMonth.get(month) ?? { month, totalKrw: 0, totalUsd: 0, count: 0 };
+    if (i.currency === 'USD') row.totalUsd += net;
+    else row.totalKrw += Math.round(net);
+    row.count += 1;
+    byMonth.set(month, row);
+  }
+  return [...byMonth.values()];
+}
+
+/** 종목별 오늘 보유수량 — 특정 증권사면 그 증권사만, 전체면 전 증권사 합(배당 팝업의 "총 주식갯수"). */
+export function quantityBySymbol(avgCostByBroker: Partial<Record<BrokerId, Map<string, BrokerSymbolCost>>>, broker: BrokerFilter) {
+  const m = new Map<string, number>();
+  const brokerIds = broker === 'ALL' ? (Object.keys(avgCostByBroker) as BrokerId[]) : [broker];
+  for (const brokerId of brokerIds) {
+    const costs = avgCostByBroker[brokerId];
+    if (!costs) continue;
+    for (const [symbol, v] of costs) m.set(symbol, (m.get(symbol) ?? 0) + v.quantity);
+  }
+  return m;
+}
+
+export interface BrokerDividendSums {
+  /** 통화별 원본 합계(원화/달러 행). */
+  krw: number;
+  usd: number;
+  /** 기록마다 지급월 평균 환율로 먼저 환산해 더한 원화 합계(합계(환산) 행·총합계) — 브로커 합계를 낸 뒤 환율 하나로 곱하면
+   *  달마다 다른 환율을 반영할 수 없어서. 환율이 없는 달러 배당은 unconvertedUsd로. */
+  krwTotal: number;
+  unconvertedUsd: number;
+}
+
+export function brokerDividendSums(records: DividendRecord[], rateFor: (month: string) => number | null) {
+  const byBroker = new Map<BrokerId, BrokerDividendSums>();
+  for (const r of records) {
+    const e = byBroker.get(r.broker) ?? { krw: 0, usd: 0, krwTotal: 0, unconvertedUsd: 0 };
+    if (r.currency === 'USD') {
+      e.usd += r.amount;
+      const rate = rateFor(r.paidDate.slice(0, 7));
+      if (rate) e.krwTotal += r.amount * rate;
+      else e.unconvertedUsd += r.amount;
+    } else {
+      e.krw += r.amount;
+      e.krwTotal += r.amount;
+    }
+    byBroker.set(r.broker, e);
+  }
+  return byBroker;
+}
+
+export interface BrokerLine {
+  broker: BrokerId;
+  /** 맨 왼쪽 한 칸 — 묶음 첫 줄은 증권사명, 나머지는 들여쓴 구분 라벨. 별도 "구분" 열은 두지 않는다(사용자 피드백). */
+  label: string;
+  muted: boolean;
+  invested: string;
+  dividend: string;
+  yieldText: string;
+}
+
+const pct = (y: number | null) => (y !== null ? `${(y * 100).toFixed(2)}%` : '-');
+
+/**
+ * "증권사별 배당금 총계" 표의 줄. 달러 투자금/배당이 있는 증권사는 원화/달러/합계(환산) 3줄 — 통화별 실제 수익률과 환산
+ * 합계를 각각 보여주려고. 투자금(매입원가)은 지금 값이라 오늘 환율(fxRate)로, 배당은 지급월 평균 환율로 환산해 둔 krwTotal을 쓴다.
+ * `investedPlaceholder`는 투자금이 없을 때(불러오는 중/조회 실패/-) 칸 글자.
+ */
+export function brokerLines(
+  sums: Map<BrokerId, BrokerDividendSums>,
+  invested: Partial<Record<BrokerId, BrokerInvested>>,
+  fxRate: number | null,
+  investedPlaceholder: (broker: BrokerId) => string
+): BrokerLine[] {
+  // 배당 기록도 없고 투자금도 0인 브로커는 뺀다(CSV 전용 브로커는 보유종목이 없어도 0/0 항목이 있다).
+  const ids = new Set<BrokerId>([
+    ...sums.keys(),
+    ...(Object.entries(invested) as [BrokerId, BrokerInvested][]).filter(([, inv]) => inv.krw > 0 || inv.usd > 0).map(([id]) => id),
+  ]);
+  const lines: BrokerLine[] = [];
+  for (const brokerId of BROKER_ORDER.filter((id) => ids.has(id))) {
+    const dividend = sums.get(brokerId) ?? { krw: 0, usd: 0, krwTotal: 0, unconvertedUsd: 0 };
+    const inv = invested[brokerId] ?? null;
+    const investedKrw = inv?.krw ?? null;
+    const investedUsd = inv?.usd ?? null;
+    const placeholder = investedPlaceholder(brokerId);
+    const hasUsd = (investedUsd !== null && investedUsd > 0) || dividend.usd > 0;
+    const krwLine: BrokerLine = {
+      broker: brokerId,
+      label: BROKER_LABELS[brokerId],
+      muted: false,
+      invested: investedKrw !== null ? `${krw.format(investedKrw)}원` : placeholder,
+      dividend: `${krw.format(dividend.krw)}원`,
+      yieldText: pct(investedKrw && investedKrw > 0 ? dividend.krw / investedKrw : null),
+    };
+    lines.push(krwLine);
+    if (!hasUsd) continue;
+
+    const usdYield = investedUsd && investedUsd > 0 ? dividend.usd / investedUsd : null;
+    const investedTotalKrw = (investedKrw ?? 0) + (fxRate ? (investedUsd ?? 0) * fxRate : 0);
+    const dividendFxMissing = dividend.unconvertedUsd > 0;
+    const totalYield = fxRate && !dividendFxMissing && investedTotalKrw > 0 ? dividend.krwTotal / investedTotalKrw : null;
+    lines.push({
+      broker: brokerId,
+      label: '　달러',
+      muted: true,
+      invested: investedUsd !== null ? usdFmt.format(investedUsd) : placeholder,
+      dividend: usdFmt.format(dividend.usd),
+      yieldText: pct(usdYield),
+    });
+    lines.push({
+      broker: brokerId,
+      label: '　합계(환산)',
+      muted: true,
+      invested: fxRate ? `${krw.format(Math.round(investedTotalKrw))}원` : '환율 미적용',
+      dividend: !dividendFxMissing ? `${krw.format(Math.round(dividend.krwTotal))}원` : '환율 미적용',
+      yieldText: pct(totalYield),
+    });
+  }
+  return lines;
+}
+
+/**
+ * "총합계" 타일 — 환산된 단일 숫자. 브로커 하나라도 투자금 조회가 안 됐으면(로딩/에러) 부분합을 총합처럼 보여주지 않는다.
+ * 투자금은 오늘 환율, 배당은 지급월 환율로 이미 환산한 값 — "환율 미적용" 조건이 서로 달라 따로 판단한다.
+ */
+export function grandTotal(
+  sums: Map<BrokerId, BrokerDividendSums>,
+  invested: Partial<Record<BrokerId, BrokerInvested>>,
+  fxRate: number | null,
+  investedLoading: boolean
+) {
+  const ids = new Set<BrokerId>([...sums.keys(), ...(Object.keys(invested) as BrokerId[])]);
+  let dividendKrwTotal = 0;
+  let dividendUnconvertedUsd = 0;
+  let investedKrw = 0;
+  let investedUsd = 0;
+  let missingInvested = false;
+  for (const id of ids) {
+    const div = sums.get(id);
+    if (div) {
+      dividendKrwTotal += div.krwTotal;
+      dividendUnconvertedUsd += div.unconvertedUsd;
+    }
+    const inv = invested[id];
+    if (inv) {
+      investedKrw += inv.krw;
+      investedUsd += inv.usd;
+    } else {
+      missingInvested = true;
+    }
+  }
+  const investedTotal = investedKrw + (fxRate ? investedUsd * fxRate : 0);
+  const investedFxMissing = !fxRate && investedUsd > 0;
+  const dividendFxMissing = dividendUnconvertedUsd > 0;
+  return {
+    hasAny: ids.size > 0,
+    dividendText: dividendFxMissing ? '환율 미적용' : `${krw.format(Math.round(dividendKrwTotal))}원`,
+    investedText: investedLoading
+      ? '불러오는 중...'
+      : missingInvested
+        ? '일부 조회 실패'
+        : investedFxMissing
+          ? '환율 미적용'
+          : `${krw.format(Math.round(investedTotal))}원`,
+    yieldText:
+      !missingInvested && !investedFxMissing && !dividendFxMissing && investedTotal > 0
+        ? `${((dividendKrwTotal / investedTotal) * 100).toFixed(2)}%`
+        : '-',
+  };
 }

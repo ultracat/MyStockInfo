@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { useResumeRefresh } from '../pageActivity';
-import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerAccount, BrokerId, CredentialFieldSpec, CredentialStatus, RestoreBackupResult, SecureStorageStatus } from '../types';
+import type { AccountTaxType, AccountTaxTypeEntry, BrokerAccount, BrokerId, CredentialFieldSpec, CredentialStatus, RestoreBackupResult, SecureStorageStatus } from '../types';
 import { API_BROKER_IDS, BROKER_LABELS, BROKER_ORDER, CSV_ONLY_BROKER_IDS } from '../brokers';
 import { accountLabelKey, TAX_TYPE_LABELS, TAX_TYPE_OPTIONS } from '../accountLabels';
 import { downloadBlob } from '../csv';

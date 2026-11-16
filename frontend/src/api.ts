@@ -10,7 +10,6 @@ import type {
   CredentialFieldSpec,
   CredentialStatus,
   DividendRecord,
-  ExchangeRate,
   ImportResult,
   RestoreBackupResult,
   SecureStorageStatus,
@@ -107,10 +106,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ usdKrwRate }),
     }),
-  getExchangeRate: (broker: BrokerId, base: string, quote: string, opts?: { forceRefresh?: boolean }) =>
-    request<ExchangeRate>(
-      `/market-info/${broker}/exchange-rate?base=${base}&quote=${quote}${opts?.forceRefresh ? '&refresh=true' : ''}`
-    ),
   // 브로커 무관 USD/KRW 환율 — 백엔드가 토스→한국수출입은행 순으로 시도한다
   // (backend/CLAUDE.md의 "환율 조회" 절 참고). 실패해도 예외를 안 던지고
   // `{rate: null}`을 응답하므로 호출부는 .catch() 없이 `live?.rate`만 확인하면 된다.

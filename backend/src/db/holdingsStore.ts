@@ -163,14 +163,3 @@ export function replaceAllHoldings(rows: UpsertHoldingInput[], preserve: (h: Sto
   store().update((current) => [...current.filter(preserve), ...rows.map((row) => toStoredHolding(row, now))]);
 }
 
-export function deleteHolding(broker: BrokerId, accountId: string, symbol: string): boolean {
-  let removed = false;
-  store().update((current) => {
-    const next = current.filter(
-      (h) => !(h.broker === broker && h.accountId === accountId && h.symbol === symbol)
-    );
-    removed = next.length !== current.length;
-    return next;
-  });
-  return removed;
-}

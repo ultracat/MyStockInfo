@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import {
-  deleteHolding,
   listHoldings,
   replaceAllHoldings,
   replaceHoldingsFromImport,
@@ -217,11 +216,4 @@ holdingsStoreRouter.post('/import', async (req, res) => {
     return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
   }
   res.json(await importHoldingsRecords(records));
-});
-
-holdingsStoreRouter.delete('/:broker/:accountId/:symbol', (req, res) => {
-  const { broker, accountId, symbol } = req.params;
-  const removed = deleteHolding(broker as BrokerId, accountId, symbol);
-  if (!removed) return res.status(404).json({ error: '해당 보유 종목을 찾을 수 없습니다.' });
-  res.status(204).end();
 });

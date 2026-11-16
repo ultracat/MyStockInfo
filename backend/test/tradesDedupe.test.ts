@@ -3,7 +3,7 @@ import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JsonStore } from '../src/jsonStore';
 import { getDataDir } from '../src/paths';
-import { listTrades, removeImportedDuplicates, upsertFromImport, upsertTrades } from '../src/db/tradesStore';
+import { listTrades, upsertFromImport, upsertTrades } from '../src/db/tradesStore';
 import type { StoredTrade } from '../src/db/tradesStore';
 
 const UUID_A = '11111111-1111-4111-8111-111111111111';
@@ -34,37 +34,6 @@ function writeTrades(trades: StoredTrade[]): void {
 }
 
 beforeEach(resetDataDir);
-
-test('removeImportedDuplicates: 같은 체결의 가져오기 UUID 행은 브로커 id 행이 있으면 지운다', () => {
-  writeTrades([trade('ORDER-1'), trade(UUID_A), trade(UUID_B)]);
-
-  const result = removeImportedDuplicates();
-
-  assert.deepEqual(result, { removed: 2, ambiguousGroups: 0 });
-  assert.deepEqual(listTrades().map((t) => t.id), ['ORDER-1']);
-});
-
-test('removeImportedDuplicates: 브로커 id 행이 없는 묶음은 진짜 반복 체결일 수 있어 남긴다', () => {
-  writeTrades([trade(UUID_A, { broker: 'samsung', accountId: 'S1' }), trade(UUID_B, { broker: 'samsung', accountId: 'S1' })]);
-
-  const result = removeImportedDuplicates();
-
-  assert.deepEqual(result, { removed: 0, ambiguousGroups: 1 });
-  assert.equal(listTrades().length, 2);
-});
-
-test('removeImportedDuplicates: 수수료·세금·종목명만 다른 행도 같은 체결로 본다', () => {
-  writeTrades([trade('ORDER-1', { commission: 15, name: null }), trade(UUID_A, { tax: 3, name: '삼성' })]);
-
-  assert.equal(removeImportedDuplicates().removed, 1);
-});
-
-test('removeImportedDuplicates: 수량·가격·시각이 다르면 다른 체결이다', () => {
-  writeTrades([trade('ORDER-1'), trade(UUID_A, { quantity: 11 }), trade(UUID_B, { executedAt: '2026-10-20T10:00:00+09:00' })]);
-
-  assert.equal(removeImportedDuplicates().removed, 0);
-  assert.equal(listTrades().length, 3);
-});
 
 test('upsertFromImport: id 없는 행은 내용이 같은 기존 행의 id를 이어받아 중복을 만들지 않는다', () => {
   writeTrades([trade('ORDER-1')]);

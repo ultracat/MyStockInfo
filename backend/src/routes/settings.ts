@@ -6,6 +6,8 @@ import { getSettings, setUsdKrwRate } from '../db/settings';
 import { CREDENTIAL_FIELDS } from '../brokers/credentialFields';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import type { BrokerId } from '../brokers/types';
+import { clearEximbankAuthKey, hasEximbankAuthKey, setEximbankAuthKey } from '../fx/eximbankKey';
+import { checkEximbankAuthKey } from '../fx/eximbankClient';
 
 function isBrokerId(value: string): value is BrokerId {
   return (BROKER_IDS as string[]).includes(value);
@@ -29,6 +31,45 @@ settingsRouter.get('/secure-storage', (_req, res) => {
     insecureBrokers: listInsecureBrokers(),
     insecureGoogle: hasInsecureTokens(),
   });
+});
+
+// ---- 한국수출입은행 환율 API 인증키(사용자 입력, fx/eximbankKey.ts) — 값은 절대 돌려주지 않는다(있는지만).
+settingsRouter.get('/eximbank-key', (_req, res) => {
+  res.json({ configured: hasEximbankAuthKey() });
+});
+
+settingsRouter.post('/eximbank-key', async (req, res) => {
+  const authKey = typeof req.body?.authKey === 'string' ? req.body.authKey.trim() : '';
+  // 발급 키는 영문·숫자 32자 안팎 — 붙여 넣다 섞인 공백·따옴표 같은 것만 거른다.
+  if (!/^[A-Za-z0-9]{16,64}$/.test(authKey)) {
+    return res.status(400).json({ error: '인증키 형식이 올바르지 않습니다. 한국수출입은행에서 발급받은 인증키(영문·숫자)를 그대로 붙여 넣어 주세요.' });
+  }
+  const check = await checkEximbankAuthKey(authKey);
+  if (check === 'invalid') {
+    return res.status(400).json({ error: '한국수출입은행이 이 인증키를 거부했습니다. 키를 다시 확인해 주세요(발급 직후엔 사용 가능해지기까지 시간이 걸릴 수 있습니다).' });
+  }
+  try {
+    setEximbankAuthKey(authKey);
+  } catch (err) {
+    if (err instanceof SecureStorageUnavailableError) return res.status(409).json({ error: err.message });
+    throw err;
+  }
+  // 'limit'(오늘 한도 마감)·'unreachable'(확인 실패)은 키 자체가 틀렸다는 뜻이 아니라 저장은 한다.
+  res.json({
+    configured: true,
+    verified: check === 'ok',
+    warning:
+      check === 'limit'
+        ? '오늘 호출 한도가 다 찼다고 응답했습니다. 키는 저장했고, 내일부터 조회됩니다.'
+        : check === 'unreachable'
+          ? '지금 한국수출입은행에 연결하지 못해 키를 확인하지 못했습니다. 키는 저장했습니다.'
+          : null,
+  });
+});
+
+settingsRouter.delete('/eximbank-key', (_req, res) => {
+  clearEximbankAuthKey();
+  res.json({ configured: false });
 });
 
 settingsRouter.get('/credential-fields', (_req, res) => {

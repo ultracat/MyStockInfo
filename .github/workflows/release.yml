@@ -76,17 +76,16 @@ jobs:
 
       - run: npm ci
 
-      # 이 두 파일은 앱 빌드에 값을 박아 넣는 자격증명이라 저장소에 커밋되지 않는다
-      # (.gitignore, backend/CLAUDE.md의 "Google Sheets 연동"·"환율 조회" 절 참고).
-      # 러너엔 없으므로 Secrets에서 되살린다 — Secrets가 설정돼 있지 않아도 빌드
-      # 자체는 통과해야 하므로(아이콘·UI 확인용 빌드 등) .example 템플릿으로 폴백한다.
-      # 그 경우 Google Sheets 연동과 실시간 환율 조회만 동작하지 않는다.
+      # google/clientConfig.ts는 앱 빌드에 값을 박아 넣는 자격증명이라 저장소에 커밋되지 않는다
+      # (.gitignore, backend/CLAUDE.md의 "Google Sheets 연동" 절 참고). 러너엔 없으므로 Secrets에서
+      # 되살린다 — Secrets가 없어도 빌드 자체는 통과해야 하므로 .example 템플릿으로 폴백한다(그 경우
+      # Google Sheets 연동만 동작하지 않는다). 한국수출입은행 환율 키는 더 이상 빌드에 넣지 않는다 —
+      # 사용자가 설정에서 입력한다(2026-11-16, backend/src/fx/eximbankKey.ts).
       - name: 빌드 전용 자격증명 파일 생성
         shell: bash
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          EXIMBANK_AUTH_KEY: ${{ secrets.EXIMBANK_AUTH_KEY }}
         run: |
           if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ]; then
             {
@@ -97,15 +96,6 @@ jobs:
           else
             cp backend/src/google/clientConfig.example.ts backend/src/google/clientConfig.ts
             echo "::warning::GOOGLE_CLIENT_ID/SECRET이 없어 템플릿으로 빌드합니다 — Google Sheets 연동이 동작하지 않습니다."
-          fi
-
-          if [ -n "$EXIMBANK_AUTH_KEY" ]; then
-            printf "export const EXIMBANK_AUTH_KEY = '%s';\n" "$EXIMBANK_AUTH_KEY" \
-              > backend/src/fx/eximbankConfig.ts
-            echo "fx/eximbankConfig.ts: Secrets에서 생성"
-          else
-            cp backend/src/fx/eximbankConfig.example.ts backend/src/fx/eximbankConfig.ts
-            echo "::warning::EXIMBANK_AUTH_KEY가 없어 템플릿으로 빌드합니다 — 실시간 환율 조회가 동작하지 않습니다(수동 환율은 동작)."
           fi
 
       # `--` 뒤의 인자는 스크립트 문자열 맨 끝에 붙는다. package:* 스크립트는

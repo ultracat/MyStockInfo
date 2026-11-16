@@ -1,3 +1,4 @@
+import { shapeForLog } from '../../logRedact';
 import type {
   BrokerAccount,
   BrokerAdapter,
@@ -105,7 +106,7 @@ export const tossAdapter: BrokerAdapter = {
       // A field we expect (per developers.tossinvest.com/docs) is missing
       // or shaped differently on the live API — log the real payload so the
       // mapping above can be corrected against actual data, not assumptions.
-      console.error('[toss] Failed to map /api/v1/holdings response:', JSON.stringify(overview, null, 2));
+      console.error('[toss] Failed to map /api/v1/holdings response:', shapeForLog(overview));
       throw new Error(
         `토스증권 보유 종목 응답을 처리하는 중 오류가 발생했습니다 (${(err as Error).message}). ` +
           '백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'

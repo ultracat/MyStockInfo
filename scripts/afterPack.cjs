@@ -119,8 +119,15 @@ function trimLocales(appPath) {
   console.log(`[afterPack] Electron Framework에서 불필요한 로케일 ${removed}개 제거`);
 }
 
+// hardened runtime(--options runtime)으로 서명해 DYLD_INSERT_LIBRARIES 같은 dylib 주입을 막는다(2026-11-16 —
+// 그 전엔 이 변수로 띄우면 아무 dylib이 MyStock 메인 프로세스 안에서 돌아, 키체인 확인 없이 API 키를 풀 수 있었다).
+// 권한은 build/entitlements.mac.plist(이유는 그 파일 주석).
+const ENTITLEMENTS = path.join(__dirname, '..', 'build', 'entitlements.mac.plist');
+
 function resignAdHoc(appPath) {
-  execFileSync('codesign', ['--deep', '--force', '--sign', '-', appPath], { stdio: 'inherit' });
+  execFileSync('codesign', ['--deep', '--force', '--sign', '-', '--options', 'runtime', '--entitlements', ENTITLEMENTS, appPath], {
+    stdio: 'inherit',
+  });
   console.log('[afterPack] 번들 전체를 ad-hoc으로 재서명함:', appPath);
 }
 

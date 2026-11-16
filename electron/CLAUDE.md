@@ -265,13 +265,14 @@ plan (ubuntu)   고른 플랫폼만 담은 matrix JSON 출력
   산출물 없이 "성공"하는 것을 막고, `fail-fast: false`로 한 OS가 실패해도 나머지는 받는다.
 - 릴리스는 **초안(draft)**이다 — 되돌리기 어려운 공개 배포만 사람이 눌러서 확정한다.
 
-### 커밋되지 않는 자격증명 두 개를 CI에서 되살린다
-`backend/src/google/clientConfig.ts`와 `backend/src/fx/eximbankConfig.ts`는
-빌드에 값을 박아 넣는 파일이라 `.gitignore`에 있다 — **러너엔 없으므로 빌드가
-`Cannot find module`로 죽는다.** 워크플로가 Secrets(`GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `EXIMBANK_AUTH_KEY`)에서 두 파일을 만들고, Secrets가
-없으면 `.example.ts` 템플릿으로 폴백해 빌드 자체는 통과시킨다(그 경우 Google
-Sheets 연동과 실시간 환율 조회만 동작하지 않고 `::warning::`을 남긴다).
+### 커밋되지 않는 자격증명을 CI에서 되살린다
+`backend/src/google/clientConfig.ts`는 빌드에 값을 박아 넣는 파일이라 `.gitignore`에 있다 — **러너엔 없으므로
+빌드가 `Cannot find module`로 죽는다.** 워크플로가 Secrets(`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`)에서 만들고,
+없으면 `.example.ts` 템플릿으로 폴백해 빌드 자체는 통과시킨다(그 경우 Google Sheets 연동만 동작하지 않고 `::warning::`).
+한국수출입은행 환율 키(`fx/eximbankConfig.ts`, `EXIMBANK_AUTH_KEY`)도 예전엔 이렇게 넣었지만 **2026-11-16부터 빌드에
+넣지 않는다** — 사용자가 설정에서 입력한다(`backend/src/fx/eximbankKey.ts`). 참고로 v1.0.0~v1.2.2 릴리스 빌드는 이
+Secret이 없어 전부 템플릿으로 빌드됐다(로그의 `::warning::` 확인) — 배포된 설치 파일에는 키가 없었고, 그래서 배포본은
+수출입은행 환율이 원래 동작하지 않았다.
 
 ### 릴리스 절차
 1. 루트 `version.json`의 `version`을 올린다(**단일 원천** — `generate-app-info.cjs`가
@@ -364,7 +365,9 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 | CSP | `frontend/vite.config.ts`(빌드 때 `<meta>`로 주입) | 외부 스크립트·인라인 스크립트·`eval`·외부 연결·iframe |
 | 탐색·권한 | `main.ts` `will-navigate`, `denyAllPermissions()` | 창이 다른 페이지로 바뀌어 토큰 든 창에서 남의 코드가 도는 것, 브라우저 권한 |
 | Electron fuses | `scripts/afterPack.cjs`(패키징 때 바이너리 수정) | 실행 파일을 Node로 쓰기(`ELECTRON_RUN_AS_NODE`), `NODE_OPTIONS`, `--inspect`, asar 바꿔치기 |
-| 원격 디버깅·개발자 도구 | `main.ts` 맨 위 `REMOTE_DEBUG_SWITCHES`, `webPreferences.devTools`, 보기 메뉴 | 다른 프로그램이 `--remote-debugging-port`로 앱을 띄워 화면을 조종하는 것, 개발자 도구 |
+| 원격 디버깅·개발자 도구 | `main.ts` 맨 위 `blockedLaunchReason()`, `webPreferences.devTools`, 보기 메뉴 | 다른 프로그램이 `--remote-debugging-port`로 앱을 띄워 화면을 조종하는 것, 개발자 도구 |
+| 위험한 Node 환경 변수 | `main.ts` `UNSAFE_NODE_ENV` | `NODE_TLS_REJECT_UNAUTHORIZED=0`·`NODE_EXTRA_CA_CERTS`·`NODE_USE_ENV_PROXY`(통신 가로채기), `NODE_DEBUG` |
+| 맥 hardened runtime | `scripts/afterPack.cjs` `resignAdHoc` + `build/entitlements.mac.plist` | `DYLD_INSERT_LIBRARIES` dylib 주입 |
 
 - **CSP는 패키징 빌드에만 들어간다** — dev는 Vite HMR이 인라인 스크립트·ws를 써서 뺐다. 그래서 CSP 위반은 dev에선
   안 보이고 패키징해야 드러난다. 렌더러에 외부 자원(폰트·이미지·스크립트)을 들이면 `vite.config.ts`의 `CSP`를 같이 고치고
@@ -387,6 +390,19 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
   CSP 등 렌더러 검증은 이 차단을 잠시 빼고 패키징하거나(커밋하지 말 것) dev에서 `vite build` 결과를 `loadFile`로 띄워 한다.
   패키징본 검증(2026-11-16): 두 옵션 모두 exit 1, 옵션 없이 실행하면 정상(창 뜸, 화면→백엔드 저장 요청 들어옴).
 - 패키징본은 `webPreferences.devTools: false` + 보기 메뉴의 "개발자 도구" 항목 없음.
+- **위험한 Node 환경 변수도 fuses로 못 막는다**(`NODE_OPTIONS`만 fuse 대상). 실측(2026-11-16): `NODE_TLS_REJECT_UNAUTHORIZED=0`이면
+  메인 프로세스 `fetch`가 자체 서명 인증서 사이트에 그대로 붙었다 → 프록시와 묶으면 증권사 통신(앱 키·토큰) 가로채기. 패키징본은
+  `UNSAFE_NODE_ENV`에 걸리면 **안내 창(`dialog.showErrorBox`, ready 전에도 됨) 후 종료**. 조용히 지우지 않는 이유: `NODE_EXTRA_CA_CERTS`·
+  `NODE_USE_ENV_PROXY`는 시작할 때 이미 읽혀서 JS에서 지워도 늦다. Finder·시작 메뉴 실행엔 이런 변수가 없다(사내 CA를 넣어 둔 사용자만 걸림).
+- **맥 hardened runtime**: 그 전 서명은 `flags=0x2(adhoc)`뿐이라 `DYLD_INSERT_LIBRARIES=x.dylib`로 띄우면 메인·헬퍼 프로세스 모두에
+  dylib이 들어갔다(실측) — MyStock으로 취급돼 키체인 확인 없이 키를 푼다. 지금은 `codesign --options runtime --entitlements
+  build/entitlements.mac.plist`(`flags=0x10002(adhoc,runtime)`). 권한은 셋뿐: `allow-jit`·`allow-unsigned-executable-memory`(V8),
+  `disable-library-validation`(⚠ 빼면 ad-hoc엔 Team ID가 없어 **"different Team IDs"로 Electron Framework 로드 실패**, 앱이 아예 안 뜬다 —
+  실측). `allow-dyld-environment-variables`를 넣지 않는 것이 주입 차단이다. 인증서로 진짜 서명하면 library validation을 다시 켠다.
+  확인: `codesign -dv … | grep flags`, 시험용 dylib(`__attribute__((constructor))`로 파일에 한 줄 쓰기)을 넣어 띄워 보기.
+  키체인(safeStorage)은 hardened runtime의 제한 대상이 아니다(샌드박스가 아니므로) — 다른 맥에서의 Gatekeeper 흐름은 미검증.
+- **Windows·Linux엔 같은 장치가 없다** — DLL 주입·`LD_PRELOAD`는 막지 못한다. 같은 사용자 권한의 악성 프로그램을 완전히 막을 수는
+  없고, 위 조치는 키체인으로 지킨 키를 꺼내기까지의 벽을 높이는 것이다.
 - **릴리스 산출물 무결성**: 릴리스 잡이 `SHA256SUMS.txt`를 만들어 같이 올린다(공백 든 파일명은 GitHub처럼 `.`으로 바꾼 뒤 —
   `MyStock.Setup.X.exe`). 워크플로의 외부 액션은 **커밋 해시로 고정**(`@<sha> # vX.Y.Z`)하고 `.github/dependabot.yml`이
   매달 갱신 PR을 올린다. 액션을 새로 쓰면 해시로 적는다(`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`).

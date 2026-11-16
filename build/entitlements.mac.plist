@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  맥 ad-hoc 서명 + hardened runtime용 권한(scripts/afterPack.cjs의 resignAdHoc이 씀).
+  hardened runtime의 목적은 DYLD_INSERT_LIBRARIES 같은 dylib 주입을 막는 것 — 넣지 않은
+  com.apple.security.cs.allow-dyld-environment-variables가 그 차단이다. 여기 있는 셋만 연다.
+  - allow-jit, allow-unsigned-executable-memory: V8(JS 엔진)이 런타임에 기계어를 만든다 — 없으면 Electron이 못 돈다.
+  - disable-library-validation: ad-hoc 서명엔 Team ID가 없어서 켜 두면 "different Team IDs"로
+    Electron Framework부터 로드가 거부된다(실측). 인증서로 진짜 서명하게 되면 이 줄은 지운다.
+  여기 항목을 더하기 전에 electron/CLAUDE.md "보안 하드닝" 절을 볼 것.
+-->
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

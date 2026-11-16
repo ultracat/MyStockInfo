@@ -63,8 +63,45 @@ app.setName('@mystock/electron');
 // 창·백엔드를 만들기 전, 모듈을 읽자마자 확인한다. dev 실행(app.isPackaged=false)과 매뉴얼 스크린샷용
 // 인스턴스(개발용 Electron으로 띄움)는 그대로 쓸 수 있다.
 const REMOTE_DEBUG_SWITCHES = ['remote-debugging-port', 'remote-debugging-pipe', 'remote-debugging-address'];
-if (app.isPackaged && REMOTE_DEBUG_SWITCHES.some((s) => app.commandLine.hasSwitch(s))) {
-  console.error('[electron] 원격 디버깅 옵션으로 실행되어 종료합니다.');
+
+// 같은 이유로, 메인 프로세스의 Node가 읽는 **통신 보안을 약하게 만드는 환경 변수**가 있으면 실행하지 않는다.
+// fuses가 막는 건 NODE_OPTIONS뿐이라 이것들은 그대로 먹힌다 — 실측: NODE_TLS_REJECT_UNAUTHORIZED=0이면 메인
+// 프로세스 fetch가 자체 서명 인증서 사이트에 그대로 붙었다(2026-11-16). 프록시와 묶으면 증권사 API 통신(앱 키·토큰)을
+// 가로챌 수 있다. Finder·시작 메뉴로 여는 사용자에겐 이런 변수가 없다 — 사내 프록시용 CA를 넣어 둔 경우만 걸리고,
+// 그땐 안내 창을 띄운다(조용히 지우지 않는 이유: NODE_EXTRA_CA_CERTS·NODE_USE_ENV_PROXY는 시작할 때 이미 읽혀서
+// 여기서 지워도 늦다).
+const UNSAFE_NODE_ENV: Record<string, (v: string) => boolean> = {
+  NODE_TLS_REJECT_UNAUTHORIZED: (v) => v === '0', // TLS 인증서 검증 끄기
+  NODE_EXTRA_CA_CERTS: (v) => v !== '', // 신뢰할 인증기관 추가(가짜 인증서 허용)
+  NODE_USE_ENV_PROXY: (v) => v !== '' && v !== '0', // HTTP(S)_PROXY로 통신을 돌리기
+  NODE_DEBUG: (v) => v !== '', // http·tls 디버그 출력(요청 헤더가 표준 오류로 나갈 수 있음)
+  NODE_DEBUG_NATIVE: (v) => v !== '',
+};
+
+function blockedLaunchReason(): { reason: string; showDialog: boolean } | null {
+  if (!app.isPackaged) return null; // dev·매뉴얼 스크린샷 인스턴스는 그대로
+  if (REMOTE_DEBUG_SWITCHES.some((s) => app.commandLine.hasSwitch(s))) {
+    return { reason: '원격 디버깅 옵션으로 실행되어 종료합니다.', showDialog: false };
+  }
+  const unsafe = Object.keys(UNSAFE_NODE_ENV).filter((k) => {
+    const v = process.env[k];
+    return v !== undefined && UNSAFE_NODE_ENV[k](v);
+  });
+  if (unsafe.length > 0) {
+    return {
+      reason:
+        `통신 보안을 약하게 만드는 환경 변수(${unsafe.join(', ')})가 설정되어 있어 MyStock을 실행하지 않습니다.\n` +
+        '증권사 API 키를 보호하기 위해서입니다. 이 변수를 지운 뒤 다시 실행해주세요.',
+      showDialog: true,
+    };
+  }
+  return null;
+}
+
+const blocked = blockedLaunchReason();
+if (blocked) {
+  console.error(`[electron] ${blocked.reason}`);
+  if (blocked.showDialog) dialog.showErrorBox('MyStock을 실행할 수 없습니다', blocked.reason);
   app.exit(1);
 }
 

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setCredentialFields } from '../src/credentials';
-import { KisApiError, fetchKisPeriodRights } from '../src/brokers/kis/kisClient';
+import { KisApiError, fetchKisOverseasDividendRights, fetchKisOverseasIceRights, fetchKisPeriodRights } from '../src/brokers/kis/kisClient';
 import { kisAdapter } from '../src/brokers/kis/kisAdapter';
 
 // 한국투자증권 클라이언트의 HTTP 흐름을 가짜 서버(fetch 대체)로 확인한다 — 실키 없이 도는 테스트.
@@ -201,4 +201,44 @@ test('KIS 권리현황(배당 원천): 연속조회 끝까지, CTRGA011R', async
   assert.equal(rows.length, 2);
   assert.equal(pathCalls(PERIOD_RIGHTS)[0].headers.tr_id, 'CTRGA011R');
   assert.equal(pathCalls(PERIOD_RIGHTS)[1].query.get('CTX_AREA_NK100'), 'B');
+});
+
+const OVERSEAS_RIGHTS = '/uapi/overseas-price/v1/quotations/period-rights';
+const OVERSEAS_ICE = '/uapi/overseas-price/v1/quotations/rights-by-ice';
+
+test('KIS 해외 권리종합(ICE): HHDFS78330900, 국가 US + 종목 + 기간', async () => {
+  handlers[OVERSEAS_ICE] = () => ({ body: ok({ output1: [{ ca_title: '현금배당', record_dt: '20261130', pay_dt: '20261215', div_lock_dt: '20261130', anno_dt: '20261110' }] }) });
+  const rows = await fetchKisOverseasIceRights('O', '2026-07-19', '2027-03-16');
+  assert.equal(rows.length, 1);
+  const q = pathCalls(OVERSEAS_ICE)[0];
+  assert.equal(q.headers.tr_id, 'HHDFS78330900');
+  assert.deepEqual([q.query.get('NCOD'), q.query.get('SYMB'), q.query.get('ST_YMD'), q.query.get('ED_YMD')], ['US', 'O', '20260719', '20270316']);
+});
+
+test('KIS 해외 기간별권리: 상품유형코드를 512→513→529로 찾아 저장하고, 다음엔 그 코드로 한 번만 부른다', async () => {
+  // 실측: PDNO만 주거나 거래소 코드가 틀리면 rt_cd 0 + KIER2520 "조회된 자료가 없습니다"(빈 output).
+  handlers[OVERSEAS_RIGHTS] = (call) =>
+    call.query.get('PRDT_TYPE_CD') === '529'
+      ? { body: ok({ output: [{ pdno: 'NVDY', rght_type_cd: '03', acpl_bass_dt: '20261112', alct_frcr_unpr: '0.05370', crcy_cd: 'USD', dfnt_yn: 'Y' }] }) }
+      : { body: { rt_cd: '0', msg_cd: 'KIER2520', msg1: '조회된 자료가 없습니다', output: [] } };
+  const rows = await fetchKisOverseasDividendRights('NVDY', '2025-10-12', '2027-03-16');
+  assert.equal(rows.length, 1);
+  assert.deepEqual(pathCalls(OVERSEAS_RIGHTS).map((c) => c.query.get('PRDT_TYPE_CD')), ['512', '513', '529']);
+  const first = pathCalls(OVERSEAS_RIGHTS)[0];
+  assert.equal(first.headers.tr_id, 'CTRGT011R');
+  assert.deepEqual([first.query.get('PDNO'), first.query.get('INQR_DVSN_CD'), first.query.get('INQR_STRT_DT')], ['NVDY', '02', '20251012']);
+  assert.equal(readJson('kis-overseas-product-types.json').NVDY.code, '529');
+
+  calls = [];
+  await fetchKisOverseasDividendRights('NVDY', '2025-10-12', '2027-03-16');
+  assert.deepEqual(pathCalls(OVERSEAS_RIGHTS).map((c) => c.query.get('PRDT_TYPE_CD')), ['529']);
+});
+
+test('KIS 해외 기간별권리: 어느 코드로도 없으면 저장해 두고 한동안 다시 찾지 않는다', async () => {
+  handlers[OVERSEAS_RIGHTS] = () => ({ body: { rt_cd: '0', msg_cd: 'KIER2520', msg1: '조회된 자료가 없습니다', output: [] } });
+  assert.deepEqual(await fetchKisOverseasDividendRights('TSLA', '2025-10-12', '2027-03-16'), []);
+  assert.equal(pathCalls(OVERSEAS_RIGHTS).length, 3);
+  calls = [];
+  assert.deepEqual(await fetchKisOverseasDividendRights('TSLA', '2025-10-12', '2027-03-16'), []);
+  assert.equal(pathCalls(OVERSEAS_RIGHTS).length, 0);
 });

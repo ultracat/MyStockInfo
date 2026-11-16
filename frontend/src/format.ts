@@ -17,7 +17,10 @@ export const krwCompact = new Intl.NumberFormat('ko-KR', {
 
 export const usdFmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
-export const usdCompact = new Intl.NumberFormat('en-US', {
+/** 주당 배당처럼 센트 아래 자릿수가 있는 달러 값(예: $0.2715). */
+export const usd4dp = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 4 });
+
+export const usdCompact =new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
   notation: 'compact',

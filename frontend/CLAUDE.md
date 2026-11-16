@@ -58,7 +58,14 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   평균 환율로 환산한다(오늘 환율 하나로 전체 막대를 환산하던 예전 방식
   대신 — 아래 "배당금 월평균 환율" 절 참고). 내부에서
   `typeof fxRate === 'function' ? fxRate : () => fxRate`로 감싸서 두 형태를
-  같은 코드 경로로 처리한다.
+  같은 코드 경로로 처리한다. 선택 prop `expectedRows`(Dividends.tsx만 넘김)는 **지급 전 예상 배당**을 같은 색
+  `--series-1`의 흐린 막대(`EXPECTED_OPACITY` 0.35, 받은 배당과 2px 틈)로 위에 얹는다 — 새 색을 안 쓰는 건 "같은 측정값의
+  미확정분"이라서다. 범례(받은 배당/예상)는 `expectedRows`가 있을 때만. Dividends.tsx는 다가오는 배당을 한 번 받아
+  (`upcoming` state) 표(`UpcomingDividends`의 `state` prop)와 이 막대(`upcomingMonthlyRows`)에 같이 넘긴다. 배당 기록이
+  세후라 예상도 세후로 맞춘다 — 확정은 세전 − 세금, 나머지는 국내 15.4%·미국 15% 원천징수 가정(`KR_WITHHOLDING`/
+  `US_WITHHOLDING`). 그래프의 증권사·연도 필터를 같이 탄다. 받은 배당이 없는 달(예상만)은 클릭해도 상세 팝업을 안 연다.
+  막대 위 숫자는 예상이 얹힌 달만 둘 — 받은 배당은 **진한 막대 바로 위**(흐린 막대와 겹쳐서 `--surface-1` 테두리, `paintOrder="stroke"`),
+  예상 포함 합계는 흐린 막대 위 `--text-muted`(흐린 막대가 낮아 겹치면 `LABEL_LINE`만큼 위로, 위 여백도 그만큼 늘림) — 사용자 요청 2026-11-16(합계 하나만 보이면 받은 금액을 모른다).
 - `src/components/DonutChart.tsx` — 범용 도넛 차트(Overview.tsx의 보유종목/배당금
   비중 카드가 씀). `slices: {label,value,color}[]`만 받는다 — "어떤 데이터를
   카테고리로 접을지"는 전부 호출부 책임이고, 이 컴포넌트는 그리기만 한다. dataviz
@@ -166,7 +173,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   월별 수익률 카드 아래 "지수와 비교" 표(`indexComparisonRows` — 내 보유종목은 `monthlyAmountRows`로 단순 Dietz 근사:
   (평가 변화 − 투자금 변화) ÷ 전월 평가)를 둔다.
 - `src/components/UpcomingDividends.tsx`(배당금 화면, 월별 카드 아래) / `src/components/OfficialRealizedCompare.tsx`(실현손익
-  화면, `broker` kis|nh|kiwoom — 증권사 필터가 전체이거나 그 증권사일 때) — 키가 없으면 카드 자체를 안 그린다(`available:false` / 409).
+  화면, `broker` kis|nh|kiwoom — 증권사 필터가 전체이거나 그 증권사일 때) — 키가 없으면 비교 카드는 안 그리고(409), 다가오는 배당은
+  `available:false`일 때 **카드 자리에 "한국투자증권 키를 등록하라"는 안내**를 그린다(사용자 요청 2026-11-16). 다가오는 배당의 미국 행은
+  `currency: 'USD'`라 "국내"/"해외 (미국)" 두 묶음(`DividendSection`, 소제목 + 표 + 합계)으로 나눠 그린다 — 금액은 달러(`usdFmt`, 주당은
+  `usd4dp`), 합계도 묶음마다 따로(환율로 합치지 않는다, 사용자 요청 2026-11-16).
   비교 카드는 응답의 계좌(KIS `accountId`=`CANO-상품코드` 하나, NH `accountIds`=실전 계좌 전부)와 같은 계좌의 **KRW 매도 전부**
   (세금 유형 무관)를 앱 쪽 값으로 쓴다. NH 증권사 값은 종목별 기간 합계라 카드가 종목별로 합치는 방식과 그대로 맞는다.
   해외 카드는 KIS만(NH 해외 기간손익엔 종목코드가 없음).

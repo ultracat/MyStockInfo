@@ -398,7 +398,7 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 
 ## 다가오는 배당·공식 실현손익 (한국투자증권, `src/upcomingDividends.ts`, `routes/kisReports.ts`)
 
-- `GET /dividends/upcoming` — `{items, available}`(KIS 키 없으면 `available:false`), 6시간 캐시. 확정은 앞으로 120일,
+- `GET /dividends/upcoming` — `{items, available}`(KIS 키 없으면 `available:false` — 화면은 키 등록 안내를 띄운다), 6시간 캐시. 확정은 앞으로 120일,
   **예상·추정은 이번 달 지급분까지만**(사용자 결정 2026-11-10 — 120일을 다 보이면 매달 지급 종목 × 계좌 수만큼 줄이 너무 많았다).
   - **확정**: `fetchKisPeriodRights`(CTRGA011R)에서 현금지급일이 오늘 이후인 건 — 세전·세금 정확, KIS 계좌만.
   - **예상**: 예탁원 배당일정(`fetchKisDividendSchedule`, `HHKDB669102C0`, `GB1=0`)의 `per_sto_divi_amt` × 로컬 보유종목
@@ -415,8 +415,18 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
       한 페이지 24일, 연속조회는 본문 `ctx_area_nk`/`fk` — 100 없는 이름). 공식 예제가 **"1일 1회 호출"**을 요청해 `kis-holidays.json`에
       날짜별로 저장하고 그날은 다시 안 부른다. 정보가 없는 날짜(과거·조회 실패)는 주말만 쉬는 날로 본다.
   - KIS 계좌에 확정 건이 있는 종목·기준월은 그 계좌엔 예상·추정을 안 만든다. 테스트: `test/upcomingDividends.test.ts`.
-  - **해외는 없다**: 해외 기간별권리(`CTRGT011R`)는 `PDNO`에 종목(AAPL 등)을 넣으면 `KIER2520 조회된 자료가 없습니다`,
-    빼면 시장 전체 100건씩 오는데 배당이 기준일 무렵에야 등록돼 앞 90일 일정이 거의 없다(2026-11-09 실측). 지급일 필드도 없다.
+  - **해외(미국, `currency: 'USD'`, `source: 'kis-overseas'`)** — 모든 증권사의 USD 보유 종목마다(2026-11-16 실측 — 종목 수십 개에 십수 초):
+    - 날짜 = 해외주식 권리종합(`fetchKisOverseasIceRights`, `HHDFS78330900`, `NCOD=US`) — ICE 일정이라 **발표된 미래 배당이 미리 있다**
+      (기준일·배당락일·지급일, 권리유형은 한글 `ca_title`). **주당 금액이 없고 한 번에 50건까지**(주간 분배 ETF는 400일이면 잘림 →
+      지난 120일~앞으로 120일). 현금배당이 없는 종목(TSLA 등)은 여기서 끝낸다.
+    - 주당 금액 = 해외 기간별권리(`fetchKisOverseasDividendRights`, `CTRGT011R`, `alct_frcr_unpr`, 배당 `03`만). ⚠ **`PDNO`만 주면
+      `KIER2520 조회된 자료가 없습니다`(rt_cd 0)** — 상품유형코드 `PRDT_TYPE_CD`를 같이 줘야 한다(512 나스닥·513 뉴욕·529 아멕스, NYSE Arca
+      ETF는 529). 앱이 거래소를 모르므로 512→513→529로 찾아 `kis-overseas-product-types.json`에 저장(못 찾으면 7일간 다시 안 찾음).
+      2026-11-09엔 이걸 몰라 "종목 지정 조회 불가"로 판단하고 해외를 뺐었다. **배당이 기준일 무렵에야 등록**돼 발표만 된 건은 금액이 없다.
+    - `overseasScheduleRows`가 둘을 예탁원 일정 모양으로 합쳐(ICE 기준일에 같은 현지 기준일의 금액, 없으면 0, ICE 밖의 지난 권리는 지급일 없이)
+      `planSymbolDividends`에 넣는다 — 금액 있으면 예상, 0이면 최근 12회 중간값 추정, 그 뒤는 주기 추정까지 국내와 같은 규칙.
+      **미국 휴장일은 모른다**(국내휴장일조회는 국내용) → 추정 날짜는 주말만 반영. 금액은 세전(미국 원천징수 15% 전), 센트 단위 반올림.
+    - 종목 하나의 해외 조회가 실패해도 경고 로그만 — 국내·다른 종목은 그대로.
 - `GET /kis/realized?from&to` — 기간별매매손익현황조회(`TTTC8715R`, `fetchKisPeriodTradeProfit`, 국내만, `CTX_AREA_FK100/NK100`
   연속조회, 1tps 리미터) 중 `sll_qty > 0`인 매도 줄. `rlzt_pfls`는 수수료·세금 차감 손익. KIS 키 없으면 409.
   같은 응답의 `overseasRows`는 해외 기간손익(`TTTS3039R`, 원화 기준) — 실패하면 null. 두 TR 다 10분 캐시

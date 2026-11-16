@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ALL_ACCOUNTS, buildPortfolioFromStored, mergePortfolios } from '../src/calc/portfolio';
-import type { StoredHolding } from '../src/types';
+import { ALL_ACCOUNTS, buildPortfolioFromStored, dividendTotals, holdingRows, mergePortfolios } from '../src/calc/portfolio';
+import type { DividendRecord, StoredHolding } from '../src/types';
 
 function h(p: Partial<StoredHolding>): StoredHolding {
   return {
@@ -41,4 +41,29 @@ test('전체 계좌 합치기: 금액·예수금을 더하고 포지션에 출�
   assert.equal(merged.cashBalanceKrw, 50); // 한 계좌라도 값이 있으면 나머지는 0으로
   assert.equal(merged.cashBalanceUsd, null); // 전부 없으면 "정보 없음"
   assert.deepEqual(merged.positions.map((p) => p.accountId), ['A', 'B']);
+});
+
+test('보유 표 행: 원화 기준 비중, 이 계좌의 이 종목 배당만, memo로 나뉜 행은 수량 비율로, 통화가 다르면 환율', () => {
+  const pf = buildPortfolioFromStored('kb', 'acc', [
+    h({ symbol: 'A', quantity: 3, marketValue: 300, memo: '개인' }),
+    h({ symbol: 'A', quantity: 1, marketValue: 100, memo: '회사' }),
+    h({ symbol: 'U', currency: 'USD', quantity: 1, marketValue: 1 }),
+  ]);
+  const div = (p: Partial<DividendRecord>) =>
+    ({ id: 'd', broker: 'kb', accountId: 'acc', symbol: 'A', name: 'A', currency: 'KRW', amount: 40, tax: null, paidDate: '2026-01-01', memo: null, ...p }) as DividendRecord;
+  const dividends = [div({}), div({ accountId: 'other', amount: 999 }), div({ symbol: 'U', amount: 1000 }), div({ broker: 'toss', amount: 5 })];
+  const base = { broker: 'kb' as const, selectedAccountId: 'acc', soleAccountId: null, dividends, accountLabels: [] };
+
+  const rows = holdingRows(pf, { ...base, fxRate: 1000 });
+  assert.deepEqual(rows.map((r) => [r.symbol, r.memo, r.weight, r.dividendAmount]), [
+    ['A', '개인', 300 / 1400, 30],
+    ['A', '회사', 100 / 1400, 10],
+    ['U', null, 1000 / 1400, 1], // 원화 배당 1000원 → 달러 종목이라 1000/1000 = $1
+  ]);
+  assert.equal(rows[0].accountLabel, undefined); // 개별 계좌 모드엔 계좌 열 없음
+
+  const noFx = holdingRows(pf, { ...base, fxRate: null });
+  assert.equal(noFx[2].weight, null);
+  assert.equal(noFx[2].dividendAmount, null); // 통화가 다른 배당을 환산할 수 없음
+  assert.deepEqual(dividendTotals(noFx), { krw: 40, usd: 0, unconverted: true });
 });

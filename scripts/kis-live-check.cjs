@@ -92,6 +92,14 @@ runLiveCheck('한국투자증권 Open API 실서버 점검 (조회 TR만, 개인
       const taxOk = candidates.every((c) => c.amount >= 0 && c.tax >= 0);
       log(taxOk ? 'PASS' : 'FAIL', '배당 해석(세후=세전−세금)', `지급 완료 ${candidates.length}건, 지급 예정 ${upcoming}건${taxOk ? '' : ' — 음수 금액 있음'}`);
       log('INFO', '배당 종류', tally(candidates, (c) => c.kind));
+      // 다가오는 배당 확정 건의 "수량 × 주당" — 잔고수량(cblc_qty)이 있어야 주당 = 최종배정금액 ÷ 수량을 낸다.
+      const paid = rights.filter((r) => num(r.last_alct_amt) > 0);
+      const withQty = paid.filter((r) => num(r.cblc_qty) > 0);
+      log(withQty.length === paid.length ? 'PASS' : 'WARN', '권리 잔고수량(cblc_qty)', `배정금액 있는 ${paid.length}건 중 ${withQty.length}건에 있음`);
+      const perOk = withQty.filter((r) => { const per = num(r.last_alct_amt) / num(r.cblc_qty); return per > 0 && per < 1e7; });
+      log(perOk.length === withQty.length ? 'PASS' : 'WARN', '주당 = 배정금액 ÷ 잔고수량', `${perOk.length}/${withQty.length}건 정상 범위`);
+      const whole = withQty.filter((r) => Number.isInteger(Math.round((num(r.last_alct_amt) / num(r.cblc_qty)) * 1000) / 1000));
+      log('INFO', '주당이 원 단위로 떨어지는 건', `${whole.length}/${withQty.length}건(국내 배당은 대개 주당 정수 원)`);
     }
   }
 

@@ -9,7 +9,8 @@ import {
 } from './brokers/kis/kisClient';
 import { listHoldings } from './db/holdingsStore';
 import { usMarketClosedDays } from './usMarketCalendar';
-import { withCache } from './brokers/responseCache';
+import { JsonStore } from './jsonStore';
+import { getDataDir } from './paths';
 import { todayKst } from './marketInsights';
 import type { BrokerId } from './brokers/types';
 import type { KisOverseasIceRight, KisOverseasPeriodRight } from './brokers/kis/kisClient';
@@ -231,98 +232,279 @@ export function overseasScheduleRows(
   return rows;
 }
 
-export async function getUpcomingDividends(): Promise<{ items: UpcomingDividend[]; available: boolean }> {
-  if (!isKisConfigured()) return { items: [], available: false };
-  return withCache('upcoming-dividends', 6 * 3600_000, async () => ({ items: await build(), available: true }));
+// ---- 저장된 일정 + 하루 한 번 갱신 --------------------------------------------------------------------------------------
+// 종목마다 KIS를 여러 번 불러야 해서(실측 — 종목 수십 개에 십수 초) 앱을 켤 때마다 처음부터 계산하면 배당금 화면이 오래 빈다
+// (예전엔 메모리 6시간 캐시라 재시작하면 사라졌다). 그래서 **종목별 일정(예탁원·해외 권리 원본 줄)과 확정 건을 파일에 저장**하고
+// (`upcoming-dividends.json`), 요청 때마다 **오늘 날짜·지금 보유 수량**으로 다시 계산한다(`itemsFromSnapshot`) —
+// 결과(금액)를 통째로 저장하면 그날 산 종목·바뀐 수량이 다음 갱신까지 안 맞기 때문이다(사용자 결정 2026-11-16).
+// - 저장일(한국 날짜)이 오늘이 아니면 저장본을 바로 주고 **백그라운드로 다시 받는다**(`refreshing: true` — 화면이 다시 부른다).
+// - 저장본에 없는 보유 종목(새로 산 종목)만 그 자리에서 받아 더한다(같은 종목은 하루 한 번만 시도).
+// - 새로고침(`refresh`)은 오늘 이미 받았어도 다시 받는다. 저장본이 아예 없거나 KIS 계좌가 바뀌었으면 기다려서 받는다.
+// - 종목 하나·확정 조회가 실패하면 저장본의 이전 값을 그대로 둔다(일부 실패로 일정이 사라지지 않게).
+
+type ScheduleRow = { record_date: string; per_sto_divi_amt: string; divi_pay_dt: string };
+
+/** 저장 형식 — 저장하는 내용이 바뀌면 올린다. 다르면 저장본을 보여 주되 뒤에서 다시 받는다.
+ *  2: 확정 건에 기준일 보유 수량·주당 금액(`cblc_qty`)을 넣음 — 1은 수량 0·주당 null이라 "수량 × 주당"이 비었다. */
+const SNAPSHOT_VERSION = 2;
+
+export interface UpcomingSnapshot {
+  version?: number;
+  /** 받은 날(한국 날짜) — 오늘이 아니면 다시 받는다. */
+  builtDate: string;
+  /** 받은 시각(ISO). */
+  builtAt: string;
+  /** 받을 때의 KIS 계좌 — 키·계좌가 바뀌면 확정 건이 다른 계좌 것이라 버린다. */
+  kisAccountId: string;
+  /** 확정 — KIS 계좌의 지급 예정 권리(받은 날 기준 지급일 > 그날). */
+  confirmed: UpcomingDividend[];
+  /** 국내휴장일(받은 날 기준 이번 달~다음 달 초). */
+  krCalendar: BusinessDays;
+  /** 국내 종목별 예탁원 일정 원본 줄. */
+  kr: Record<string, ScheduleRow[]>;
+  /** 미국 종목별 ICE+기간별권리를 합친 줄(`overseasScheduleRows`) — 배당 없는 종목은 빈 배열. */
+  us: Record<string, ScheduleRow[]>;
 }
 
-async function build(): Promise<UpcomingDividend[]> {
-  const today = todayKst();
-  const until = addDays(today, 120);
-  // 예상·추정은 **이번 달 지급분까지만**(사용자 결정 2026-11-10 — 120일을 다 보이면 매달 지급 종목 × 계좌 수만큼 줄이 너무 많다).
-  // 확정은 그대로 120일. 지급일이 없는 예상 건은 기준일로 판단한다.
-  const monthEnd = addDays(addMonths(`${today.slice(0, 7)}-01`, 1), -1);
-  const items: UpcomingDividend[] = [];
-  const kisAccountId = getKisAccountId();
+export interface UpcomingDividendsResult {
+  items: UpcomingDividend[];
+  available: boolean;
+  /** 지금 보여 주는 일정을 받은 시각(ISO) — 없으면 null. */
+  builtAt: string | null;
+  /** 백그라운드로 다시 받는 중 — 화면은 잠시 뒤 다시 부른다. */
+  refreshing: boolean;
+}
 
-  // 1) 확정 — KIS 계좌
-  const rights = await fetchKisPeriodRights(addDays(today, -60), '2099-12-31').catch(() => []);
-  const confirmedKeys = new Set<string>(); // `${종목}:${기준월}` — 같은 달 예상·추정을 그 계좌에서 뺀다
-  for (const r of rights) {
-    const pay = parseKsdDate(r.cash_dfrm_dt);
-    const gross = Number(r.last_alct_amt);
-    if (!pay || pay <= today || !Number.isFinite(gross) || gross <= 0) continue;
-    const tax = Number(r.tax_amt);
-    const symbol = (r.shtn_pdno || r.pdno).trim();
-    confirmedKeys.add(`${symbol}:${(parseKsdDate(r.bass_dt) ?? pay).slice(0, 7)}`);
-    items.push({
-      status: 'confirmed', broker: 'kis', accountId: kisAccountId, symbol, name: r.prdt_name.trim(), currency: 'KRW',
-      payDate: pay, recordDate: parseKsdDate(r.bass_dt), quantity: 0, perShare: null, grossAmount: gross,
-      tax: Number.isFinite(tax) ? tax : null, source: 'kis-account',
-    });
-  }
+const snapshotStore = () => new JsonStore<UpcomingSnapshot | null>('upcoming-dividends.json', getDataDir(), null);
 
-  const holdings = listHoldings().filter((h) => h.quantity > 0 && h.currency !== 'USD');
+type HoldingRow = ReturnType<typeof listHoldings>[number];
 
-  // 2)·3) 예상·추정 — 보유 종목마다 예탁원 일정을 지난 400일~앞으로 120일(기준일 기준)로 조회
-  const symbols = [...new Set(holdings.map((h) => h.symbol))];
-  // 추정 날짜의 휴일 보정용 — 이번 달 1일부터 다음 달 10일 무렵까지(한 페이지 24일). 실패하면 주말만 반영.
-  const cal = symbols.length
-    ? await fetchKisBusinessDays(`${today.slice(0, 7)}-01`, addDays(monthEnd, 10)).catch((e) => {
-        console.warn(`[upcoming-dividends] 휴장일 조회 실패 — 주말만 반영: ${(e as Error).message}`);
-        return {} as BusinessDays;
-      })
-    : {};
-  const plans = new Map<string, PlannedDividend[]>();
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      const rows = await fetchKisDividendSchedule(addDays(today, -400), until, symbol).catch((e) => {
-        console.warn(`[upcoming-dividends] ${symbol} 배당일정 조회 실패: ${(e as Error).message}`);
-        return [];
-      });
-      plans.set(symbol, planSymbolDividends(rows, today, monthEnd, cal));
-    })
-  );
+function heldSymbols(holdings: HoldingRow[]): { kr: string[]; us: string[] } {
+  const live = holdings.filter((h) => h.quantity > 0);
+  return {
+    kr: [...new Set(live.filter((h) => h.currency !== 'USD').map((h) => h.symbol))],
+    us: [...new Set(live.filter((h) => h.currency === 'USD').map((h) => h.symbol))],
+  };
+}
+
+function monthEndOf(today: string): string {
+  return addDays(addMonths(`${today.slice(0, 7)}-01`, 1), -1);
+}
+
+/**
+ * 저장된 일정 + 지금 보유 수량 → 화면 줄(순수 함수). 확정은 지급일 > 오늘만, 예상·추정은 `planSymbolDividends`를
+ * 오늘 기준으로 다시 돌린다(이번 달 지급분까지). KIS 계좌에 확정 건이 있는 종목·기준월은 그 계좌엔 예상·추정을 안 만든다.
+ */
+export function itemsFromSnapshot(
+  snap: Pick<UpcomingSnapshot, 'confirmed' | 'krCalendar' | 'kr' | 'us'>,
+  holdings: HoldingRow[],
+  today: string,
+  kisAccountId: string
+): UpcomingDividend[] {
+  const monthEnd = monthEndOf(today);
+  const items: UpcomingDividend[] = snap.confirmed.filter((c) => c.payDate !== null && c.payDate > today);
+  const confirmedKeys = new Set(items.map((c) => `${c.symbol}:${(c.recordDate ?? c.payDate!).slice(0, 7)}`));
+
+  const krPlans = new Map<string, PlannedDividend[]>();
+  const usPlans = new Map<string, PlannedDividend[]>();
+  const usCal = usMarketClosedDays(addDays(today, -420), addDays(today, 180));
   for (const h of holdings) {
-    for (const p of plans.get(h.symbol) ?? []) {
-      if (h.broker === 'kis' && h.accountId === kisAccountId && confirmedKeys.has(`${h.symbol}:${p.recordDate.slice(0, 7)}`)) continue;
+    if (h.quantity <= 0) continue;
+    const usd = h.currency === 'USD';
+    const plans = usd ? usPlans : krPlans;
+    if (!plans.has(h.symbol)) {
+      const rows = (usd ? snap.us : snap.kr)[h.symbol];
+      plans.set(h.symbol, rows ? planSymbolDividends(rows, today, monthEnd, usd ? usCal : snap.krCalendar) : []);
+    }
+    for (const p of plans.get(h.symbol)!) {
+      if (!usd && h.broker === 'kis' && h.accountId === kisAccountId && confirmedKeys.has(`${h.symbol}:${p.recordDate.slice(0, 7)}`)) continue;
       items.push({
-        status: p.status, broker: h.broker, accountId: h.accountId, symbol: h.symbol, name: h.name, currency: 'KRW',
+        status: p.status, broker: h.broker, accountId: h.accountId, symbol: h.symbol, name: h.name, currency: usd ? 'USD' : 'KRW',
         payDate: p.payDate, recordDate: p.recordDate, quantity: h.quantity, perShare: p.perShare,
-        grossAmount: Math.round(p.perShare * h.quantity), tax: null, source: p.source,
+        grossAmount: usd ? Math.round(p.perShare * h.quantity * 100) / 100 : Math.round(p.perShare * h.quantity),
+        tax: null, source: usd ? (p.source === 'ksd-schedule' ? 'kis-overseas' : p.source) : p.source,
       });
     }
   }
+  const key = (i: UpcomingDividend) => i.payDate ?? i.recordDate ?? '9999';
+  return items.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+}
 
-  // 4) 해외(미국) — USD 보유 종목마다 ICE 일정 + 기간별권리 주당 금액. 해외가 실패해도 국내는 그대로 보여 준다.
-  const usdHoldings = listHoldings().filter((h) => h.quantity > 0 && h.currency === 'USD');
-  const usPlans = new Map<string, PlannedDividend[]>();
-  // 지난 일정의 지급 간격(영업일)과 앞으로의 추정 날짜 모두 NYSE 휴장일로 센다 — 국내휴장일조회(cal)는 국내용이라 안 쓴다.
-  const usCal = usMarketClosedDays(addDays(today, -420), addDays(until, 60));
+/** 1) 확정 — KIS 계좌의 지급 예정 권리. 실패하면 null(이전 값 유지). */
+async function fetchConfirmed(today: string, kisAccountId: string): Promise<UpcomingDividend[] | null> {
+  try {
+    const rights = await fetchKisPeriodRights(addDays(today, -60), '2099-12-31');
+    const out: UpcomingDividend[] = [];
+    for (const r of rights) {
+      const pay = parseKsdDate(r.cash_dfrm_dt);
+      const gross = Number(r.last_alct_amt);
+      if (!pay || pay <= today || !Number.isFinite(gross) || gross <= 0) continue;
+      const tax = Number(r.tax_amt);
+      const qty = Number(r.cblc_qty); // 기준일 잔고수량 — 없으면 수량·주당을 비워 둔다(화면은 "-")
+      const hasQty = Number.isFinite(qty) && qty > 0;
+      out.push({
+        status: 'confirmed', broker: 'kis', accountId: kisAccountId, symbol: (r.shtn_pdno || r.pdno).trim(), name: r.prdt_name.trim(),
+        currency: 'KRW', payDate: pay, recordDate: parseKsdDate(r.bass_dt), quantity: hasQty ? qty : 0,
+        perShare: hasQty ? gross / qty : null, grossAmount: gross,
+        tax: Number.isFinite(tax) ? tax : null, source: 'kis-account',
+      });
+    }
+    return out;
+  } catch (e) {
+    console.warn(`[upcoming-dividends] 확정 배당 조회 실패 — 이전 값 유지: ${(e as Error).message}`);
+    return null;
+  }
+}
+
+/** 2)·3) 국내 — 종목마다 예탁원 일정을 지난 400일~앞으로 120일(기준일 기준). 실패한 종목은 결과에 없다. */
+async function fetchKrRows(symbols: string[], today: string): Promise<Record<string, ScheduleRow[]>> {
+  const out: Record<string, ScheduleRow[]> = {};
   await Promise.all(
-    [...new Set(usdHoldings.map((h) => h.symbol))].map(async (symbol) => {
+    symbols.map(async (symbol) => {
+      try {
+        out[symbol] = await fetchKisDividendSchedule(addDays(today, -400), addDays(today, 120), symbol);
+      } catch (e) {
+        console.warn(`[upcoming-dividends] ${symbol} 배당일정 조회 실패: ${(e as Error).message}`);
+      }
+    })
+  );
+  return out;
+}
+
+/** 추정 날짜의 휴일 보정용 — 이번 달 1일부터 다음 달 10일 무렵까지(한 페이지 24일). 실패하면 null(주말만 반영). */
+async function fetchKrCalendar(today: string): Promise<BusinessDays | null> {
+  try {
+    return await fetchKisBusinessDays(`${today.slice(0, 7)}-01`, addDays(monthEndOf(today), 10));
+  } catch (e) {
+    console.warn(`[upcoming-dividends] 휴장일 조회 실패 — 주말만 반영: ${(e as Error).message}`);
+    return null;
+  }
+}
+
+/** 4) 미국 — 종목마다 ICE 일정 + 기간별권리 주당 금액. 배당 없는 종목은 빈 배열, 실패한 종목은 결과에 없다. */
+async function fetchUsRows(symbols: string[], today: string): Promise<Record<string, ScheduleRow[]>> {
+  const out: Record<string, ScheduleRow[]> = {};
+  const until = addDays(today, 120);
+  await Promise.all(
+    symbols.map(async (symbol) => {
       try {
         // ICE는 한 번에 50건까지라 기간을 짧게(지급 간격·발표된 일정용), 주당 중간값·주기는 기간별권리 400일로 본다.
         const ice = await fetchKisOverseasIceRights(symbol, addDays(today, -120), until);
-        if (!ice.some((e) => (e.ca_title ?? '').includes('배당'))) return; // 배당 없는 종목 — 기간별권리 조회 생략
+        if (!ice.some((e) => (e.ca_title ?? '').includes('배당'))) {
+          out[symbol] = []; // 배당 없는 종목 — 기간별권리 조회 생략
+          return;
+        }
         const rights = await fetchKisOverseasDividendRights(symbol, addDays(today, -400), until);
-        usPlans.set(symbol, planSymbolDividends(overseasScheduleRows(ice, rights), today, monthEnd, usCal));
+        out[symbol] = overseasScheduleRows(ice, rights);
       } catch (e) {
         console.warn(`[upcoming-dividends] ${symbol} 해외 배당 일정 조회 실패: ${(e as Error).message}`);
       }
     })
   );
-  for (const h of usdHoldings) {
-    for (const p of usPlans.get(h.symbol) ?? []) {
-      items.push({
-        status: p.status, broker: h.broker, accountId: h.accountId, symbol: h.symbol, name: h.name, currency: 'USD',
-        payDate: p.payDate, recordDate: p.recordDate, quantity: h.quantity, perShare: p.perShare,
-        grossAmount: Math.round(p.perShare * h.quantity * 100) / 100, tax: null,
-        source: p.source === 'ksd-schedule' ? 'kis-overseas' : p.source,
-      });
+  return out;
+}
+
+/** 지금 보유 종목만 남기고, 새로 받은 값이 없는 종목은 이전 값을 쓴다. */
+function mergeRows(prev: Record<string, ScheduleRow[]> | undefined, next: Record<string, ScheduleRow[]>, keep: string[]) {
+  const out: Record<string, ScheduleRow[]> = {};
+  for (const s of keep) {
+    const rows = next[s] ?? prev?.[s];
+    if (rows) out[s] = rows;
+  }
+  return out;
+}
+
+let rebuildJob: Promise<void> | null = null;
+let missingJob: Promise<void> | null = null;
+/** 저장본에 없는 종목을 받다가 실패한 날 — 같은 날 요청마다 다시 시도해 화면이 느려지지 않게. */
+const missingTried = new Map<string, string>();
+
+/** 지금 보유 종목 전체를 다시 받아 저장한다(같은 시각에 두 번 돌지 않음). */
+function startRebuild(): Promise<void> {
+  if (rebuildJob) return rebuildJob;
+  rebuildJob = (async () => {
+    const today = todayKst();
+    const kisAccountId = getKisAccountId();
+    const { kr, us } = heldSymbols(listHoldings());
+    const [confirmed, krCalendar, krRows, usRows] = await Promise.all([
+      fetchConfirmed(today, kisAccountId),
+      kr.length ? fetchKrCalendar(today) : Promise.resolve({} as BusinessDays),
+      fetchKrRows(kr, today),
+      fetchUsRows(us, today),
+    ]);
+    const store = snapshotStore();
+    const cur = store.read();
+    const prev = cur && cur.kisAccountId === kisAccountId ? cur : null;
+    // 받는 사이 보유가 바뀌었을 수 있다 — 지금 보유 기준으로 남긴다.
+    const held = heldSymbols(listHoldings());
+    store.write({
+      version: SNAPSHOT_VERSION,
+      builtDate: today,
+      builtAt: new Date().toISOString(),
+      kisAccountId,
+      confirmed: confirmed ?? prev?.confirmed ?? [],
+      krCalendar: krCalendar ?? prev?.krCalendar ?? {},
+      kr: mergeRows(prev?.kr, krRows, held.kr),
+      us: mergeRows(prev?.us, usRows, held.us),
+    });
+  })()
+    .catch((e) => console.warn(`[upcoming-dividends] 다가오는 배당 갱신 실패: ${(e as Error).message}`))
+    .finally(() => {
+      rebuildJob = null;
+    });
+  return rebuildJob;
+}
+
+/** 저장본에 없는 보유 종목만 받아 더한다(그날 새로 산 종목). */
+function fetchMissing(kr: string[], us: string[], today: string): Promise<void> {
+  if (missingJob) return missingJob;
+  for (const s of kr) missingTried.set(`kr:${s}`, today);
+  for (const s of us) missingTried.set(`us:${s}`, today);
+  missingJob = (async () => {
+    const [krRows, usRows] = await Promise.all([fetchKrRows(kr, today), fetchUsRows(us, today)]);
+    snapshotStore().update((cur) =>
+      cur ? { ...cur, kr: { ...cur.kr, ...krRows }, us: { ...cur.us, ...usRows } } : cur
+    );
+  })()
+    .catch((e) => console.warn(`[upcoming-dividends] 새 종목 배당 일정 조회 실패: ${(e as Error).message}`))
+    .finally(() => {
+      missingJob = null;
+    });
+  return missingJob;
+}
+
+export async function getUpcomingDividends(opts: { refresh?: boolean } = {}): Promise<UpcomingDividendsResult> {
+  if (!isKisConfigured()) return { items: [], available: false, builtAt: null, refreshing: false };
+  const today = todayKst();
+  const kisAccountId = getKisAccountId();
+  const usable = () => {
+    const s = snapshotStore().read();
+    return s && s.kisAccountId === kisAccountId ? s : null;
+  };
+
+  let snap = usable();
+  if (!snap) {
+    await startRebuild(); // 처음(또는 KIS 계좌가 바뀜) — 보여 줄 게 없으니 기다린다
+    snap = usable();
+  } else if (opts.refresh || snap.builtDate !== today || snap.version !== SNAPSHOT_VERSION) {
+    void startRebuild(); // 저장본을 먼저 보여 주고 뒤에서 다시 받는다
+  }
+
+  const holdings = listHoldings();
+  if (snap && !rebuildJob) {
+    const held = heldSymbols(holdings);
+    const kr = held.kr.filter((s) => !(s in snap!.kr) && missingTried.get(`kr:${s}`) !== today);
+    const us = held.us.filter((s) => !(s in snap!.us) && missingTried.get(`us:${s}`) !== today);
+    if (kr.length || us.length) {
+      await fetchMissing(kr, us, today);
+      snap = usable();
     }
   }
 
-  const key = (i: UpcomingDividend) => i.payDate ?? i.recordDate ?? '9999';
-  return items.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+  return {
+    items: snap ? itemsFromSnapshot(snap, holdings, today, kisAccountId) : [],
+    available: true,
+    builtAt: snap?.builtAt ?? null,
+    refreshing: rebuildJob !== null,
+  };
 }

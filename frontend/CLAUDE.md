@@ -60,8 +60,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `typeof fxRate === 'function' ? fxRate : () => fxRate`로 감싸서 두 형태를
   같은 코드 경로로 처리한다. 선택 prop `expectedRows`(Dividends.tsx만 넘김)는 **지급 전 예상 배당**을 같은 색
   `--series-1`의 흐린 막대(`EXPECTED_OPACITY` 0.35, 받은 배당과 2px 틈)로 위에 얹는다 — 새 색을 안 쓰는 건 "같은 측정값의
-  미확정분"이라서다. 범례(받은 배당/예상)는 `expectedRows`가 있을 때만. Dividends.tsx는 다가오는 배당을 한 번 받아
-  (`upcoming` state) 표(`UpcomingDividends`의 `state` prop)와 이 막대(`upcomingMonthlyRows`)에 같이 넘긴다. 배당 기록이
+  미확정분"이라서다. 범례(받은 배당/예상)는 `expectedRows`가 있을 때만. Dividends.tsx는 다가오는 배당을 받아
+  (`upcoming` state, `loadUpcoming` — 응답이 `refreshing`이면 5초 뒤 다시 부르고, 카드의 새로고침은 `refresh=true`) 표(`UpcomingDividends`의 `state` prop)와 이 막대(`upcomingMonthlyRows`)에 같이 넘긴다. 배당 기록이
   세후라 예상도 세후로 맞춘다 — 확정은 세전 − 세금, 나머지는 국내 15.4%·미국 15% 원천징수 가정(`KR_WITHHOLDING`/
   `US_WITHHOLDING`). 그래프의 증권사·연도 필터를 같이 탄다. 받은 배당이 없는 달(예상만)은 클릭해도 상세 팝업을 안 연다.
   막대 위 숫자는 예상이 얹힌 달만 둘 — 받은 배당은 **진한 막대 바로 위**(흐린 막대와 겹쳐서 `--surface-1` 테두리, `paintOrder="stroke"`),

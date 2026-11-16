@@ -257,10 +257,11 @@ export async function importDividendsRecords(
 // **API 내용으로 통째로 교체**한다(brokers/toss/tossDividendSync.ts, brokers/kis/kisDividendSync.ts).
 // 증권사별로 따로 돌아서 한쪽이 실패해도 다른 쪽은 반영된다. 배당금 화면이 열릴 때 프론트가 자동으로 부른다.
 // 다가오는 배당(확정: KIS 계좌 지급 예정 / 예상: 국내 예탁원 일정·해외 권리 × 보유 수량) — src/upcomingDividends.ts.
-// 한국투자증권 키가 없으면 available:false.
-dividendsRouter.get('/upcoming', async (_req, res) => {
+// 한국투자증권 키가 없으면 available:false. 일정은 파일에 저장해 두고 하루 한 번(또는 `?refresh=true`) 백그라운드로 다시 받는다 —
+// 그동안은 저장본을 `refreshing:true`와 함께 준다.
+dividendsRouter.get('/upcoming', async (req, res) => {
   try {
-    res.json(await getUpcomingDividends());
+    res.json(await getUpcomingDividends({ refresh: req.query.refresh === 'true' }));
   } catch (err) {
     handleBrokerApiError(err, res);
   }

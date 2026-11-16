@@ -398,9 +398,17 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 
 ## 다가오는 배당·공식 실현손익 (한국투자증권, `src/upcomingDividends.ts`, `routes/kisReports.ts`)
 
-- `GET /dividends/upcoming` — `{items, available}`(KIS 키 없으면 `available:false` — 화면은 키 등록 안내를 띄운다), 6시간 캐시. 확정은 앞으로 120일,
+- `GET /dividends/upcoming?refresh=` — `{items, available, builtAt, refreshing}`(KIS 키 없으면 `available:false` — 화면은 키 등록 안내를 띄운다).
+  - **저장 + 하루 한 번 갱신**(2026-11-16 — 예전 메모리 6시간 캐시는 재시작마다 사라져 첫 진입이 ~20초): 결과(금액)가 아니라
+    **종목별 원본 일정 줄**(예탁원 줄·`overseasScheduleRows` 결과, 배당 없는 미국 종목은 `[]`) + 확정 건 + 국내휴장일을
+    `upcoming-dividends.json`(`UpcomingSnapshot`)에 저장하고, 요청마다 **오늘 날짜·지금 보유 수량**으로 `itemsFromSnapshot`(순수 함수)이
+    다시 계산한다 — 금액을 저장하면 그날 바뀐 수량이 다음 갱신까지 틀린다. 저장일(KST)이 오늘이 아니거나 `refresh`면 저장본을 바로 주고
+    `startRebuild`가 뒤에서 다시 받는다(`refreshing:true`, 동시에 하나만). 저장본에 없는 보유 종목만 그 자리에서 받아 더한다(`fetchMissing`,
+    실패한 종목은 그날 다시 시도 안 함). 저장본이 없거나 `kisAccountId`가 바뀌었으면 기다려서 받는다. 종목·확정 조회 실패는 이전 값을 유지. 확정은 앞으로 120일,
   **예상·추정은 이번 달 지급분까지만**(사용자 결정 2026-11-10 — 120일을 다 보이면 매달 지급 종목 × 계좌 수만큼 줄이 너무 많았다).
-  - **확정**: `fetchKisPeriodRights`(CTRGA011R)에서 현금지급일이 오늘 이후인 건 — 세전·세금 정확, KIS 계좌만.
+  - **확정**: `fetchKisPeriodRights`(CTRGA011R)에서 현금지급일이 오늘 이후인 건 — 세전·세금 정확, KIS 계좌만. 수량 = `cblc_qty`(기준일 잔고수량),
+    주당 = `last_alct_amt ÷ cblc_qty`(2026-11-16 실측 — 전부 있음·전부 정수 원 — 예전엔 안 읽어 "수량 × 주당"이 "-"였다). 저장 형식이 바뀌면
+    `SNAPSHOT_VERSION`을 올린다 — 다른 버전의 저장본은 보여 주되 뒤에서 다시 받는다.
   - **예상**: 예탁원 배당일정(`fetchKisDividendSchedule`, `HHKDB669102C0`, `GB1=0`)의 `per_sto_divi_amt` × 로컬 보유종목
     저장소의 수량 — **모든 증권사의 KRW 보유 종목**. **보유 종목마다 `SHT_CD`로** 지난 400일~앞으로 120일을 조회한다.
     2026-11-10 실측: 시장 전체(예전 방식)는 120일에 57건뿐(27건 금액 0) — 매달 분배 ETF는 기준일 3일 전에도 없었다.

@@ -340,6 +340,13 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 그 줄이 있어서 `git check-ignore`로 확인하고 지웠다). 빌드 산출물은 전부 `dist/`·
 `release/`로 나가므로 `build/`는 소스로만 쓰인다.
 
+## OS 알림·PDF 저장 (2026-11-17)
+
+둘 다 **백엔드(같은 메인 프로세스)가 `require('electron')`으로** 한다 — 별도 IPC를 만들지 않았다(`backend/CLAUDE.md` "계획·목표 값, 알림, 보고서 PDF").
+- 알림: `Notification`(메인 프로세스). 렌더러의 알림 권한은 `denyAllPermissions()`가 계속 거절한다 — 화면 쪽에서 `new Notification`을 쓰지 말 것.
+  dev 실행은 알림 이름이 "Electron"으로 보인다. 맥은 처음 알림 때 허용을 묻는다.
+- PDF: `BrowserWindow.webContents.printToPDF` + `dialog.showSaveDialog`. 원격 디버깅으로 띄운 개발용 인스턴스에서 CDP `Page.printToPDF`는 응답하지 않는다.
+
 ## 로그 파일과 처리 안 된 오류 (`src/logging.ts`, 2026-11-16)
 
 예전엔 콘솔에만 찍혀 설치본 사용자의 문제를 추적할 방법이 없었다. `main.ts`가 `app.setName()` 직후(로그 폴더가 이름을 따름),

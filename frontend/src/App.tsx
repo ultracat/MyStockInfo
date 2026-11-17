@@ -6,6 +6,8 @@ import StockReturns from './pages/StockReturns';
 import Dividends from './pages/Dividends';
 import Trades from './pages/Trades';
 import RealizedGains from './pages/RealizedGains';
+import Rebalance from './pages/Rebalance';
+import Report from './pages/Report';
 import Watchlist from './pages/Watchlist';
 import StockLinks from './pages/StockLinks';
 import Settings from './pages/Settings';
@@ -22,6 +24,8 @@ const PAGES = {
   dividends: Dividends,
   trades: Trades,
   realizedGains: RealizedGains,
+  rebalance: Rebalance,
+  report: Report,
   watchlist: Watchlist,
   stockLinks: StockLinks,
   settings: Settings,
@@ -35,6 +39,8 @@ type Page =
   | 'dividends'
   | 'trades'
   | 'realizedGains'
+  | 'rebalance'
+  | 'report'
   | 'watchlist'
   | 'stockLinks'
   | 'settings'
@@ -52,6 +58,26 @@ const ICON_PROPS = {
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
+
+function PrinterIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <path d="M6 9V3h12v6" />
+      <rect x="6" y="14" width="12" height="7" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+    </svg>
+  );
+}
+
+function TargetIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="1" />
+    </svg>
+  );
+}
 
 function PieIcon() {
   return (
@@ -242,6 +268,8 @@ const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] =
   { id: 'dividends', label: '배당금', icon: PercentIcon },
   { id: 'trades', label: '매매내역', icon: RepeatIcon },
   { id: 'realizedGains', label: '실현손익', icon: FileTextIcon },
+  { id: 'rebalance', label: '리밸런싱', icon: TargetIcon },
+  { id: 'report', label: '보고서', icon: PrinterIcon },
   { id: 'watchlist', label: '관심종목', icon: StarIcon },
   { id: 'stockLinks', label: '종목 링크', icon: LinkIcon },
   { id: 'settings', label: '설정', icon: SlidersIcon },

@@ -119,6 +119,8 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   **세후**, `tax`는 원천징수 세금(세전 = 합). `backend/CLAUDE.md`의 "배당 동기화(토스·한국투자증권·NH)" 절.
 - 계좌와 무관한 **API 부가 기능**(장 상태·매수 유의사항·지수·섹터(ETF 포함), 다가오는 배당, KIS 공식 실현손익,
   종목 정보·ETF 구성, 토스·NH·키움 투자원금)과 **KIS 해외주식·NH(실데이터 미검증, 모의투자 합계 제외)·키움(실키 미확인)**은 `backend/CLAUDE.md`의 해당 절.
+- **사용자 계획·목표 값(월 배당 목표·ISA/연금 납입과 한도·목표 비중·알림·목표가)은 `planner.json` 하나**, OS 알림과 보고서 PDF는 백엔드가 메인 프로세스에서 —
+  `backend/CLAUDE.md` "계획·목표 값, 알림, 보고서 PDF". 세법 한도는 기본값이 2025년 확정치라 개정되면 화면에서 바꾼다.
 - **보안 하드닝**(CSP·fuses·원격 디버깅 차단)은 `electron/CLAUDE.md` "보안 하드닝" 절 — 렌더러에 외부 자원을 들이면 **패키징본에서만** 깨진다.
 - 브로커별 상세(인증·Rate Limit·제약)는 `README.md`와 `backend/CLAUDE.md`. 연동 점검은 `npm test`(가짜 서버) + `npm run check:<broker>`(실서버).
 

@@ -304,9 +304,11 @@ export function itemsFromSnapshot(
   holdings: HoldingRow[],
   today: string,
   kisAccountId: string,
-  taxDeferred: (broker: string, accountId: string) => boolean = () => false
+  taxDeferred: (broker: string, accountId: string) => boolean = () => false,
+  until: string = monthEndOf(today)
 ): UpcomingDividend[] {
-  const monthEnd = monthEndOf(today);
+  // 예상·추정의 끝 — 기본은 이번 달 말(다가오는 배당 목록), "앞으로 12개월 예상"은 1년 뒤까지(`horizonMonths`).
+  const monthEnd = until;
   const deferred = (broker: string, accountId: string | null, currency: string) =>
     currency === 'KRW' && accountId !== null && taxDeferred(broker, accountId);
   const items: UpcomingDividend[] = snap.confirmed
@@ -485,7 +487,8 @@ function fetchMissing(kr: string[], us: string[], today: string): Promise<void> 
   return missingJob;
 }
 
-export async function getUpcomingDividends(opts: { refresh?: boolean } = {}): Promise<UpcomingDividendsResult> {
+/** `horizonMonths`가 있으면 예상·추정을 이번 달 말이 아니라 그만큼 뒤까지 만든다(앞으로 12개월 예상 배당 — 확정은 원래대로 120일). */
+export async function getUpcomingDividends(opts: { refresh?: boolean; horizonMonths?: number } = {}): Promise<UpcomingDividendsResult> {
   if (!isKisConfigured()) return { items: [], available: false, builtAt: null, refreshing: false };
   const today = todayKst();
   const kisAccountId = await getKisAccountId();
@@ -514,7 +517,16 @@ export async function getUpcomingDividends(opts: { refresh?: boolean } = {}): Pr
   }
 
   return {
-    items: snap ? itemsFromSnapshot(snap, holdings, today, kisAccountId, (b, a) => isTaxDeferredAccount(b as BrokerId, a)) : [],
+    items: snap
+      ? itemsFromSnapshot(
+          snap,
+          holdings,
+          today,
+          kisAccountId,
+          (b, a) => isTaxDeferredAccount(b as BrokerId, a),
+          opts.horizonMonths ? addDays(addMonths(today, opts.horizonMonths), -1) : undefined
+        )
+      : [],
     available: true,
     builtAt: snap?.builtAt ?? null,
     refreshing: rebuildJob !== null,

@@ -3,6 +3,7 @@ import { api } from '../api';
 import { useResumeRefresh } from '../pageActivity';
 import type { BrokerId, CredentialFieldSpec, CredentialStatus, SecureStorageStatus } from '../types';
 import { AccountLabelsCard } from './settings/AccountLabelsCard';
+import { AlertsCard } from './settings/AlertsCard';
 import { ApiKeyCard } from './settings/ApiKeyCard';
 import { BackupCard } from './settings/BackupCard';
 import { BrokerStatusCard } from './settings/BrokerStatusCard';
@@ -98,6 +99,7 @@ export default function Settings() {
       <ApiKeyCard fieldSpecs={fieldSpecs} secureStorage={secureStorage} notify={notify} onSaved={afterCredentialChange} />
       <EximbankKeyCard secureStorage={secureStorage} />
       <FxRateCard notify={notify} />
+      <AlertsCard />
       <GoogleSheetsCard secureStorage={secureStorage} notify={notify} />
       <AccountLabelsCard accounts={accounts} notify={notify} />
       <BackupCard notify={notify} />

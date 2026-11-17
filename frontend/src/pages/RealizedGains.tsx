@@ -3,10 +3,12 @@ import { api } from '../api';
 import { effectiveRate, monthlyRateOr } from '../fx';
 import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
-import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredTrade } from '../types';
+import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredHolding, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
-import { formatKrwValue } from '../format';
+import { formatKrwValue, localToday } from '../format';
+import { usePlanner } from '../usePlanner';
+import { TaxAccountLimitsCard } from './realized/TaxAccountLimitsCard';
 import OfficialRealizedCompare from '../components/OfficialRealizedCompare';
 import {
   computeRealizedSales,
@@ -66,6 +68,8 @@ export default function RealizedGains() {
   const [allDividends, setAllDividends] = useState<DividendRecord[]>([]);
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
   const [taxTypes, setTaxTypes] = useState<AccountTaxTypeEntry[]>([]);
+  const [holdings, setHoldings] = useState<StoredHolding[]>([]);
+  const plannerState = usePlanner();
 
   const [year, setYear] = useState(CURRENT_YEAR);
   const [broker, setBroker] = useState<'ALL' | BrokerId>('ALL');
@@ -92,6 +96,10 @@ export default function RealizedGains() {
       .listAccountTaxTypes()
       .then(setTaxTypes)
       .catch(() => {});
+    api
+      .listHoldingsStore()
+      .then(setHoldings)
+      .catch(() => {});
   }, []);
 
   // 메뉴를 옮겼다 돌아오면 지금 화면을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패하면 이전 값 유지.
@@ -100,6 +108,8 @@ export default function RealizedGains() {
     api.listDividends().then(setAllDividends).catch(() => {});
     api.listAccountLabels().then(setAccountLabels).catch(() => {});
     api.listAccountTaxTypes().then(setTaxTypes).catch(() => {});
+    api.listHoldingsStore().then(setHoldings).catch(() => {});
+    plannerState.reload();
   }, RESUME_REFRESH_MS);
 
   // Dividends.tsx와 같은 패턴 — 수동/실시간 환율을 합쳐 effectiveFxRate로 쓴다
@@ -185,13 +195,20 @@ export default function RealizedGains() {
   // 배당 기록의 accountId는 사용자가 직접 적는 자유 문자열이라, 토스처럼 내부
   // accountId("1")와 화면 표시 계좌번호가 다른 계좌는 표시 번호로 적혀 있을 수
   // 있다 — 세금 유형(내부 accountId 기준)을 찾기 전에 표시 번호를 되돌린다.
+  const dividendAccountOf = useCallback(
+    (d: DividendRecord): string | null => {
+      if (!d.accountId) return null;
+      const byNumber = accountLabels.find((l) => l.broker === d.broker && l.accountNumber === d.accountId);
+      return byNumber ? byNumber.accountId : d.accountId;
+    },
+    [accountLabels]
+  );
   const dividendTaxType = useCallback(
     (d: DividendRecord): AccountTaxType => {
-      if (!d.accountId) return 'GENERAL';
-      const byNumber = accountLabels.find((l) => l.broker === d.broker && l.accountNumber === d.accountId);
-      return taxTypeFor(d.broker, byNumber ? byNumber.accountId : d.accountId);
+      const accountId = dividendAccountOf(d);
+      return accountId ? taxTypeFor(d.broker, accountId) : 'GENERAL';
     },
-    [accountLabels, taxTypeFor]
+    [dividendAccountOf, taxTypeFor]
   );
 
   const dividendSummary = useMemo(() => {
@@ -519,6 +536,20 @@ export default function RealizedGains() {
           <p style={{ color: 'var(--text-muted)' }}>{year}년 일반계좌 배당 기록이 없습니다.</p>
         )}
       </div>
+
+      <TaxAccountLimitsCard
+        accounts={taxTypes}
+        planner={plannerState.planner}
+        onUpdate={plannerState.update}
+        sales={sales}
+        dividends={allDividends}
+        holdings={holdings}
+        dividendAccountOf={dividendAccountOf}
+        rateFor={monthlyRateFor}
+        accountLabels={accountLabels}
+        year={String(year)}
+        currentMonth={localToday().slice(0, 7)}
+      />
 
       {taxAdvantagedSales.length > 0 && (
         <div className="card">

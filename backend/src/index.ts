@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createApp } from './server';
 import { startAutoBackupSchedule } from './autoBackup';
+import { startAlertSchedule } from './alerts';
 
 /** apiToken은 `/api/*` 요청마다 요구하는 `Authorization: Bearer` 값이다
  *  (server.ts 참고). Electron은 실행할 때마다 새로 만들어 넘긴다. 안 주면
@@ -21,6 +22,8 @@ export function startServer(
     console.log(`[backend] listening on http://127.0.0.1:${port}`);
     // 하루 한 번 자동 로컬 백업(autoBackup.ts) — 실제 앱 실행에서만(테스트는 createApp만 쓴다).
     startAutoBackupSchedule();
+    // OS 알림(목표가·배당 입금·매수 유의사항, alerts.ts) — 마찬가지로 실제 앱 실행에서만.
+    startAlertSchedule();
   });
 
   // http.Server emits 'error' instead of throwing — without this listener,

@@ -1161,6 +1161,26 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
 - ⚠ 테스트: `test/setup.ts`가 데이터 폴더를 **전용 임시 폴더 아래 `data/`**로 둔다 — 예전처럼 `os.tmpdir()` 바로 아래면
   "데이터 폴더 옆 backups/"가 시스템 임시 폴더에 생기고 테스트가 그걸 지운다(실제로 그럴 뻔했다).
 
+## 계획·목표 값, 알림, 보고서 PDF (2026-11-17)
+
+화면 여러 곳이 쓰는 사용자 설정을 **`db/planner.ts`(`planner.json`) 하나**에 모았다 — `GET/PUT /api/planner`(보낸 필드만 검증해 바꾼다, 틀리면 400).
+월 배당 목표, 세제 혜택 계좌(ISA 유형·가입일·연도별 납입액)와 **한도 수치**, 목표 비중(리밸런싱), 알림 켜기/끄기, 관심종목 목표가. 계산은 전부 화면 `calc/*`.
+- ⚠ **한도 기본값은 2025년까지 확정된 수치**(ISA 비과세 200만/400만, 납입 연 2,000만, 연금저축 600만·합산 900만). 2026 ISA 개편(500만/1,000만, 납입 4,000만)은
+  국회 통과·시행을 확인할 수 없어(2026-11-17 검색 — 보도마다 다름) 기본값으로 쓰지 않고 화면에서 바꾸게 했다.
+- **알림**(`alerts.ts`, `startServer`가 `startAlertSchedule()`): Electron 메인의 `Notification`(렌더러는 권한을 전부 거절하므로 화면에서 못 띄운다).
+  목표가 5분(조건마다 하루 한 번, `resolveStockPrices`), 매수 유의사항 2시간(처음 실행은 기록만, `getActiveWarnings` — 토스 키 필요), 배당 입금은
+  **새 배당 기록이 생길 때마다**(`dividendSyncAll.ts`의 `onDividendsAdded` — 화면의 동기화든 백그라운드든, 최근 7일 지급분만, 4건 이상이면 묶음) +
+  한국 시간 9~21시에 4시간마다 백그라운드 동기화(KIS 권리현황·토스 거래내역 전체라 무겁다 — 자주 하지 않는다). 중복 방지 상태는 `alert-state.json`.
+  테스트는 `setNotifier`로 가로챈다(`test/plannerAlerts.test.ts`).
+- **배당 동기화 한 곳**: `dividendSyncAll.ts`의 `syncAllDividends()` — 라우트(`POST /dividends/sync`)와 알림이 같이 쓰고, 동시에 두 번 돌지 않게 진행 중인 것을 공유한다.
+  동기화 전후 id를 비교해 새 기록을 낸다(같은 내용은 id를 이어받으므로).
+- **보고서 PDF**(`routes/report.ts`, `POST /api/report/pdf`): 앱 창을 그대로 `webContents.printToPDF`(A4) → `dialog.showSaveDialog` → 파일. 화면의 인쇄 CSS
+  (`frontend/src/styles.css` `@media print`)가 사이드바·버튼·줌을 걷어 내고 다크 모드도 밝게 바꾼다. 동시에 두 번이면 409(macOS에서 printToPDF 동시 실행이 죽은 전례).
+  ⚠ CDP `Page.printToPDF`는 Electron 창에서 응답하지 않는다 — 인쇄 모양 확인은 `Emulation.setEmulatedMedia({media:'print'})` + 캡처로.
+- **12개월 예상 배당**: `GET /dividends/upcoming?months=12` — `itemsFromSnapshot`의 `until`을 1년 뒤로(확정은 원래대로 120일). 저장 일정·추정 로직은 그대로.
+- **ETF 구성 펼치기**: `GET /kis/etf-lookthrough?symbols=` — 종목마다 `fetchKisEtfComponents`(상위 30, 6시간 캐시), 구성이 비면(주식) 빠진다. 60종목까지.
+- **입금 기준 연환산 수익률**: 토스·NH·키움 원금 요약(`CashFlowSummary`)에 `byMonth`(월별 순입금, 원화 환산)를 더했다 — 화면 `calc/xirr.ts`.
+
 ## 새 버전 알림 (`src/updateCheck.ts`, `routes/about.ts`의 `/update`)
 
 자동 설치는 코드 서명이 있어야 안전해서 없고, **알림만** 한다(2026-11-16). GitHub 공개 API

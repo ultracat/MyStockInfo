@@ -10,7 +10,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   않는다** — 로케일 데이터 조회가 있어 공짜가 아니라서, 행마다 새로 만들면 포지션
   30~50개짜리 렌더 한 번에 수백 번 생성된다(과거 `HoldingsTable.tsx`에서 실제 발생).
 - `src/App.tsx` — 좌측 네비 + `page` 상태
-  (`'overview'|'dashboard'|'stockReturns'|'dividends'|'trades'|'realizedGains'|'watchlist'|'stockLinks'|'settings'|'about'`,
+  (`'overview'|'dashboard'|'stockReturns'|'dividends'|'trades'|'realizedGains'|'rebalance'|'report'|'watchlist'|'stockLinks'|'settings'|'about'`,
   기본값 `'overview'` — 사이드바 순서도 이 순서).
   새 페이지 추가 시 `Page` 타입과 `PAGES`·`NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
   **화면 유지(2026-11-16, 사용자 요청)**: 한 번 연 페이지(`visited`)는 지우지 않고 `display:none`으로 숨겨 둔다 — 메뉴를 옮겨도
@@ -388,6 +388,19 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   하지 않는 쓰기.
 - 프론트엔드 테스트: `frontend/test/*.test.ts`(`npm run test -w frontend`, 루트 `npm test`가 같이 돈다). `api.ts`는 `window`를 읽으니
   테스트할 로직은 api를 import하지 않는 순수 모듈(`fx.ts`, `csv.ts`)에 둔다.
+
+### 2026-11-17 계획·분석·알림·보고서
+- **사용자 설정은 `usePlanner()`**(`src/usePlanner.ts`, 백엔드 `planner.json`) — 월 배당 목표·ISA/연금·목표 비중·알림·목표가. 보낸 필드만 바뀐다.
+- **모든 계좌 보유는 `loadAllHoldings()`**(`src/allHoldings.ts`) — 대시보드 loadAll과 같은 경로(API 증권사 실시간 + CSV 전용 로컬), 환율 같이. 리밸런싱·보고서·배당수익률 카드가 쓴다.
+  (대시보드는 아직 자기 loadAll — 같은 규칙을 고칠 땐 둘 다.)
+- 새 화면: `pages/Rebalance.tsx`(calc/rebalance.ts — 목표 종목끼리만, 합≠100이면 비례, 매수만 배분), `pages/Report.tsx`(calc/report.ts, "PDF로 저장" → 백엔드 printToPDF).
+- 새 카드: 배당금 `DividendProjectionCard`(12개월, calc/projection.ts)·`DividendCalendarCard`·`DividendYieldCard`(calc/insights.ts), 실현손익
+  `realized/TaxAccountLimitsCard`(calc/taxAccounts.ts), 대시보드 `overview/InsightCards`(환율 효과·ETF 겹침, calc/insights.ts), 보유 종목 `PrincipalCard`에 XIRR(calc/xirr.ts),
+  설정 `settings/AlertsCard`, 관심종목 상세 `components/WatchTargetEditor`. 접힌 채 시작하는 카드는 펼쳤을 때만 조회한다(ETF 구성·월평균 환율·전체 보유).
+- **인쇄 CSS**(`styles.css` `@media print`): 사이드바·`.no-print`·줌 표시를 숨기고 줌 래퍼(transform)와 스크롤 컨테이너를 풀고 **밝은 색 토큰을 다시 선언**한다
+  (다크 모드에서 PDF가 검게 나오던 것). 숨긴 다른 화면은 이미 display:none이라 안 찍힌다.
+- 매수·매도 금액에 상태 색(--good/--critical)을 쓰지 않는다(리밸런싱 표 — TradesChart와 같은 규칙). 사이드바는 넘치면 세로 스크롤(메뉴 12개).
+- 테스트: `frontend/test/planning.test.ts`.
 
 ### 2026-11-17 큰 화면 파일 분할
 큰 화면 파일 다섯 개를 나눴다(동작 그대로 — 실데이터 화면 지문·카드 글자 해시를 분할 전후로 비교해 확인). **화면 본체엔 여러 카드가 같이

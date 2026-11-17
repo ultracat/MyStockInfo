@@ -2,7 +2,7 @@ import { fetchNhAccounts, fetchNhDepositWithdrawals, fetchNhTotalTransactions, t
 import { nhNum, nhYmd } from './nhMappers';
 import { withCache } from '../responseCache';
 import { listAccountLabels } from '../../db/accountLabels';
-import type { CashFlowSummary, CashFlowYear } from '../toss/tossCashFlows';
+import { monthRows, type CashFlowSummary, type CashFlowYear } from '../toss/tossCashFlows';
 import type { FetchOpts } from '../types';
 
 // NH투자증권(나무) 계좌의 **실제 투자원금** — 입출금내역(`/common/inquiry/v1/depositWithdrawal`, HTS 8207)에서
@@ -36,8 +36,9 @@ export function summarizeNhCashFlows(
   const years = new Map<string, CashFlowYear>();
   const s: CashFlowSummary = {
     firstDate: null, depositKrw: 0, withdrawalKrw: 0, depositUsd: 0, withdrawalUsd: 0,
-    netPrincipalKrw: 0, byYear: [], transferIn: 0, transferOut: 0,
+    netPrincipalKrw: 0, byYear: [], byMonth: [], transferIn: 0, transferOut: 0,
   };
+  const months = new Map<string, number>();
   for (const r of rows) {
     const dir = nhFlowDirection(r);
     const date = nhYmd(r.trd_dt);
@@ -53,6 +54,7 @@ export function summarizeNhCashFlows(
       yr.withdrawalKrw += amount;
     }
     years.set(y, yr);
+    months.set(date.slice(0, 7), (months.get(date.slice(0, 7)) ?? 0) + (dir === 'in' ? amount : -amount));
     if (!s.firstDate || date < s.firstDate) s.firstDate = date;
   }
   for (const r of transferRows) {
@@ -63,6 +65,7 @@ export function summarizeNhCashFlows(
   }
   s.netPrincipalKrw = s.depositKrw - s.withdrawalKrw;
   s.byYear = [...years.values()].sort((a, b) => (a.year < b.year ? -1 : 1));
+  s.byMonth = monthRows(months);
   return s;
 }
 

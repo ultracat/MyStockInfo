@@ -21,6 +21,10 @@ import { DividendSummaryCard } from './dividends/DividendSummaryCard';
 import { useDividendSync } from './dividends/useDividendSync';
 import { useInvestedByBroker } from './dividends/useInvestedByBroker';
 import { useUpcomingDividends } from './dividends/useUpcomingDividends';
+import { DividendProjectionCard } from './dividends/DividendProjectionCard';
+import { DividendCalendarCard } from './dividends/DividendCalendarCard';
+import { DividendYieldCard } from './dividends/DividendYieldCard';
+import { usePlanner } from '../usePlanner';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -62,6 +66,7 @@ export default function Dividends() {
     [upcomingRaw, records]
   );
   const sync = useDividendSync(refresh);
+  const { planner, update: updatePlanner } = usePlanner();
   const invested = useInvestedByBroker();
   const { investedByBroker, investedErrors, investedLoading, avgCostByBroker, tradesByBroker } = invested;
 
@@ -254,6 +259,17 @@ export default function Dividends() {
       />
 
       <UpcomingDividends accountLabels={accountLabels} state={upcoming} onRefresh={() => loadUpcoming(true)} />
+
+      <DividendProjectionCard
+        records={records}
+        rateFor={dividendFxRateFor}
+        goalKrw={planner?.dividendGoalMonthlyKrw ?? null}
+        onGoalChange={async (v) => void (await updatePlanner({ dividendGoalMonthlyKrw: v }))}
+      />
+
+      <DividendCalendarCard records={records} upcomingItems={upcoming.items} />
+
+      <DividendYieldCard records={records} rateFor={dividendFxRateFor} />
 
       <DividendAddCard
         syncOwnedBrokers={sync.syncOwnedBrokers}

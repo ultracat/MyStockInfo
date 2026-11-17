@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { PortfolioOverview, TossAccountCashFlows } from '../types';
-import { krw, usdFmt } from '../format';
+import { krw, localToday, usdFmt } from '../format';
 import CollapseToggle from './CollapseToggle';
+import { flowsFromMonthlyNet, xirr } from '../calc/xirr';
 
 // 보유 종목 화면(토스증권·NH투자증권) — 은행에서 넣고 뺀 돈(토스: 거래내역의 입금·출금, 백엔드 tossCashFlows.ts /
 // NH: 입출금내역, nhCashFlows.ts)으로
@@ -55,6 +56,11 @@ export default function PrincipalCard({
   const gain = assets !== null && principal !== null ? assets - principal : null;
   const rate = gain !== null && principal && principal > 0 ? (gain / principal) * 100 : null;
   const firstDate = picked.map((f) => f.firstDate).filter(Boolean).sort()[0] ?? null;
+  // 연환산 수익률(XIRR) — 입출금 시점까지 반영한다(위 수익률은 시점 무시). 입고 주식이 있으면 원금이 빠져 부풀 수 있는 건 같다.
+  const annualized =
+    assets !== null && principal !== null && picked.every((f) => f.byMonth)
+      ? xirr(flowsFromMonthlyNet(picked.flatMap((f) => f.byMonth ?? []), assets, localToday()))
+      : null;
   const transferIn = sum('transferIn');
 
   const years = new Map<string, { dk: number; wk: number; du: number; wu: number }>();
@@ -96,6 +102,13 @@ export default function PrincipalCard({
                 {gain === null ? '-' : signedWon(gain)}
               </div>
               {rate !== null && <div style={{ fontSize: 12 }}>{`${rate >= 0 ? '+' : ''}${rate.toFixed(2)}%`}</div>}
+            </div>
+            <div className="stat-tile">
+              <div className="label">연환산 수익률 (XIRR)</div>
+              <div className={`value ${annualized === null ? '' : annualized >= 0 ? 'text-good' : 'text-critical'}`}>
+                {annualized === null ? '-' : `${annualized >= 0 ? '+' : ''}${(annualized * 100).toFixed(2)}%`}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>넣고 뺀 시점을 반영한 연 수익률</div>
             </div>
           </div>
           <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 0 }}>

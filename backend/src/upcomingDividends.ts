@@ -167,8 +167,9 @@ export function planSymbolDividends(
   const medianPer = median(known.slice(-12).map((e) => e.perShare));
   const payGapRaw = median(events.filter((e) => e.payDate).map((e) => businessDaysBetween(e.recordDate, e.payDate!, cal)));
   const payGap = payGapRaw === null ? null : Math.round(payGapRaw);
+  // 지급일 **당일까지** 남긴다 — 입금이 오후 늦게 되는 경우가 있어 당일 아침에 사라지면 헷갈린다(2026-11-17 사용자 요청). 다음 날 빠진다.
   const upcoming = (recordDate: string, payDate: string | null) =>
-    (payDate ? payDate > today : recordDate >= today) && (payDate ?? recordDate) <= until;
+    (payDate ? payDate >= today : recordDate >= today) && (payDate ?? recordDate) <= until;
 
   const out: PlannedDividend[] = [];
   for (const e of events) {
@@ -303,7 +304,7 @@ export function itemsFromSnapshot(
   kisAccountId: string
 ): UpcomingDividend[] {
   const monthEnd = monthEndOf(today);
-  const items: UpcomingDividend[] = snap.confirmed.filter((c) => c.payDate !== null && c.payDate > today);
+  const items: UpcomingDividend[] = snap.confirmed.filter((c) => c.payDate !== null && c.payDate >= today); // 지급일 당일까지
   const confirmedKeys = new Set(items.map((c) => `${c.symbol}:${(c.recordDate ?? c.payDate!).slice(0, 7)}`));
 
   const krPlans = new Map<string, PlannedDividend[]>();
@@ -341,7 +342,7 @@ async function fetchConfirmed(today: string, kisAccountId: string): Promise<Upco
     for (const r of rights) {
       const pay = parseKsdDate(r.cash_dfrm_dt);
       const gross = Number(r.last_alct_amt);
-      if (!pay || pay <= today || !Number.isFinite(gross) || gross <= 0) continue;
+      if (!pay || pay < today || !Number.isFinite(gross) || gross <= 0) continue; // 지급일 당일까지(입금이 오후 늦게 되기도 함)
       const tax = Number(r.tax_amt);
       const qty = Number(r.cblc_qty); // 기준일 잔고수량 — 없으면 수량·주당을 비워 둔다(화면은 "-")
       const hasQty = Number.isFinite(qty) && qty > 0;

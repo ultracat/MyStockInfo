@@ -301,6 +301,18 @@ export type KisStockDetail =
     }
   | {
       kind: 'stock';
+      /** 현재가 기준 투자지표(주식현재가 시세) — 재무 API가 막혀도 나온다. 0인 값은 null. */
+      valuation: {
+        price: number | null;
+        per: number | null;
+        pbr: number | null;
+        eps: number | null;
+        bps: number | null;
+        marketCapEok: number | null;
+        high52w: number | null;
+        low52w: number | null;
+        foreignHoldingRate: number | null;
+      } | null;
       financials: Array<{
         period: string;
         revenueGrowth: number | null;

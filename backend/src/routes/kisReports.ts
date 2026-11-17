@@ -3,6 +3,7 @@ import {
   fetchKisEtfComponents,
   fetchKisEtfPrice,
   fetchKisFinancialRatio,
+  fetchKisStockValuation,
   fetchKisInvestOpinion,
   fetchKisNewsTitles,
   fetchKisOverseasPeriodProfit,
@@ -86,6 +87,7 @@ kisReportsRouter.get('/realized', async (req, res) => {
 const DOMESTIC_RE = /^[0-9A-Z]{6}$/;
 const num = (v: string | undefined) => (v !== undefined && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v) : null);
 const ymdDash = (s: string) => (/^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s);
+const nonZero = (v: number | null) => (v === null || v === 0 ? null : v);
 const settle = async <T>(p: Promise<T>): Promise<T | null> => p.catch(() => null);
 
 // `etf_dvdn_cycl` 코드표는 문서에 없다 — 실측 KODEX 200(분기 분배)이 '3'. 모르는 값은 그대로 둔다.
@@ -142,12 +144,27 @@ kisReportsRouter.get('/stock-detail/:symbol', async (req, res) => {
 
     const today = todayKst();
     const sixMonthsAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 183 * 864e5).toISOString().slice(0, 10);
-    const [fin, opinions] = await Promise.all([
+    const [fin, opinions, val] = await Promise.all([
       settle(fetchKisFinancialRatio(symbol)),
       settle(fetchKisInvestOpinion(symbol, sixMonthsAgo, today)),
+      settle(fetchKisStockValuation(symbol)),
     ]);
     res.json({
       kind: 'stock',
+      // 현재가 기준 투자지표 — 재무 API가 막혀도 보이게(kisStockDetail.ts 주석). 0은 "값 없음"(적자 PER 등)이라 null로.
+      valuation: val
+        ? {
+            price: num(val.stck_prpr),
+            per: nonZero(num(val.per)),
+            pbr: nonZero(num(val.pbr)),
+            eps: nonZero(num(val.eps)),
+            bps: nonZero(num(val.bps)),
+            marketCapEok: nonZero(num(val.hts_avls)),
+            high52w: nonZero(num(val.w52_hgpr)),
+            low52w: nonZero(num(val.w52_lwpr)),
+            foreignHoldingRate: num(val.hts_frgn_ehrt),
+          }
+        : null,
       financials:
         fin?.slice(0, 5).map((f) => ({
           period: /^\d{6}$/.test(f.stac_yymm ?? '') ? `${f.stac_yymm!.slice(0, 4)}-${f.stac_yymm!.slice(4)}` : (f.stac_yymm ?? ''),

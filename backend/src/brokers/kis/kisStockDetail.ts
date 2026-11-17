@@ -12,7 +12,21 @@ export function asRows<R>(v: R | readonly R[] | null | undefined): R[] {
   return v && typeof v === 'object' ? [v as R] : [];
 }
 
-/** 재무비율(연간, `FHKST66430300`) — 결산년월·매출/영업이익/순이익 증가율·ROE·EPS·BPS·부채비율. 최신순. */
+/** 현재 투자지표 — 주식현재가 시세(`FHKST01010100`)의 PER·PBR·EPS·BPS·시가총액(`hts_avls`, 억원)·52주 고저·외국인 소진율.
+ *  재무 API(`/finance/*`)가 2026-11-17부터 전부 막혀(404·OPSQ0001, 같은 키로 시세는 정상) 종목 상세가 이걸로 지표를 보여 준다. */
+export async function fetchKisStockValuation(symbol: string): Promise<KisRow<'FHKST01010100', 'output'> | null> {
+  return withCache(`kis:valuation:${symbol}`, 60_000, async () => {
+    const res = await kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', {
+      FID_COND_MRKT_DIV_CODE: 'J',
+      FID_INPUT_ISCD: symbol,
+    });
+    return asRows<KisRow<'FHKST01010100', 'output'>>(res.output)[0] ?? null;
+  });
+}
+
+/** 재무비율(연간, `FHKST66430300`) — 결산년월·매출/영업이익/순이익 증가율·ROE·EPS·BPS·부채비율. 최신순.
+ *  ⚠ 2026-11-17 실측: 이 TR과 같은 `/finance/*` 7개가 전부 실패(financial·growth·profit·stability·other-major는 HTTP 404, balance-sheet·
+ *  income-statement는 OPSQ0001) — 공식 예제는 그대로라 KIS 쪽 변경·장애로 보인다. 되살아나면 그대로 다시 보인다(칸별 실패는 null). */
 export async function fetchKisFinancialRatio(symbol: string): Promise<KisRow<'FHKST66430300', 'output'>[]> {
   return withCache(`kis:fin-ratio:${symbol}`, 24 * 3600_000, async () => {
     const res = await kisGet('/uapi/domestic-stock/v1/finance/financial-ratio', 'FHKST66430300', {

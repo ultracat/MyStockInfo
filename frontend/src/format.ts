@@ -45,3 +45,10 @@ export function formatSignedKrw(v: number): string {
 export function formatDividendMeta(count: number, quantity: number | undefined): string {
   return quantity ? `배당 ${count}건 · 보유 ${quantity}주` : `배당 ${count}건`;
 }
+
+/** 오늘(이 PC 날짜) YYYY-MM-DD — toISOString은 UTC라 한국 오전 9시 전엔 어제가 된다. */
+export function localToday(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}

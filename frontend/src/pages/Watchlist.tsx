@@ -8,6 +8,7 @@ import KisStockInsights from '../components/KisStockInsights';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
 import WarningBadges from '../components/WarningBadges';
 import { useStockWarnings } from '../marketInsights';
+import { WatchTargetEditor } from '../components/WatchTargetEditor';
 
 function formatPrice(entry: WatchlistEntry): string {
   if (entry.lastPrice === null) return '-';
@@ -247,6 +248,7 @@ export default function Watchlist() {
               </select>
             </div>
           </div>
+          <WatchTargetEditor symbol={selectedEntry.symbol} currency={selectedEntry.currency} />
           {detailLoading ? (
             <p style={{ color: 'var(--text-muted)' }}>
               불러오는 중... (처음 보는 종목은 상장 이후 전체 시세를 받느라 몇 초 걸릴 수 있습니다)

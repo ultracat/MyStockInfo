@@ -23,6 +23,8 @@ import { tossReportsRouter } from './routes/tossReports';
 import { nhReportsRouter } from './routes/nhReports';
 import { kiwoomReportsRouter } from './routes/kiwoomReports';
 import { stockLinksRouter } from './routes/stockLinks';
+import { plannerRouter } from './routes/planner';
+import { reportRouter } from './routes/report';
 
 // 127.0.0.1에만 리슨해도 **같은 머신의 브라우저에서 열린 아무 웹페이지**가 이 서버로
 // fetch할 수 있다(로컬 리슨은 다른 머신만 막는다) — 예전엔 `cors()`가 모든 origin을
@@ -65,6 +67,8 @@ export function createApp(options: { apiToken: string; requestRestart?: () => vo
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/settings', settingsRouter);
+  app.use('/api/planner', plannerRouter);
+  app.use('/api/report', reportRouter);
   app.use('/api/accounts', accountsRouter);
   app.use('/api/holdings', holdingsRouter);
   app.use('/api/holdings-store', holdingsStoreRouter);

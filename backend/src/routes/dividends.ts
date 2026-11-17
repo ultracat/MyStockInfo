@@ -13,19 +13,9 @@ import { cacheStockName } from '../db/stockNames';
 import { displayNameOf, fetchTossStockInfo, isTossConfigured } from '../brokers/toss/tossClient';
 import { handleBrokerApiError } from '../brokers/errors';
 import { resolveStockNames } from '../stockNameResolver';
-import { syncTossDividends } from '../brokers/toss/tossDividendSync';
-import { syncKisDividends } from '../brokers/kis/kisDividendSync';
 import { isKisConfigured } from '../brokers/kis/kisClient';
-import { syncNhDividends } from '../brokers/nh/nhDividendSync';
-import { isNhConfigured } from '../brokers/nh/nhClient';
-import { syncKiwoomDividends } from '../brokers/kiwoom/kiwoomDividendSync';
-import { syncLsDividends } from '../brokers/ls/lsDividendSync';
-import { isLsConfigured } from '../brokers/ls/lsClient';
-import { syncDbDividends } from '../brokers/db/dbDividendSync';
-import { isDbConfigured } from '../brokers/db/dbClient';
-import { isKiwoomConfigured } from '../brokers/kiwoom/kiwoomClient';
-import type { DividendSyncResult } from '../brokers/dividendSyncTypes';
 import { getUpcomingDividends } from '../upcomingDividends';
+import { syncAllDividends } from '../dividendSyncAll';
 import type { ImportResult } from './importResult';
 import { BROKER_IDS } from '../brokers/knownBrokers';
 import { isDividendSyncOwned } from '../brokers/rowOwnership';
@@ -265,27 +255,17 @@ export async function importDividendsRecords(
 // 그동안은 저장본을 `refreshing:true`와 함께 준다.
 dividendsRouter.get('/upcoming', async (req, res) => {
   try {
-    res.json(await getUpcomingDividends({ refresh: req.query.refresh === 'true' }));
+    // ?months=12 — 앞으로 12개월 예상 배당 카드용(예상·추정을 1년 뒤까지). 1~24로 제한.
+    const months = Number(req.query.months);
+    const horizonMonths = Number.isInteger(months) && months >= 1 && months <= 24 ? months : undefined;
+    res.json(await getUpcomingDividends({ refresh: req.query.refresh === 'true', horizonMonths }));
   } catch (err) {
     handleBrokerApiError(err, res);
   }
 });
 
 dividendsRouter.post('/sync', async (_req, res) => {
-  const jobs: Array<{ broker: BrokerId; run: () => Promise<DividendSyncResult> }> = [];
-  if (isTossConfigured()) jobs.push({ broker: 'toss', run: syncTossDividends });
-  if (isKisConfigured()) jobs.push({ broker: 'kis', run: syncKisDividends });
-  if (isNhConfigured()) jobs.push({ broker: 'nh', run: syncNhDividends });
-  if (isKiwoomConfigured()) jobs.push({ broker: 'kiwoom', run: syncKiwoomDividends });
-  if (isLsConfigured()) jobs.push({ broker: 'ls', run: syncLsDividends });
-  if (isDbConfigured()) jobs.push({ broker: 'db', run: syncDbDividends });
-  const settled = await Promise.allSettled(jobs.map((j) => j.run()));
-  const results: DividendSyncResult[] = [];
-  const errors: Array<{ broker: BrokerId; error: string }> = [];
-  settled.forEach((s, i) => {
-    if (s.status === 'fulfilled') results.push(s.value);
-    else errors.push({ broker: jobs[i].broker, error: (s.reason as Error)?.message ?? String(s.reason) });
-  });
+  const { results, errors } = await syncAllDividends();
   res.json({ results, errors });
 });
 

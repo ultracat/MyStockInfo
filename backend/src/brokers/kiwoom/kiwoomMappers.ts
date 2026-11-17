@@ -1,6 +1,6 @@
 import type { KiwoomListRow, KiwoomTxnRow } from './kiwoomClient';
 import type { HoldingPosition, TradeRecord } from '../types';
-import type { CashFlowSummary, CashFlowYear } from '../toss/tossCashFlows';
+import { monthRows, type CashFlowSummary, type CashFlowYear } from '../toss/tossCashFlows';
 
 // 키움 응답 → 앱 공통 모양. 순수 함수라 테스트(backend/test/kiwoomMappers.test.ts)가 공식 명세의 응답 예시로 직접 부른다.
 // ⚠ 실키 미검증 — 필드 뜻은 kiwoom_api_spec.json 그대로, "⚠ 가정"으로 표시한 곳은 명세에 없는 해석이다.
@@ -209,8 +209,9 @@ export function summarizeKiwoomCashFlows(rows: KiwoomTxnRow[], transferRows: Kiw
   const years = new Map<string, CashFlowYear>();
   const s: CashFlowSummary = {
     firstDate: null, depositKrw: 0, withdrawalKrw: 0, depositUsd: 0, withdrawalUsd: 0,
-    netPrincipalKrw: 0, byYear: [], transferIn: 0, transferOut: 0,
+    netPrincipalKrw: 0, byYear: [], byMonth: [], transferIn: 0, transferOut: 0,
   };
+  const months = new Map<string, number>();
   for (const r of rows) {
     const cur = str(r.crnc_cd).toUpperCase() || 'KRW';
     const dir = kiwoomFlowDirection(r);
@@ -227,6 +228,7 @@ export function summarizeKiwoomCashFlows(rows: KiwoomTxnRow[], transferRows: Kiw
       yr.withdrawalKrw += amount;
     }
     years.set(y, yr);
+    months.set(date.slice(0, 7), (months.get(date.slice(0, 7)) ?? 0) + (dir === 'in' ? amount : -amount));
     if (!s.firstDate || date < s.firstDate) s.firstDate = date;
   }
   for (const r of transferRows) {
@@ -237,6 +239,7 @@ export function summarizeKiwoomCashFlows(rows: KiwoomTxnRow[], transferRows: Kiw
   }
   s.netPrincipalKrw = s.depositKrw - s.withdrawalKrw;
   s.byYear = [...years.values()].sort((a, b) => (a.year < b.year ? -1 : 1));
+  s.byMonth = monthRows(months);
   return s;
 }
 

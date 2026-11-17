@@ -190,3 +190,24 @@ kisReportsRouter.get('/stock-detail/:symbol', async (req, res) => {
     handleBrokerApiError(err, res);
   }
 });
+
+// ETF 구성 종목(상위 30, `FHKST121600C0`) 여러 개 — 대시보드 "ETF 포함 실질 보유 비중" 카드가 보유 국내 ETF의 구성을 펼쳐 같은 종목을
+// 합친다(화면 calc/lookThrough.ts). 주식이면 구성이 비어 와서 그 종목은 응답에서 빠진다. 종목마다 따로 실패해도 나머지는 준다.
+// 구성은 6시간 캐시(kisStockDetail.ts). 국내 6자리만, 한 번에 60종목까지.
+kisReportsRouter.get('/etf-lookthrough', async (req, res) => {
+  if (!isKisConfigured()) return res.status(409).json({ error: '한국투자증권 API 키가 설정되지 않았습니다.' });
+  const symbols = [...new Set(String(req.query.symbols ?? '').split(',').map((s) => s.trim().toUpperCase()))]
+    .filter((s) => DOMESTIC_RE.test(s))
+    .slice(0, 60);
+  const etfs: Record<string, Array<{ symbol: string; name: string; weight: number }>> = {};
+  await Promise.all(
+    symbols.map(async (symbol) => {
+      const comp = await settle(fetchKisEtfComponents(symbol));
+      const rows = (comp?.components ?? [])
+        .map((c) => ({ symbol: (c.stck_shrn_iscd ?? '').trim(), name: (c.hts_kor_isnm ?? '').trim(), weight: num(c.etf_cnfg_issu_rlim) ?? 0 }))
+        .filter((c) => c.symbol && c.weight > 0);
+      if (rows.length) etfs[symbol] = rows;
+    })
+  );
+  res.json({ etfs });
+});

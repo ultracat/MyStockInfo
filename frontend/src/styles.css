@@ -82,9 +82,10 @@ body {
   flex-direction: column;
   gap: 4px;
   transition: width 0.15s ease;
-  /* .main만 스크롤되고 사이드바는 스크롤에 안 따라오도록, 높이를 뷰포트에 고정하고
-     자체 스크롤은 두지 않는다(메뉴 4개 정도라 넘칠 일도 없음). */
-  overflow: hidden;
+  /* .main만 스크롤되고 사이드바는 스크롤에 안 따라오도록 높이를 뷰포트에 고정한다. 메뉴가 12개가 돼(2026-11-17) 창이 낮으면
+     아래 항목이 잘려서, 넘칠 때만 사이드바 안에서 세로 스크롤한다. */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .sidebar.collapsed {
@@ -552,4 +553,130 @@ button.ghost:disabled {
   max-width: 200px;
   text-align: center;
   z-index: 10;
+}
+
+/* 배당 달력(DividendCalendarCard) — 7열 칸. 받은 배당은 진한 점(--series-1), 다가오는 배당은 같은 색 흐린 점(그래프의 예상 막대와 같은 규칙). */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cal-head {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
+}
+.cal-cell {
+  min-height: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.cal-cell:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+.cal-empty {
+  border: none;
+  background: transparent;
+}
+.cal-today {
+  border-color: var(--series-1);
+}
+.cal-selected {
+  background: var(--surface-2);
+}
+.cal-day {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.cal-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+.cal-amount {
+  font-size: 11px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.cal-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 3px;
+  background: var(--series-1);
+  vertical-align: middle;
+}
+.cal-dot-upcoming {
+  opacity: 0.35;
+}
+
+/* 인쇄(보고서 PDF — backend routes/report.ts가 앱 창을 printToPDF로 찍는다): 사이드바·줌 표시·버튼을 걷어 내고, 돋보기 줌(transform)과
+   스크롤 컨테이너를 풀어 문서 전체가 페이지로 흐르게 한다. 숨겨 둔 다른 화면은 이미 display:none이라 안 찍힌다. */
+@media print {
+  /* 시스템이 다크 모드여도 종이(PDF)는 밝게 — 위 :root의 밝은 색을 그대로 다시 쓴다(prefers-color-scheme: dark 규칙을 덮음). */
+  :root {
+  color-scheme: light;
+  --surface-1: #fcfcfb;
+  --surface-2: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --gridline: #e1e0d9;
+  --baseline: #c3c2b7;
+  --border: rgba(11, 11, 11, 0.1);
+  --series-1: #2a78d6; /* categorical slot 1 (blue) — weight bars, dividend bars, 매수 */
+  --series-2: #eb6834; /* categorical slot 2 (orange) — 매도, adjacent to slot 1 in the validated hue order */
+  --series-3: #1baf7a; /* categorical slot 3 (aqua) */
+  --series-4: #eda100; /* categorical slot 4 (yellow) */
+  --series-5: #e87ba4; /* categorical slot 5 (magenta) */
+  --series-6: #4a3aa7; /* categorical slot 6 (violet) — Overview.tsx 도넛 차트(보유종목/배당금 비중)가 slot 1~6을 씀, "기타"는 --baseline */
+  --good: #006300; /* profit text */
+  --critical: #d03b3b; /* loss text */
+  }
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  .sidebar,
+  .zoom-indicator,
+  .no-print {
+    display: none !important;
+  }
+  .app-shell,
+  .zoom-viewport,
+  .zoom-sizer,
+  .main {
+    display: block !important;
+    position: static !important;
+    transform: none !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .card {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+  .table-scroll {
+    overflow: visible !important;
+  }
 }

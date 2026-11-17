@@ -29,16 +29,27 @@ export interface CashFlowSummary {
   /** 달러 입출금을 그 거래의 환율로 원화 환산한 순입금(KRW 순입금 + USD 순입금×환율). 환율 없는 달러 거래가 있으면 null. */
   netPrincipalKrw: number | null;
   byYear: CashFlowYear[];
+  /** 월별 순입금(원화 환산, 입금 + / 출금 −) — 입금 기준 연환산 수익률(XIRR, 화면 calc/xirr.ts)용. 환율 없는 달러 거래는 빠진다. */
+  byMonth: Array<{ month: string; netKrw: number }>;
   transferIn: number;
   transferOut: number;
+}
+
+/** 월별 순입금 맵 → 정렬된 목록(0원인 달은 뺀다). NH·키움 요약도 같이 쓴다. */
+export function monthRows(months: Map<string, number>): Array<{ month: string; netKrw: number }> {
+  return [...months.entries()]
+    .filter(([, v]) => Math.round(v) !== 0)
+    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+    .map(([month, v]) => ({ month, netKrw: Math.round(v) }));
 }
 
 export function summarizeTossCashFlows(txns: TossTransaction[]): CashFlowSummary {
   const years = new Map<string, CashFlowYear>();
   const s: CashFlowSummary = {
     firstDate: null, depositKrw: 0, withdrawalKrw: 0, depositUsd: 0, withdrawalUsd: 0,
-    netPrincipalKrw: 0, byYear: [], transferIn: 0, transferOut: 0,
+    netPrincipalKrw: 0, byYear: [], byMonth: [], transferIn: 0, transferOut: 0,
   };
+  const months = new Map<string, number>();
   let usdKrw = 0;
   let usdUnconvertible = false;
   for (const t of txns) {
@@ -56,17 +67,22 @@ export function summarizeTossCashFlows(txns: TossTransaction[]): CashFlowSummary
     if (!row) years.set(y, (row = { year: y, depositKrw: 0, withdrawalKrw: 0, depositUsd: 0, withdrawalUsd: 0 }));
     if (!s.firstDate || t.settlementDate < s.firstDate) s.firstDate = t.settlementDate;
     const sign = isDep ? 1 : -1;
+    const m = t.settlementDate.slice(0, 7);
     if (t.currency === 'KRW') {
       if (isDep) { s.depositKrw += amount; row.depositKrw += amount; } else { s.withdrawalKrw += amount; row.withdrawalKrw += amount; }
+      months.set(m, (months.get(m) ?? 0) + sign * amount);
     } else {
       if (isDep) { s.depositUsd += amount; row.depositUsd += amount; } else { s.withdrawalUsd += amount; row.withdrawalUsd += amount; }
       const fx = Number(t.exchangeRate);
-      if (Number.isFinite(fx) && fx > 0) usdKrw += sign * amount * fx;
-      else usdUnconvertible = true;
+      if (Number.isFinite(fx) && fx > 0) {
+        usdKrw += sign * amount * fx;
+        months.set(m, (months.get(m) ?? 0) + sign * amount * fx);
+      } else usdUnconvertible = true;
     }
   }
   s.netPrincipalKrw = usdUnconvertible ? null : s.depositKrw - s.withdrawalKrw + usdKrw;
   s.byYear = [...years.values()].sort((a, b) => (a.year < b.year ? -1 : 1));
+  s.byMonth = monthRows(months);
   return s;
 }
 

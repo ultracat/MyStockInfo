@@ -123,6 +123,11 @@ export function excludeReceived(
   });
 }
 
+/** 다가오는 배당 한 건의 세후 추정 — 세금이 있으면(확정, ISA·연금의 원화 건은 0) 세전 − 세금, 없으면 국내 15.4%·미국 15% 원천징수 가정. */
+export function upcomingNet(i: Pick<UpcomingDividend, 'grossAmount' | 'tax' | 'currency'>): number {
+  return i.tax !== null ? i.grossAmount - i.tax : i.grossAmount * (1 - (i.currency === 'USD' ? US_WITHHOLDING : KR_WITHHOLDING));
+}
+
 /**
  * 그래프의 흐린 "예상" 막대 — 아직 지급 전인 다가오는 배당(확정·예상·추정)을 지급월(없으면 기준월)로 묶는다.
  * 배당 기록은 **세후**라 같은 기준으로 맞춘다: 세금이 있으면(확정, ISA·연금 계좌의 원화 건은 0) 세전 − 세금, 없으면 원천징수를 가정해 국내 15.4%·미국 15%를 뺀다
@@ -135,7 +140,7 @@ export function upcomingMonthlyRows(items: UpcomingDividend[], broker: BrokerFil
     if (broker !== 'ALL' && i.broker !== broker) continue;
     const month = (i.payDate ?? i.recordDate ?? '').slice(0, 7);
     if (!month || (year !== 'ALL' && !month.startsWith(String(year)))) continue;
-    const net = i.tax !== null ? i.grossAmount - i.tax : i.grossAmount * (1 - (i.currency === 'USD' ? US_WITHHOLDING : KR_WITHHOLDING));
+    const net = upcomingNet(i);
     const row = byMonth.get(month) ?? { month, totalKrw: 0, totalUsd: 0, count: 0 };
     if (i.currency === 'USD') row.totalUsd += net;
     else row.totalKrw += Math.round(net);

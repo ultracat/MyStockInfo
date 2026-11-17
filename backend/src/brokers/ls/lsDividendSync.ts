@@ -6,6 +6,7 @@ import { replaceSyncedDividends, type NewDividendInput } from '../../db/dividend
 import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes';
 import { classifyLedgerDividends, kstToday } from '../xingFamily';
 import { fetchLsAccount, fetchLsLedger } from './lsClient';
+import { isTaxDeferredAccount } from '../../db/accountTaxTypes';
 
 const SYNC_FROM = '2015-01-01';
 let inFlight: Promise<DividendSyncResult> | null = null;
@@ -19,7 +20,7 @@ async function runSync(): Promise<DividendSyncResult> {
   const { accountNo } = await fetchLsAccount({ forceRefresh: true });
   const rows = await fetchLsLedger(SYNC_FROM, kstToday(), '1', { forceRefresh: true });
   const byKind: Record<DividendSyncKind, number> = { dividend: 0, etfDistribution: 0, taxRefund: 0 };
-  const inputs: NewDividendInput[] = classifyLedgerDividends(rows).map((c) => {
+  const inputs: NewDividendInput[] = classifyLedgerDividends(rows, { taxDeferred: isTaxDeferredAccount('ls', accountNo) }).map((c) => {
     byKind[c.kind]++;
     return { broker: 'ls', accountId: accountNo, symbol: c.symbol, name: c.name, currency: c.currency, amount: c.amount, tax: c.tax, paidDate: c.paidDate, memo: null };
   });

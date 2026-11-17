@@ -14,11 +14,10 @@
 // - 토스: OpenAPI 3.1 → snapshots/toss.json → backend/src/brokers/toss/tossSpec.gen.ts (openapi-typescript)
 // - NH:   OpenAPI 3.0 세 개(common·krstock·gbstock) → 하나로 합친 snapshots/nh.json → backend/src/brokers/nh/nhSpec.gen.ts
 // - 키움: 저장소의 kiwoom_api_spec.json(자체 형식) → 필드 목록 snapshots/kiwoom.json → backend/src/brokers/kiwoom/kiwoomSpec.gen.ts
-// - KIS:  기계가 읽을 명세가 없다 → 공식 예제 파일(examples_llm/…)에서 API_URL·TR ID·요청 파라미터 이름을 뽑아 snapshots/kis.json.
-//         파일 내용 해시도 같이 남겨, 구조는 같고 설명만 바뀐 경우는 "참고"로만 알린다.
+// - KIS:  기계가 읽을 명세가 없다 → 공식 예제 전체를 카탈로그(backend/spec/kis-catalog.json)로 만들고, 쓰는 TR의 주소·TR ID·
+//         요청 파라미터·응답 필드를 snapshots/kis.json으로 비교한다. 실제 응답 기록·KIS 타입은 scripts/kis-verify.cjs(KIS 검증 묶음).
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 
 const root = path.join(__dirname, '..');
 const specDir = path.join(root, 'backend', 'spec');
@@ -28,6 +27,7 @@ const GEN = {
   toss: path.join(root, 'backend/src/brokers/toss/tossSpec.gen.ts'),
   nh: path.join(root, 'backend/src/brokers/nh/nhSpec.gen.ts'),
   kiwoom: path.join(root, 'backend/src/brokers/kiwoom/kiwoomSpec.gen.ts'),
+  kis: path.join(root, 'backend/src/brokers/kis/kisSpec.gen.ts'),
 };
 const TOSS_EXAMPLES = path.join(root, 'backend/test/fixtures/toss-spec-examples.json');
 const GEN_HEADER = (src) =>
@@ -202,24 +202,15 @@ async function buildKiwoom() {
   return { snapshot };
 }
 
-// ── KIS: 공식 예제 파일에서 구조만 ──────────────────────────────────────────────
-function parseKisExample(src) {
-  const apiUrl = /^API_URL\s*=\s*"([^"]+)"/m.exec(src)?.[1] ?? null;
-  const trIds = [...new Set([...src.matchAll(/tr_id\s*=\s*"([A-Z0-9]+)"/g)].map((m) => m[1]))].sort();
-  // 요청 파라미터: `params = { "CANO": cano, ... }` 블록의 키(대문자) — 우리가 보내는 이름과 같은 표기.
-  const block = /params\s*=\s*\{([\s\S]*?)\n\s*\}/.exec(src)?.[1] ?? '';
-  const params = [...new Set([...block.matchAll(/"([A-Za-z0-9_]+)"\s*:/g)].map((m) => m[1]))].sort();
-  return { apiUrl, trIds, params };
-}
+// ── KIS: 공식 예제 카탈로그 중 쓰는 TR만(scripts/kis-verify.cjs) ───────────────────────────
+// 예전엔 예제 파일 15개를 받아 요청 파라미터·파일 해시만 봤다 — 이제 응답 필드(chk_*.py COLUMN_MAPPING)까지 비교한다.
+const kisVerify = require('./kis-verify.cjs');
+let kisCatalogCache = null;
 async function buildKis() {
-  const files = [...new Set(Object.values(watch.kis.files))].sort();
-  const snapshot = {};
-  for (const f of files) {
-    const src = await getText(`https://raw.githubusercontent.com/${watch.kis.repo}/${watch.kis.branch}/${f}`);
-    const usedBy = Object.entries(watch.kis.files).filter(([, v]) => v === f).map(([k]) => k).sort();
-    snapshot[f] = { usedBy, ...parseKisExample(src), sha256: crypto.createHash('sha256').update(src).digest('hex').slice(0, 16) };
-  }
-  return { snapshot };
+  kisCatalogCache = kisVerify.fetchCatalog();
+  const used = kisVerify.usedApis(kisCatalogCache);
+  // 커밋 해시는 비교에서 빼려고 스냅샷에 넣지 않는다(예제가 안 바뀌어도 저장소 커밋은 늘 바뀐다).
+  return { snapshot: used };
 }
 
 // ── 타입 생성 ───────────────────────────────────────────────────────────────
@@ -276,6 +267,7 @@ async function genTypes() {
   await genOpenApiTypes(path.join(snapDir, 'toss.json'), GEN.toss);
   await genOpenApiTypes(path.join(snapDir, 'nh.json'), GEN.nh);
   genKiwoomTypes(path.join(snapDir, 'kiwoom.json'), GEN.kiwoom);
+  fs.writeFileSync(GEN.kis, kisVerify.generateTypes());
   console.log('타입 생성:', Object.values(GEN).map((f) => path.relative(root, f)).join(', '));
 }
 
@@ -333,6 +325,7 @@ async function update() {
   fs.mkdirSync(snapDir, { recursive: true });
   for (const [name, built] of Object.entries(out)) fs.writeFileSync(path.join(snapDir, `${name}.json`), stable(built.snapshot));
   fs.writeFileSync(TOSS_EXAMPLES, stable(out.toss.examples));
+  if (kisCatalogCache) fs.writeFileSync(path.join(specDir, 'kis-catalog.json'), kisVerify.serializeCatalog(kisCatalogCache));
   console.log('스냅샷 갱신:', Object.keys(out).map((n) => `snapshots/${n}.json`).join(', '), '+', path.relative(root, TOSS_EXAMPLES));
   await genTypes();
 }

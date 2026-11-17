@@ -35,7 +35,11 @@
     "lint": "eslint .",
     "spec:check": "node scripts/spec-watch.cjs check",
     "spec:update": "node scripts/spec-watch.cjs update",
-    "spec:types": "node scripts/spec-watch.cjs types"
+    "spec:types": "node scripts/spec-watch.cjs types",
+    "kis:verify": "node scripts/kis-verify.cjs verify",
+    "kis:catalog": "node scripts/kis-verify.cjs catalog",
+    "kis:types": "node scripts/kis-verify.cjs types",
+    "kis:record": "npm run build:backend && electron scripts/kis-live-check.cjs --record"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",

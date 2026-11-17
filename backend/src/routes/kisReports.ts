@@ -46,7 +46,8 @@ kisReportsRouter.get('/realized', async (req, res) => {
           return {
             date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
             symbol: String(r.ovrs_pdno ?? '').trim(),
-            name: String(r.ovrs_item_name ?? r.ovrs_pdno ?? '').trim(),
+            // ⚠ 공식 예제의 이 TR(TTTS3039R) 필드엔 종목명이 없다 — 오면 쓰고 없으면 종목코드(2026-11-17 kis:verify).
+            name: String((r as { ovrs_item_name?: string }).ovrs_item_name ?? r.ovrs_pdno ?? '').trim(),
             quantity: n(r.slcl_qty),
             sellAmount: n(r.frcr_sll_amt_smtl1),
             buyAmount: n(r.frcr_pchs_amt1),
@@ -102,7 +103,7 @@ kisReportsRouter.get('/stock-detail/:symbol', async (req, res) => {
       rows === null
         ? null
         : rows
-            .filter((n) => Array.from({ length: 10 }, (_, i) => n[`iscd${i + 1}`]).includes(symbol))
+            .filter((n) => Array.from({ length: 10 }, (_, i) => (n as Record<string, string>)[`iscd${i + 1}`]).includes(symbol))
             .slice(0, 15)
             .map((n) => ({
               date: ymdDash(n.data_dt),
@@ -149,7 +150,7 @@ kisReportsRouter.get('/stock-detail/:symbol', async (req, res) => {
       kind: 'stock',
       financials:
         fin?.slice(0, 5).map((f) => ({
-          period: /^\d{6}$/.test(f.stac_yymm) ? `${f.stac_yymm.slice(0, 4)}-${f.stac_yymm.slice(4)}` : f.stac_yymm,
+          period: /^\d{6}$/.test(f.stac_yymm ?? '') ? `${f.stac_yymm!.slice(0, 4)}-${f.stac_yymm!.slice(4)}` : (f.stac_yymm ?? ''),
           revenueGrowth: num(f.grs),
           operatingIncomeGrowth: num(f.bsop_prfi_inrt),
           netIncomeGrowth: num(f.ntin_inrt),

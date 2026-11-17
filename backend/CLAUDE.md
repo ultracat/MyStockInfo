@@ -1177,6 +1177,9 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
 - **보고서 PDF**(`routes/report.ts`, `POST /api/report/pdf`): 앱 창을 그대로 `webContents.printToPDF`(A4) → `dialog.showSaveDialog` → 파일. 화면의 인쇄 CSS
   (`frontend/src/styles.css` `@media print`)가 사이드바·버튼·줌을 걷어 내고 다크 모드도 밝게 바꾼다. 동시에 두 번이면 409(macOS에서 printToPDF 동시 실행이 죽은 전례).
   ⚠ CDP `Page.printToPDF`는 Electron 창에서 응답하지 않는다 — 인쇄 모양 확인은 `Emulation.setEmulatedMedia({media:'print'})` + 캡처로.
+- **planner 필드 추가(같은 날 두 번째 묶음)**: `simulation`(은퇴·목표 시뮬레이션 입력 — 범위 검증), `savingsPlans`(적립식 계획 — 종목·월 금액·시작 달),
+  `alerts.weeklySummary`. **주간 요약 알림**(`alerts.ts` `maybeWeeklySummary`, 30분마다 확인): 금요일 KST 18시 이후 그날 한 번(`lastWeeklySummary`) —
+  문구는 순수 함수 `weeklySummaryText`(순자산 기록의 7일 전 대비, 최근 7일 배당, 다음 7일 다가오는 배당(세전), 이번 달 적립이 95% 미만인 계획 — 달러 매수는 지금 환율).
 - **12개월 예상 배당**: `GET /dividends/upcoming?months=12` — `itemsFromSnapshot`의 `until`을 1년 뒤로(확정은 원래대로 120일). 저장 일정·추정 로직은 그대로.
 - **ETF 구성 펼치기**: `GET /kis/etf-lookthrough?symbols=` — 종목마다 `fetchKisEtfComponents`(상위 30, 6시간 캐시), 구성이 비면(주식) 빠진다. 60종목까지.
 - **입금 기준 연환산 수익률**: 토스·NH·키움 원금 요약(`CashFlowSummary`)에 `byMonth`(월별 순입금, 원화 환산)를 더했다 — 화면 `calc/xirr.ts`.

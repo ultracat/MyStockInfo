@@ -414,6 +414,25 @@ export interface AlertSettings {
   targetPrice: boolean;
   dividendReceived: boolean;
   warnings: boolean;
+  weeklySummary: boolean;
+}
+export interface SimulationPlan {
+  startKrw: number | null;
+  monthlyKrw: number;
+  annualReturnPct: number;
+  dividendYieldPct: number;
+  reinvest: boolean;
+  contributionGrowthPct: number;
+  inflationPct: number;
+  years: number;
+  targetAssetsKrw: number | null;
+  targetMonthlyDividendKrw: number | null;
+}
+export interface SavingsPlan {
+  symbol: string;
+  name: string;
+  monthlyKrw: number;
+  startMonth: string;
 }
 export interface WatchTarget {
   symbol: string;
@@ -427,4 +446,6 @@ export interface PlannerState {
   targets: TargetWeight[];
   alerts: AlertSettings;
   watchTargets: WatchTarget[];
+  simulation: SimulationPlan | null;
+  savingsPlans: SavingsPlan[];
 }

@@ -7,6 +7,7 @@
 // - 배당 입금: 화면의 배당 동기화든 백그라운드 동기화든 새 기록이 생기면 알린다(dividendSyncAll.ts의 onDividendsAdded). 앱이 켜져 있으면
 //   한국 시간 9~21시에 4시간마다 백그라운드로 동기화한다 — KIS 권리현황·토스 거래내역 전체를 받는 무거운 작업이라 자주 하지 않는다.
 //   지급일이 7일보다 오래된 기록(처음 동기화·과거 보정)은 알리지 않는다.
+// - 주간 요약: 금요일(KST) 18시 이후 한 번 — 이번 주 자산 변화(순자산 기록), 받은 배당, 다음 주 배당 예정, 이번 달 적립이 남은 계획.
 // - 개인 정보: 알림은 이 PC의 OS 알림 센터에만 뜬다(종목·금액 포함). 외부로 보내지 않는다.
 import { getDataDir } from './paths';
 import { JsonStore } from './jsonStore';
@@ -15,7 +16,12 @@ import { listHoldings } from './db/holdingsStore';
 import { resolveStockPrices } from './stockNameResolver';
 import { getActiveWarnings, todayKst } from './marketInsights';
 import { onDividendsAdded, syncAllDividends } from './dividendSyncAll';
-import type { DividendRecord } from './db/dividends';
+import { listDividends, type DividendRecord } from './db/dividends';
+import { listSnapshots, type SnapshotRecord } from './db/portfolioSnapshots';
+import { listTrades } from './db/tradesStore';
+import { resolveUsdKrwRate } from './exchangeRateResolver';
+import { getUpcomingDividends } from './upcomingDividends';
+import type { SavingsPlan } from './db/planner';
 
 interface AlertState {
   /** `${symbol}:above|below` → 마지막으로 알린 날(KST). */
@@ -24,6 +30,8 @@ interface AlertState {
   warningsSeen: Record<string, string[]>;
   warningsInitialized: boolean;
   lastBackgroundDividendSync: string | null;
+  /** 마지막으로 주간 요약을 보낸 날(KST, 금요일). */
+  lastWeeklySummary?: string | null;
 }
 
 function stateStore() {
@@ -155,6 +163,83 @@ export async function maybeBackgroundDividendSync(now = Date.now()): Promise<boo
   return true;
 }
 
+// ---- 주간 요약(금요일 18시 이후 한 번) -----------------------------------------------------------------------------------------
+
+const addDaysYmd = (ymd: string, d: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + d * 864e5).toISOString().slice(0, 10);
+const signedWon = (v: number) => `${v >= 0 ? '+' : '-'}${Math.abs(Math.round(v)).toLocaleString('ko-KR')}원`;
+const sumBy = <T,>(xs: T[], pick: (x: T) => number) => xs.reduce((s, x) => s + pick(x), 0);
+
+export interface WeeklySummaryInput {
+  today: string;
+  snapshots: SnapshotRecord[];
+  dividends: DividendRecord[];
+  upcoming: Array<{ payDate: string | null; grossAmount: number; currency: string }>;
+  savingsPlans: SavingsPlan[];
+  /** 이번 달 종목별 매수 금액(원화 환산). */
+  boughtThisMonthKrw: Record<string, number>;
+}
+
+/** 주간 요약 문구(순수 함수) — 이번 주 자산 변화(기록 기준), 받은 배당, 다음 주 배당 예정, 이번 달 적립이 남은 계획. */
+export function weeklySummaryText(i: WeeklySummaryInput): string {
+  const parts: string[] = [];
+  const amounts = (krwSum: number, usdSum: number) => [krwSum ? won(krwSum) : null, usdSum ? `$${usdSum.toFixed(2)}` : null].filter(Boolean).join('·');
+  const snaps = [...i.snapshots].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const latest = snaps[snaps.length - 1];
+  const weekAgo = [...snaps].reverse().find((s) => s.date <= addDaysYmd(i.today, -7));
+  if (latest && weekAgo) {
+    parts.push(`자산 ${signedWon(latest.totalMarketValueKrw - weekAgo.totalMarketValueKrw)}(${weekAgo.date.slice(5)}→${latest.date.slice(5)})`);
+  }
+  const from = addDaysYmd(i.today, -6);
+  const got = i.dividends.filter((d) => d.paidDate >= from && d.paidDate <= i.today);
+  if (got.length) {
+    const krwSum = sumBy(got.filter((d) => d.currency !== 'USD'), (d) => d.amount);
+    const usdSum = sumBy(got.filter((d) => d.currency === 'USD'), (d) => d.amount);
+    parts.push(`배당 ${got.length}건 ${amounts(krwSum, usdSum)}`);
+  }
+  const until = addDaysYmd(i.today, 7);
+  const next = i.upcoming.filter((u) => u.payDate !== null && u.payDate > i.today && u.payDate <= until);
+  if (next.length) {
+    const krwSum = sumBy(next.filter((u) => u.currency !== 'USD'), (u) => u.grossAmount);
+    const usdSum = sumBy(next.filter((u) => u.currency === 'USD'), (u) => u.grossAmount);
+    parts.push(`다음 주 배당 예정 ${next.length}건 ${amounts(krwSum, usdSum)}(세전)`);
+  }
+  const month = i.today.slice(0, 7);
+  const short = i.savingsPlans.filter((p) => p.startMonth <= month && (i.boughtThisMonthKrw[p.symbol] ?? 0) < p.monthlyKrw * 0.95);
+  if (short.length) {
+    const names = short.slice(0, 3).map((p) => p.name || p.symbol).join(', ');
+    parts.push(`이번 달 적립 남음: ${names}${short.length > 3 ? ` 외 ${short.length - 3}` : ''}`);
+  }
+  return parts.length ? parts.join(' · ') : '이번 주는 기록된 변화가 없습니다.';
+}
+
+/** 금요일(KST) 18시 이후, 그날 아직 안 보냈으면 주간 요약을 보낸다. */
+export async function maybeWeeklySummary(now = Date.now()): Promise<boolean> {
+  const planner = getPlanner();
+  if (!planner.alerts.weeklySummary) return false;
+  const kst = new Date(now + 9 * 3600_000);
+  if (kst.getUTCDay() !== 5 || kst.getUTCHours() < 18) return false;
+  const today = kst.toISOString().slice(0, 10);
+  const store = stateStore();
+  if (store.read().lastWeeklySummary === today) return false;
+  store.update((s) => ({ ...s, lastWeeklySummary: today }));
+  const upcoming = await getUpcomingDividends()
+    .then((r) => r.items)
+    .catch(() => []);
+  const rate = planner.savingsPlans.length ? ((await resolveUsdKrwRate().catch(() => null))?.rate ?? null) : null;
+  const thisMonth = today.slice(0, 7);
+  const bought: Record<string, number> = {};
+  for (const t of listTrades()) {
+    if (t.side !== 'BUY' || !t.executedAt.startsWith(thisMonth)) continue;
+    const r = t.currency === 'USD' ? rate : 1;
+    if (r) bought[t.symbol] = (bought[t.symbol] ?? 0) + t.amount * r;
+  }
+  notifyImpl(
+    '이번 주 요약',
+    weeklySummaryText({ today, snapshots: listSnapshots(), dividends: listDividends(), upcoming, savingsPlans: planner.savingsPlans, boughtThisMonthKrw: bought })
+  );
+  return true;
+}
+
 let started = false;
 
 /** startServer가 부른다 — Electron 안에서만 OS 알림, 밖이면 콘솔. 목표가 5분, 유의사항 2시간, 배당 30분마다 확인(첫 확인은 2분 뒤). */
@@ -175,11 +260,14 @@ export function startAlertSchedule(): void {
   const prices = safe('목표가', () => checkTargetPrices());
   const warnings = safe('매수 유의사항', () => checkNewWarnings());
   const dividends = safe('배당 동기화', () => maybeBackgroundDividendSync());
+  const weekly = safe('주간 요약', () => maybeWeeklySummary());
   setTimeout(() => {
     prices();
     warnings();
     dividends();
+    weekly();
     setInterval(prices, 5 * 60_000).unref();
+    setInterval(weekly, 30 * 60_000).unref();
     setInterval(warnings, 2 * 3600_000).unref();
     setInterval(dividends, 30 * 60_000).unref();
   }, 2 * 60_000).unref();

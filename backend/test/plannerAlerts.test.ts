@@ -2,7 +2,7 @@ import { resetDataDir } from './setup';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_TAX_LIMITS, getPlanner, PlannerValidationError, updatePlanner } from '../src/db/planner';
-import { maybeBackgroundDividendSync, notifyDividends, setNotifier } from '../src/alerts';
+import { maybeBackgroundDividendSync, maybeWeeklySummary, notifyDividends, setNotifier, weeklySummaryText } from '../src/alerts';
 import type { DividendRecord } from '../src/db/dividends';
 
 // 계획·목표 저장소(db/planner.ts)와 알림(alerts.ts) — 값은 지어낸 것.
@@ -11,14 +11,16 @@ beforeEach(() => resetDataDir());
 test('planner: 기본값, 보낸 필드만 바뀌고 나머지는 그대로', () => {
   const p = getPlanner();
   assert.deepEqual(p.taxLimits, DEFAULT_TAX_LIMITS);
-  assert.deepEqual(p.alerts, { targetPrice: true, dividendReceived: true, warnings: true });
+  assert.deepEqual(p.alerts, { targetPrice: true, dividendReceived: true, warnings: true, weeklySummary: true });
+  assert.equal(p.simulation, null);
+  assert.deepEqual(p.savingsPlans, []);
   updatePlanner({ dividendGoalMonthlyKrw: 500000 });
   updatePlanner({ targets: [{ symbol: 'schd', name: 'SCHD', weight: 40 }] });
   const q = getPlanner();
   assert.equal(q.dividendGoalMonthlyKrw, 500000);
   assert.deepEqual(q.targets, [{ symbol: 'SCHD', name: 'SCHD', weight: 40 }]);
   updatePlanner({ alerts: { warnings: false } });
-  assert.deepEqual(getPlanner().alerts, { targetPrice: true, dividendReceived: true, warnings: false });
+  assert.deepEqual(getPlanner().alerts, { targetPrice: true, dividendReceived: true, warnings: false, weeklySummary: true });
   updatePlanner({ taxLimits: { isaGeneral: 5_000_000 } });
   assert.equal(getPlanner().taxLimits.isaGeneral, 5_000_000);
   assert.equal(getPlanner().taxLimits.pensionTotal, DEFAULT_TAX_LIMITS.pensionTotal);
@@ -57,4 +59,49 @@ test('백그라운드 배당 동기화: 한국 시간 9~21시, 4시간 간격', 
   assert.equal(await maybeBackgroundDividendSync(at('2026-11-17T01:00:00Z')), true); // KST 10시 — 연동 증권사가 없어 빈 동기화
   assert.equal(await maybeBackgroundDividendSync(at('2026-11-17T03:00:00Z')), false); // 2시간 뒤
   assert.equal(await maybeBackgroundDividendSync(at('2026-11-17T05:30:00Z')), true); // 4시간 반 뒤
+});
+
+test('planner: 시뮬레이션·적립 계획 저장과 검증', () => {
+  const sim = { startKrw: null, monthlyKrw: 1000000, annualReturnPct: 6, dividendYieldPct: 3, reinvest: true, contributionGrowthPct: 0, inflationPct: 2.5, years: 20, targetAssetsKrw: null, targetMonthlyDividendKrw: 1000000 };
+  updatePlanner({ simulation: sim });
+  assert.deepEqual(getPlanner().simulation, sim);
+  assert.throws(() => updatePlanner({ simulation: { ...sim, years: 100 } }), PlannerValidationError);
+  assert.throws(() => updatePlanner({ simulation: { ...sim, annualReturnPct: 'x' } }), PlannerValidationError);
+  updatePlanner({ savingsPlans: [{ symbol: 'aaa', name: 'AAA', monthlyKrw: 300000, startMonth: '2026-01' }] });
+  assert.deepEqual(getPlanner().savingsPlans, [{ symbol: 'AAA', name: 'AAA', monthlyKrw: 300000, startMonth: '2026-01' }]);
+  assert.throws(() => updatePlanner({ savingsPlans: [{ symbol: 'A', monthlyKrw: 1, startMonth: '2026-1' }] }), PlannerValidationError);
+  updatePlanner({ simulation: null });
+  assert.equal(getPlanner().simulation, null);
+});
+
+test('주간 요약 문구: 자산 변화·받은 배당·다음 주 예정·적립 남음', () => {
+  const text = weeklySummaryText({
+    today: '2026-11-20',
+    snapshots: [
+      { date: '2026-11-12', totalMarketValueKrw: 1000000, totalPurchaseAmountKrw: 0, totalProfitLossKrw: 0 },
+      { date: '2026-11-13', totalMarketValueKrw: 1100000, totalPurchaseAmountKrw: 0, totalProfitLossKrw: 0 },
+      { date: '2026-11-20', totalMarketValueKrw: 1050000, totalPurchaseAmountKrw: 0, totalProfitLossKrw: 0 },
+    ],
+    dividends: [div({ paidDate: '2026-11-17' }), div({ paidDate: '2026-11-01' }), div({ paidDate: '2026-11-18', currency: 'USD', amount: 2 })],
+    upcoming: [{ payDate: '2026-11-25', grossAmount: 5000, currency: 'KRW' }, { payDate: '2026-12-25', grossAmount: 1, currency: 'KRW' }],
+    savingsPlans: [{ symbol: 'A', name: '가짜A', monthlyKrw: 100000, startMonth: '2026-01' }, { symbol: 'B', name: '가짜B', monthlyKrw: 100000, startMonth: '2026-01' }],
+    boughtThisMonthKrw: { B: 100000 },
+  });
+  assert.equal(text, '자산 -50,000원(11-13→11-20) · 배당 2건 10,000원·$2.00 · 다음 주 배당 예정 1건 5,000원(세전) · 이번 달 적립 남음: 가짜A');
+  assert.equal(
+    weeklySummaryText({ today: '2026-11-20', snapshots: [], dividends: [], upcoming: [], savingsPlans: [], boughtThisMonthKrw: {} }),
+    '이번 주는 기록된 변화가 없습니다.'
+  );
+});
+
+test('주간 요약: 금요일 18시(KST) 이후 하루 한 번, 끄면 안 보냄', async () => {
+  const got: string[] = [];
+  setNotifier((title) => void got.push(title));
+  assert.equal(await maybeWeeklySummary(Date.parse('2026-11-20T08:00:00Z')), false); // 금 17시
+  assert.equal(await maybeWeeklySummary(Date.parse('2026-11-20T09:30:00Z')), true); // 금 18시 30분
+  assert.equal(await maybeWeeklySummary(Date.parse('2026-11-20T11:00:00Z')), false); // 같은 날 두 번째
+  assert.equal(await maybeWeeklySummary(Date.parse('2026-11-21T09:30:00Z')), false); // 토요일
+  assert.deepEqual(got, ['이번 주 요약']);
+  updatePlanner({ alerts: { weeklySummary: false } });
+  assert.equal(await maybeWeeklySummary(Date.parse('2026-11-27T09:30:00Z')), false);
 });

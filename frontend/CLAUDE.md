@@ -10,7 +10,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   않는다** — 로케일 데이터 조회가 있어 공짜가 아니라서, 행마다 새로 만들면 포지션
   30~50개짜리 렌더 한 번에 수백 번 생성된다(과거 `HoldingsTable.tsx`에서 실제 발생).
 - `src/App.tsx` — 좌측 네비 + `page` 상태
-  (`'overview'|'dashboard'|'stockReturns'|'dividends'|'trades'|'realizedGains'|'rebalance'|'report'|'watchlist'|'stockLinks'|'settings'|'about'`,
+  (`'overview'|'dashboard'|'stockReturns'|'dividends'|'trades'|'realizedGains'|'analysis'|'rebalance'|'report'|'watchlist'|'stockLinks'|'settings'|'about'`,
   기본값 `'overview'` — 사이드바 순서도 이 순서).
   새 페이지 추가 시 `Page` 타입과 `PAGES`·`NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
   **화면 유지(2026-11-16, 사용자 요청)**: 한 번 연 페이지(`visited`)는 지우지 않고 `display:none`으로 숨겨 둔다 — 메뉴를 옮겨도
@@ -388,6 +388,15 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   하지 않는 쓰기.
 - 프론트엔드 테스트: `frontend/test/*.test.ts`(`npm run test -w frontend`, 루트 `npm test`가 같이 돈다). `api.ts`는 `window`를 읽으니
   테스트할 로직은 api를 import하지 않는 순수 모듈(`fx.ts`, `csv.ts`)에 둔다.
+
+### 2026-11-17 분석 화면·절세·적립·검색(두 번째 묶음)
+- `pages/Analysis.tsx` — **대시보드와 같은 `useOverviewData()`**(보유·매매·배당·월별 종가·국내 지수)를 그대로 쓰고 SPY·QQQ 월말 종가와 세금 유형만 더 받는다.
+  카드: `analysis/AnalysisCards`(벤치마크·위험·분산·비용, calc/analysis.ts), `analysis/SimulationCard`(calc/simulation.ts, 입력은 planner.simulation).
+  ⚠ 내 월간 수익률은 `monthlyAmountRows`(최근 12개월, 지금 보유 종목의 매매내역 재구성) 기준이라 기간이 최대 11~12개월이다. 자산군은 이름 정규식(`assetClassOf`).
+- 실현손익 `realized/YearEndTaxCard`(calc/yearEndTax.ts — 올해·일반 계좌·해외 상장만, 평가손익은 지금 환율 근사), 매매내역 `trades/SavingsPlanCard`(calc/savings.ts).
+- **빠른 종목 검색** `components/QuickSearch.tsx`(calc/stockSearch.ts) — App.tsx가 ⌘K/Ctrl+K와 사이드바 "종목 검색"으로 연다. 열 때마다 로컬 저장소 네 개만 읽는다(API 호출 없음).
+  `position: fixed` 모달이라 `document.body`로 포털(화면 줌 절). 이동은 App의 `goTo`.
+- 테스트: `frontend/test/analysis.test.ts`.
 
 ### 2026-11-17 계획·분석·알림·보고서
 - **사용자 설정은 `usePlanner()`**(`src/usePlanner.ts`, 백엔드 `planner.json`) — 월 배당 목표·ISA/연금·목표 비중·알림·목표가. 보낸 필드만 바뀐다.

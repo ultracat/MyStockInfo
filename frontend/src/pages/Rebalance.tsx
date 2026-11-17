@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadAllHoldings, type HoldingLine } from '../allHoldings';
 import { rebalance } from '../calc/rebalance';
-import { krw } from '../format';
+import { krw, formatSignedKrw } from '../format';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import { usePlanner } from '../usePlanner';
 import type { TargetWeight } from '../types';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
-const signedWon = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${krw.format(Math.abs(Math.round(v)))}원`;
+// 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
+const signedWon = formatSignedKrw;
 
 /**
  * 리밸런싱 — 종목별 목표 비중을 정해 두면, 모든 증권사·계좌를 합친 지금 보유와 비교해 얼마를 사고팔면 맞춰지는지 계산한다(calc/rebalance.ts).
@@ -117,8 +118,8 @@ export default function Rebalance() {
               </div>
               <div className="stat-tile">
                 <div className="label">목표 비중 합계</div>
-                <div className="value" style={{ color: draftTargets.length && Math.abs(result.targetSum - 100) > 0.01 ? 'var(--critical)' : undefined }}>
-                  {result.targetSum.toFixed(1)}%
+                <div className="value">
+                  {result.targetSum.toFixed(1)}%{draftTargets.length > 0 && Math.abs(result.targetSum - 100) > 0.01 ? ' ⚠' : ''}
                 </div>
                 {draftTargets.length > 0 && Math.abs(result.targetSum - 100) > 0.01 && (
                   <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>100%로 비례 환산해 계산합니다</div>

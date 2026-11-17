@@ -3,9 +3,10 @@ import type { AlertSettings } from '../../types';
 
 const ITEMS: Array<{ key: keyof AlertSettings; label: string; hint: string }> = [
   { key: 'dividendReceived', label: '배당 입금', hint: '배당 동기화로 새 배당 기록이 생기면(최근 7일 지급분). 앱이 켜져 있으면 한국 시간 9~21시에 4시간마다 백그라운드로 동기화합니다.' },
-  { key: 'targetPrice', label: '관심종목 목표가', hint: '관심종목 상세에서 정한 목표가 이상·이하가 되면(조건마다 하루 한 번, 5분마다 확인).' },
+  { key: 'targetPrice', label: '관심종목 목표가', hint: '관심종목 상세에서 정한 목표가 이상·이하가 되면(조건마다 하루 한 번, 그 시장이 열려 있을 때 5분마다 확인).' },
   { key: 'weeklySummary', label: '주간 요약', hint: '금요일 저녁(18시 이후) 한 번 — 이번 주 자산 변화, 받은 배당, 다음 주 배당 예정, 이번 달 적립이 남은 계획.' },
   { key: 'warnings', label: '보유 종목 매수 유의사항', hint: '보유 종목에 토스증권 매수 유의사항(투자경고 등)이 새로 붙으면(2시간마다 확인, 토스증권 키 필요).' },
+  { key: 'hideDetails', label: '알림에 종목·금액 숨기기', hint: '켜면 알림에 종류만 보이고 종목 이름·금액은 숨깁니다(잠금 화면·화면 공유에 보유가 드러나지 않게).' },
 ];
 
 /**

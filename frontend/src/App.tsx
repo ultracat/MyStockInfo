@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MAX_ZOOM, MIN_ZOOM, useZoom } from './useZoom';
 import Overview from './pages/Overview';
 import Dashboard from './pages/Dashboard';
@@ -282,6 +282,23 @@ function ZoomIndicator({
   );
 }
 
+/**
+ * 한 번 연 화면 하나 — memo라서 App의 상태(검색 창 열림, 줌 sizer 높이 등)가 바뀌어도 숨겨 둔 화면까지 다시 그리지 않는다
+ * (2026-11-17 UI 점검: 카드를 펼칠 때마다 높이가 바뀌어 열어 둔 화면 전부가 다시 렌더됐다). 바뀌는 건 `active`뿐.
+ */
+const PageSlot = memo(function PageSlot({ id, active }: { id: Page; active: boolean }) {
+  const PageComponent = PAGES[id];
+  return (
+    <div style={active ? undefined : { display: 'none' }}>
+      <PageActivity active={active}>
+        <PageErrorBoundary page={id}>
+          <PageComponent />
+        </PageErrorBoundary>
+      </PageActivity>
+    </div>
+  );
+});
+
 const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] = [
   { id: 'overview', label: '대시보드', icon: PieIcon },
   { id: 'dashboard', label: '보유 종목', icon: GridIcon },
@@ -348,6 +365,7 @@ export default function App() {
   const scrollByPage = useRef<Partial<Record<Page, number>>>({});
   // 빠른 종목 검색(⌘K / Ctrl+K) — 어느 화면에서든. 입력칸에 글자를 치는 중이어도 연다(⌘·Ctrl 조합이라 겹치지 않음).
   const [searchOpen, setSearchOpen] = useState(false);
+  const closeSearch = useCallback(() => setSearchOpen(false), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
@@ -380,7 +398,7 @@ export default function App() {
 
   return (
     <div className="app-shell" style={{ '--z': zoom } as React.CSSProperties}>
-      <QuickSearch open={searchOpen} onClose={() => setSearchOpen(false)} onNavigate={(p) => goTo(p)} />
+      <QuickSearch open={searchOpen} onClose={closeSearch} onNavigate={goTo} />
       <nav className={`sidebar${collapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-header">
           {!collapsed && <h1>MyStock</h1>}
@@ -424,18 +442,9 @@ export default function App() {
           style={{ height: mainHeight > 0 ? mainHeight * zoom : undefined }}
         >
           <main className="main" ref={mainRef}>
-            {visited.map((id) => {
-              const PageComponent = PAGES[id];
-              return (
-                <div key={id} style={id === page ? undefined : { display: 'none' }}>
-                  <PageActivity active={id === page}>
-                    <PageErrorBoundary page={id}>
-                      <PageComponent />
-                    </PageErrorBoundary>
-                  </PageActivity>
-                </div>
-              );
-            })}
+            {visited.map((id) => (
+              <PageSlot key={id} id={id} active={id === page} />
+            ))}
           </main>
         </div>
       </div>

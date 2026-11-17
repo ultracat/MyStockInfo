@@ -30,6 +30,13 @@ const CURRENT_YEAR = new Date().getFullYear();
 
 // 배당금 화면 — 2026-11-17 나눴다: 데이터 훅(dividends/use*.ts), 계산(calc/dividends.ts), 카드(dividends/*Card.tsx).
 // 여기엔 여러 카드가 같이 쓰는 것만 둔다 — 배당 기록, 연도 필터, 환율(오늘·지급월 평균), 계좌 별칭, 상단 총합계.
+/** 이번 달 마지막 날(이 PC 날짜). */
+function monthEndLocal(): string {
+  const d = new Date();
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return `${last.getFullYear()}-${String(last.getMonth() + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+}
+
 export default function Dividends() {
   const [records, setRecords] = useState<DividendRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -61,9 +68,12 @@ export default function Dividends() {
   const { upcoming: upcomingRaw, loadUpcoming } = useUpcomingDividends();
   // 이미 받은 배당(같은 증권사·계좌·종목·지급일 기록)은 다가오는 배당 목록·그래프에서 뺀다 — 지급일 당일까지 남는 항목이
   // 입금(기록) 뒤에도 남아 있지 않게(calc/dividends.ts excludeReceived).
+  // 백엔드에서 12개월치를 한 번 받는다(2026-11-17 UI 점검 — 예전엔 12개월 카드가 따로 한 번 더 받아 표와 어긋날 수 있었다).
+  // 목록·월별 그래프의 예상 막대는 예전처럼 "확정 + 이번 달 지급 예상·추정"만, 12개월 카드와 달력은 전부.
+  const upcomingAll = useMemo(() => (upcomingRaw.items ? excludeReceived(upcomingRaw.items, records) : null), [upcomingRaw, records]);
   const upcoming = useMemo(
-    () => (upcomingRaw.items ? { ...upcomingRaw, items: excludeReceived(upcomingRaw.items, records) } : upcomingRaw),
-    [upcomingRaw, records]
+    () => (upcomingAll ? { ...upcomingRaw, items: upcomingAll.filter((i) => i.status === 'confirmed' || ((i.payDate ?? i.recordDate) ?? '') <= monthEndLocal()) } : upcomingRaw),
+    [upcomingRaw, upcomingAll]
   );
   const sync = useDividendSync(refresh);
   const { planner, update: updatePlanner } = usePlanner();
@@ -261,13 +271,16 @@ export default function Dividends() {
       <UpcomingDividends accountLabels={accountLabels} state={upcoming} onRefresh={() => loadUpcoming(true)} />
 
       <DividendProjectionCard
+        items={upcomingAll}
+        available={upcomingRaw.available}
+        error={upcomingRaw.error}
         records={records}
         rateFor={dividendFxRateFor}
         goalKrw={planner?.dividendGoalMonthlyKrw ?? null}
         onGoalChange={async (v) => void (await updatePlanner({ dividendGoalMonthlyKrw: v }))}
       />
 
-      <DividendCalendarCard records={records} upcomingItems={upcoming.items} />
+      <DividendCalendarCard records={records} upcomingItems={upcomingAll} />
 
       <DividendYieldCard records={records} rateFor={dividendFxRateFor} />
 

@@ -119,15 +119,16 @@ export function RiskCard({
                   </td>
                   <td>{plain(h.volatility)}</td>
                   {matrix[i].map((c, j) => (
-                    <td key={j} style={{ color: c !== null && i !== j && c >= 0.7 ? 'var(--critical)' : undefined }}>
+                    <td key={j} style={{ fontWeight: c !== null && i !== j && c >= 0.7 ? 700 : undefined }}>
                       {c === null ? '-' : c.toFixed(2)}
+                      {c !== null && i !== j && c >= 0.7 ? ' 높음' : ''}
                     </td>
                   ))}
                 </tr>
               ))}
             </tbody>
           </table>
-          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>오른쪽 표는 종목끼리 상관계수(1이면 똑같이 움직임). 0.7 이상은 붉게 — 함께 오르내려 분산 효과가 작습니다.</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>오른쪽 표는 종목끼리 상관계수(1이면 똑같이 움직임). 0.7 이상은 굵게 "높음" — 함께 오르내려 분산 효과가 작습니다.</p>
         </div>
       )}
     </div>

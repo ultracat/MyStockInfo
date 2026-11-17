@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { PortfolioOverview, TossAccountCashFlows } from '../types';
 import { krw, localToday, usdFmt } from '../format';
@@ -57,10 +57,15 @@ export default function PrincipalCard({
   const rate = gain !== null && principal && principal > 0 ? (gain / principal) * 100 : null;
   const firstDate = picked.map((f) => f.firstDate).filter(Boolean).sort()[0] ?? null;
   // 연환산 수익률(XIRR) — 입출금 시점까지 반영한다(위 수익률은 시점 무시). 입고 주식이 있으면 원금이 빠져 부풀 수 있는 건 같다.
-  const annualized =
-    assets !== null && principal !== null && picked.every((f) => f.byMonth)
-      ? xirr(flowsFromMonthlyNet(picked.flatMap((f) => f.byMonth ?? []), assets, localToday()))
-      : null;
+  // 이분법(최대 200회 × 흐름 수)이라 렌더마다 다시 돌지 않게 입력이 바뀔 때만
+  const annualized = useMemo(
+    () =>
+      assets !== null && principal !== null && picked.every((f) => f.byMonth)
+        ? xirr(flowsFromMonthlyNet(picked.flatMap((f) => f.byMonth ?? []), assets, localToday()))
+        : null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [assets, principal, flows, accountSeqs.join(',')]
+  );
   const transferIn = sum('transferIn');
 
   const years = new Map<string, { dk: number; wk: number; du: number; wu: number }>();

@@ -170,3 +170,14 @@ test('종목 검색: 코드 일치 우선, 이름 일부, 빈 검색어는 보�
   assert.deepEqual(searchStocks(idx, '리츠').map((e) => e.symbol), ['222220']);
   assert.equal(searchStocks(idx, 'xyz')[0].symbol, 'XYZ');
 });
+
+test('벤치마크: 수익률 열에 빈 달이 끼면(연속 아님) 그 기간은 비교하지 않는다', () => {
+  const mine = [
+    { month: '2026-06', r: 0.1 },
+    { month: '2026-08', r: 0.1 }, // 7월 빠짐
+    { month: '2026-09', r: 0.1 },
+  ];
+  const rows = benchmarkTable(mine, {}, 9);
+  assert.notEqual(rows.find((r) => r.months === 1)!.mine, null);
+  assert.equal(rows.find((r) => r.months === 3)!.mine, null);
+});

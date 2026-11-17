@@ -53,6 +53,9 @@ const BACKGROUND_WRITES = [
   /^\/about\/(client-error|update-check|open-logs)$/,
   /^\/backup\/auto$/,
   /^\/report\/pdf$/, // 보고서 PDF 저장 — 데이터를 바꾸지 않는다
+  // 계획·목표 값(알림 설정·목표 비중·납입액 등) — 보유·배당 데이터와 무관해서, "데이터 변경"으로 잡으면 숨긴 화면이 다음에 보일 때
+  // 간격 제한을 건너뛰고 무거운 배당 동기화까지 다시 돌았다(2026-11-17 UI 점검). 화면끼리는 usePlanner 공유 저장소로 맞춘다.
+  /^\/planner$/,
 ];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

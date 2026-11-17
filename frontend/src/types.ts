@@ -415,6 +415,7 @@ export interface AlertSettings {
   dividendReceived: boolean;
   warnings: boolean;
   weeklySummary: boolean;
+  hideDetails: boolean;
 }
 export interface SimulationPlan {
   startKrw: number | null;

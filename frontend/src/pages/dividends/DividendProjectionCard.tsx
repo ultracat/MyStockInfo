@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../../api';
 import CollapseToggle from '../../components/CollapseToggle';
 import DividendsChart from '../../components/DividendsChart';
-import { excludeReceived } from '../../calc/dividends';
 import { projectionRows, rowsKrw } from '../../calc/projection';
 import { krw, localToday } from '../../format';
 import type { DividendRecord, UpcomingDividend } from '../../types';
@@ -13,43 +11,33 @@ import type { DividendRecord, UpcomingDividend } from '../../types';
  * 추정은 지난 일정으로 짐작한 것이라(주당 = 최근 12회 중간값) 배당 정책이 바뀌면 틀린다 — 카드 설명에 적는다.
  */
 export function DividendProjectionCard({
+  items,
+  available,
+  error,
   records,
   rateFor,
   goalKrw,
   onGoalChange,
 }: {
+  /** 다가오는 배당 12개월치(받은 것은 이미 뺀 것) — 배당금 화면이 한 번 받아 목록·달력과 같이 쓴다. null = 불러오는 중. */
+  items: UpcomingDividend[] | null;
+  available: boolean;
+  error: string | null;
   records: DividendRecord[];
   rateFor: (month: string) => number | null;
   goalKrw: number | null;
   onGoalChange: (v: number | null) => Promise<void>;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [items, setItems] = useState<UpcomingDividend[] | null>(null);
-  const [available, setAvailable] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [goalDraft, setGoalDraft] = useState('');
   const [goalMsg, setGoalMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    api
-      .getUpcomingDividends(false, 12)
-      .then((r) => {
-        if (!alive) return;
-        setItems(r.items);
-        setAvailable(r.available);
-      })
-      .catch((e) => alive && setError((e as Error).message));
-    return () => {
-      alive = false;
-    };
-  }, []);
   useEffect(() => setGoalDraft(goalKrw ? String(goalKrw) : ''), [goalKrw]);
 
   const today = localToday();
   const view = useMemo(() => {
     if (!items) return null;
-    const { months, received, expected } = projectionRows(excludeReceived(items, records), records, today, 12);
+    const { months, received, expected } = projectionRows(items, records, today, 12);
     const exp = rowsKrw(expected, rateFor);
     const got = rowsKrw(received, rateFor);
     return { months, received, expected, totalKrw: exp.krw + got.krw, unconvertedUsd: exp.unconvertedUsd + got.unconvertedUsd };

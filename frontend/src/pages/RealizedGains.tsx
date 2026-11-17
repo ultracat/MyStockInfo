@@ -222,6 +222,7 @@ export default function RealizedGains() {
     let krwTotal = 0;
     let usdTotal = 0;
     let convertedKrw = 0;
+    let grossKrw = 0; // 금융소득 종합과세 기준(2,000만원)은 세전 — 기록 금액(세후) + 세금
     let unconvertedCount = 0;
     const byBroker = new Map<BrokerId, { krw: number; usd: number; totalKrw: number; count: number }>();
     for (const d of rows) {
@@ -235,20 +236,22 @@ export default function RealizedGains() {
           unconvertedCount += 1;
         } else {
           convertedKrw += d.amount * rate;
+          grossKrw += (d.amount + (d.tax ?? 0)) * rate;
           entry.totalKrw += d.amount * rate;
         }
       } else {
         krwTotal += d.amount;
         entry.krw += d.amount;
         convertedKrw += d.amount;
+        grossKrw += d.amount + (d.tax ?? 0);
         entry.totalKrw += d.amount;
       }
       byBroker.set(d.broker, entry);
     }
     const brokerRows = BROKER_ORDER.filter((b) => byBroker.has(b)).map((b) => ({ broker: b, ...byBroker.get(b)! }));
-    return { count: rows.length, krwTotal, usdTotal, convertedKrw, unconvertedCount, brokerRows };
+    return { count: rows.length, krwTotal, usdTotal, convertedKrw, grossKrw, unconvertedCount, brokerRows };
   }, [allDividends, year, broker, dividendTaxType, monthlyRateFor]);
-  const dividendRatio = dividendSummary.convertedKrw / FINANCIAL_INCOME_THRESHOLD_KRW;
+  const dividendRatio = dividendSummary.grossKrw / FINANCIAL_INCOME_THRESHOLD_KRW;
 
   // 연말 절세 도우미 — 고른 연도·증권사와 상관없이 **올해** 전체(일반 계좌) 기준.
   const thisYearOverseasGainKrw = useMemo(
@@ -263,10 +266,21 @@ export default function RealizedGains() {
     for (const d of allDividends) {
       if (d.paidDate.slice(0, 4) !== String(CURRENT_YEAR) || dividendTaxType(d) !== 'GENERAL') continue;
       const rate = d.currency === 'USD' ? monthlyRateFor(d.paidDate.slice(0, 7)) : 1;
-      if (rate) total += d.amount * rate;
+      if (rate) total += (d.amount + (d.tax ?? 0)) * rate; // 종합과세 기준은 세전
     }
     return total;
   }, [allDividends, dividendTaxType, monthlyRateFor]);
+  // ISA 한도용 매매손익 — 계좌마다 따로 이동평균한다(종목 단위로 섞으면 다른 계좌의 매입가가 ISA 손익에 섞인다, 2026-11-17 점검).
+  // 해외주식 양도세 계산(위 sales)은 예전처럼 종목 단위 그대로.
+  const isaSales = useMemo(() => {
+    const out: RealizedSale[] = [];
+    for (const t of taxTypes) {
+      if (t.taxType !== 'ISA') continue;
+      const own = allTrades.filter((x) => x.broker === t.broker && x.accountId === t.accountId);
+      if (own.length) out.push(...computeRealizedSales(own, monthlyRateFor).sales);
+    }
+    return out;
+  }, [taxTypes, allTrades, monthlyRateFor]);
   const isGeneralAccount = useCallback((b: string, accountId: string) => taxTypeFor(b as BrokerId, accountId) === 'GENERAL', [taxTypeFor]);
 
   function accountDisplay(b: BrokerId, accountId: string): string {
@@ -570,7 +584,7 @@ export default function RealizedGains() {
         accounts={taxTypes}
         planner={plannerState.planner}
         onUpdate={plannerState.update}
-        sales={sales}
+        sales={isaSales}
         dividends={allDividends}
         holdings={holdings}
         dividendAccountOf={dividendAccountOf}

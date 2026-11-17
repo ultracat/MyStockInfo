@@ -53,8 +53,10 @@ export function YearEndTaxCard({
         </div>
         <div className="stat-tile">
           <div className="label">금융소득(배당) / 2,000만원</div>
-          <div className="value" style={{ color: ratio >= 0.8 ? 'var(--critical)' : undefined }}>{(ratio * 100).toFixed(0)}%</div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>올해 일반 계좌 세후 배당 {won(dividendIncomeKrw)} 기준(이자 제외)</div>
+          <div className="value">
+            {(ratio * 100).toFixed(0)}%{ratio >= 0.8 ? ' ⚠ 기준 가까움' : ''}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>올해 일반 계좌 세전 배당 {won(dividendIncomeKrw)} 기준(이자 제외)</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
@@ -100,7 +102,7 @@ export function YearEndTaxCard({
         </div>
       </div>
       {ratio >= 0.8 && (
-        <p className="text-critical" style={{ fontSize: 13 }}>
+        <p style={{ fontSize: 13, fontWeight: 700 }}>
           올해 배당소득이 금융소득 종합과세 기준(2,000만원, 이자 포함)의 80%를 넘었습니다. 넘으면 초과분이 다른 소득과 합산 과세됩니다 — ISA·연금 계좌 활용을 검토하세요.
         </p>
       )}

@@ -13,6 +13,7 @@ import { DividendCards } from './overview/DividendCards';
 import { HoldingsCards } from './overview/HoldingsCards';
 import { TrendCards } from './overview/TrendCards';
 import { useOverviewData } from './overview/useOverviewData';
+import { FxEffectCard, LookThroughCard } from './overview/InsightCards';
 
 /**
  * 대시보드 — 전체 브로커/계좌를 한데 합친 요약 화면. 다른 화면들(보유 종목/배당금/
@@ -140,6 +141,8 @@ export default function Overview() {
         rateFor={dividendFxRateFor}
         qtyBySymbol={qtyBySymbol}
       />
+      <FxEffectCard holdings={holdings} trades={trades} currentFx={toKrw(1, 'USD')} />
+      <LookThroughCard holdings={holdings} toKrw={toKrw} />
       <TrendCards
         monthlyReturnRows={monthlyReturnRows}
         monthlyAmountRows={monthlyAmountRows}

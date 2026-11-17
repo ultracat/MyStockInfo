@@ -26,6 +26,7 @@ import type {
   KisStockDetail,
   TossAccountCashFlows,
   UpcomingDividend,
+  PlannerState,
   TradeRecord,
   WatchlistEntry,
 } from './types';
@@ -51,6 +52,7 @@ const BACKGROUND_WRITES = [
   // 화면 데이터와 무관한 쓰기(오류 기록·새 버전 알림 설정·로그 폴더 열기) — 다른 화면을 다시 불러오게 하지 않는다.
   /^\/about\/(client-error|update-check|open-logs)$/,
   /^\/backup\/auto$/,
+  /^\/report\/pdf$/, // 보고서 PDF 저장 — 데이터를 바꾸지 않는다
 ];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -278,12 +280,24 @@ export const api = {
     ),
   // 한국투자증권 키가 있어야 한다 — 없으면 upcoming은 available:false, realized는 409.
   // 일정은 백엔드에 저장돼 하루 한 번 다시 받는다 — `refreshing`이면 뒤에서 받는 중(잠시 뒤 다시 부른다), `refresh`는 지금 다시 받기.
-  getUpcomingDividends: (refresh = false) =>
+  // `months`를 주면 예상·추정을 이번 달 말이 아니라 그만큼 뒤까지(앞으로 12개월 예상 배당 카드).
+  getUpcomingDividends: (refresh = false, months?: number) =>
     request<{ items: UpcomingDividend[]; available: boolean; builtAt: string | null; refreshing: boolean }>(
-      `/dividends/upcoming${refresh ? '?refresh=true' : ''}`
+      `/dividends/upcoming?${new URLSearchParams({ ...(refresh ? { refresh: 'true' } : {}), ...(months ? { months: String(months) } : {}) })}`
     ),
+  // 계획·목표 값 — 보낸 필드만 바뀐다(db/planner.ts).
+  getPlanner: () => request<PlannerState>('/planner'),
+  // 지금 화면(보고서)을 PDF로 — 메인 프로세스가 저장 대화상자를 띄운다. 취소하면 saved: null.
+  saveReportPdf: (fileName: string) => request<{ saved: string | null }>('/report/pdf', { method: 'POST', body: JSON.stringify({ fileName }) }),
+  updatePlanner: (patch: Partial<PlannerState>) =>
+    request<PlannerState>('/planner', { method: 'PUT', body: JSON.stringify(patch) }),
   getKisRealized: (from: string, to: string) =>
     request<{ accountId: string; rows: KisRealizedRow[]; overseasRows: KisRealizedRow[] | null }>(`/kis/realized?from=${from}&to=${to}`),
+  // 보유 국내 ETF의 구성 종목(상위 30) — 주식은 응답에서 빠진다. KIS 키 없으면 409.
+  getEtfLookThrough: (symbols: string[]) =>
+    request<{ etfs: Record<string, Array<{ symbol: string; name: string; weight: number }>> }>(
+      `/kis/etf-lookthrough?symbols=${encodeURIComponent(symbols.join(','))}`
+    ),
   getKisStockDetail: (symbol: string) => request<KisStockDetail>(`/kis/stock-detail/${encodeURIComponent(symbol)}`),
   getTossCashFlows: (opts?: { forceRefresh?: boolean }) =>
     request<TossAccountCashFlows[]>(`/toss/cash-flows${opts?.forceRefresh ? '?refresh=true' : ''}`),

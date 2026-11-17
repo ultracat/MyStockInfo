@@ -339,6 +339,8 @@ export interface TossAccountCashFlows {
   withdrawalUsd: number;
   netPrincipalKrw: number | null;
   byYear: Array<{ year: string; depositKrw: number; withdrawalKrw: number; depositUsd: number; withdrawalUsd: number }>;
+  /** 월별 순입금(원화 환산, 입금 +) — 연환산 수익률(XIRR)용. 예전 백엔드 응답엔 없을 수 있다. */
+  byMonth?: Array<{ month: string; netKrw: number }>;
   transferIn: number;
   transferOut: number;
 }
@@ -386,4 +388,43 @@ export interface RestoreBackupResult {
   skipped: string[];
   secrets: 'restored' | 'not-in-backup' | 'keyring-unavailable';
   restarting: boolean;
+}
+
+/** 계획·목표 값(백엔드 db/planner.ts) — 월 배당 목표, ISA·연금 설정과 한도, 목표 비중, 알림 설정·관심종목 목표가. */
+export interface TaxLimits {
+  isaGeneral: number;
+  isaSeomin: number;
+  isaAnnualContribution: number;
+  pensionSavings: number;
+  pensionTotal: number;
+}
+export interface TaxAccountPlan {
+  broker: BrokerId;
+  accountId: string;
+  isaType?: 'GENERAL' | 'SEOMIN';
+  openedOn?: string;
+  contributions: Record<string, number>;
+}
+export interface TargetWeight {
+  symbol: string;
+  name: string;
+  weight: number;
+}
+export interface AlertSettings {
+  targetPrice: boolean;
+  dividendReceived: boolean;
+  warnings: boolean;
+}
+export interface WatchTarget {
+  symbol: string;
+  above: number | null;
+  below: number | null;
+}
+export interface PlannerState {
+  dividendGoalMonthlyKrw: number | null;
+  taxLimits: TaxLimits;
+  taxAccounts: TaxAccountPlan[];
+  targets: TargetWeight[];
+  alerts: AlertSettings;
+  watchTargets: WatchTarget[];
 }

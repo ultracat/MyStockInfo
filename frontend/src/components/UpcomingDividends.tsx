@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { AccountLabel, UpcomingDividend } from '../types';
 import { BROKER_LABELS } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
-import { krw, usd4dp, usdFmt } from '../format';
+import { krw, localToday, usd4dp, usdFmt } from '../format';
 import CollapseToggle from './CollapseToggle';
 
 // 다가오는 배당(백엔드 upcomingDividends.ts) — 한국투자증권 키로만 만든다. 키가 없으면(`available:false`) 카드 자리에
@@ -106,13 +106,6 @@ export default function UpcomingDividends({
       )}
     </div>
   );
-}
-
-/** 오늘(이 PC 날짜) YYYY-MM-DD — 지급일 당일 표시용. toISOString은 UTC라 한국 오전 9시 전엔 어제가 된다. */
-function localToday(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
 const money = (currency: 'KRW' | 'USD', v: number) => (currency === 'USD' ? usdFmt.format(v) : `${krw.format(v)}원`);

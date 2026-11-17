@@ -108,6 +108,13 @@ export default function UpcomingDividends({
   );
 }
 
+/** 오늘(이 PC 날짜) YYYY-MM-DD — 지급일 당일 표시용. toISOString은 UTC라 한국 오전 9시 전엔 어제가 된다. */
+function localToday(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 const money = (currency: 'KRW' | 'USD', v: number) => (currency === 'USD' ? usdFmt.format(v) : `${krw.format(v)}원`);
 const perShareText = (currency: 'KRW' | 'USD', v: number) => (currency === 'USD' ? usd4dp.format(v) : `${krw.format(v)}원`);
 
@@ -124,6 +131,8 @@ function DividendSection({
   accountLabels: AccountLabel[];
 }) {
   const total = rows.reduce((s, i) => s + i.grossAmount, 0);
+  // 지급일 당일 항목은 받은 기록이 생기기 전까지 목록에 남는다(입금이 오후 늦게 되기도 함) — "오늘 지급"으로 구분해 보여 준다.
+  const today = localToday();
   return (
     <section style={{ marginTop: 16 }}>
       <h4 style={{ margin: '0 0 8px' }}>
@@ -151,7 +160,10 @@ function DividendSection({
             <tbody>
               {rows.map((i, idx) => (
                 <tr key={`${i.broker}:${i.accountId}:${i.symbol}:${i.recordDate}:${idx}`}>
-                  <td>{i.payDate ?? '미정'}</td>
+                  <td>
+                    {i.payDate ?? '미정'}
+                    {i.payDate === today && <span className="today-badge">오늘 지급</span>}
+                  </td>
                   <td>{i.recordDate ?? '-'}</td>
                   <td style={{ textAlign: 'left' }}>
                     <span

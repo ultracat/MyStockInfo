@@ -490,7 +490,10 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   연속조회, 1tps 리미터) 중 `sll_qty > 0`인 매도 줄. `rlzt_pfls`는 수수료·세금 차감 손익. KIS 키 없으면 409.
   같은 응답의 `overseasRows`는 해외 기간손익(`TTTS3039R`, 원화 기준) — 실패하면 null. 두 TR 다 10분 캐시
   (국내·해외 비교 카드가 같은 기간으로 두 번 부른다).
-- `GET /kis/stock-detail/:symbol` — 국내 6자리(`[0-9A-Z]{6}`)만. 먼저 ETF 현재가(`FHPST02400000`)를 불러
+- `GET /kis/stock-detail/:symbol` — 국내 6자리(`[0-9A-Z]{6}`)만. 주식이면 **현재가 기준 투자지표 `valuation`**(주식현재가 시세 `FHKST01010100`의
+  `per`·`pbr`·`eps`·`bps`·`hts_avls`(억원)·`w52_hgpr/lwpr`·`hts_frgn_ehrt`, 0은 null)을 같이 준다 — ⚠ 2026-11-17 실측: 재무 API `/finance/*` 7개가
+  **전부 실패**(financial·growth·profit·stability·other-major-ratios는 HTTP 404, balance-sheet·income-statement는 `OPSQ0001`, 대·소문자 파라미터 모두,
+  같은 키로 시세는 정상) — 공식 예제는 그대로라 KIS 쪽 변경·장애로 보인다. 재무비율 칸은 null로 두고 되살아나면 그대로 보인다. 먼저 ETF 현재가(`FHPST02400000`)를 불러
   **`etf_cnfg_issu_cnt > 0`이면 ETF**(주식이면 NAV 등이 전부 0으로 온다, 실측). ETF → NAV·괴리율(`dprt`)·추적오차
   (`trc_errt`)·순자산(`etf_ntas_ttam`, 억원)·분배주기(`etf_dvdn_cycl`, 코드표 없음 — KODEX 200이 `3`=분기)·구성종목
   (`FHKST121600C0` output2 — **상위 30개만**, 비중 합 ~83%). 주식 → 연간 재무비율(`FHKST66430300`, 최신 줄은 결산 전

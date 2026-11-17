@@ -9,6 +9,7 @@ import { krw } from '../format';
 
 const pct = (v: number | null, digits = 2) => (v === null ? '-' : `${v.toFixed(digits)}%`);
 const won = (v: number | null) => (v === null ? '-' : `${krw.format(Math.round(v))}원`);
+const times = (v: number | null) => (v === null ? '-' : `${v.toFixed(2)}배`);
 const muted = { color: 'var(--text-muted)', fontSize: 13 } as const;
 
 function News({ items }: { items: StockNewsItem[] | null }) {
@@ -156,9 +157,42 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
         </>
       ) : (
         <>
+          <h4>투자지표 (현재가 기준)</h4>
+          {detail.valuation === null ? (
+            <p style={muted}>불러오지 못했습니다.</p>
+          ) : (
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>PER</th>
+                    <th>PBR</th>
+                    <th>EPS</th>
+                    <th>BPS</th>
+                    <th>시가총액</th>
+                    <th>52주 최고</th>
+                    <th>52주 최저</th>
+                    <th>외국인 소진율</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{times(detail.valuation.per)}</td>
+                    <td>{times(detail.valuation.pbr)}</td>
+                    <td>{won(detail.valuation.eps)}</td>
+                    <td>{won(detail.valuation.bps)}</td>
+                    <td>{detail.valuation.marketCapEok === null ? '-' : `${krw.format(detail.valuation.marketCapEok)}억원`}</td>
+                    <td>{won(detail.valuation.high52w)}</td>
+                    <td>{won(detail.valuation.low52w)}</td>
+                    <td>{pct(detail.valuation.foreignHoldingRate)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
           <h4>재무비율 (연간)</h4>
           {detail.financials === null ? (
-            <p style={muted}>불러오지 못했습니다.</p>
+            <p style={muted}>한국투자증권 재무 API가 지금 응답하지 않아 불러오지 못했습니다. 위 투자지표는 현재가 기준입니다.</p>
           ) : detail.financials.length === 0 ? (
             <p style={muted}>재무 정보가 없습니다.</p>
           ) : (

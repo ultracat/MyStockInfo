@@ -80,8 +80,11 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   패키징된 앱(아래 "Mac 배포용 빌드" 참고)과 `electron .`(인자 없이)은 이 컴파일된 산출물로
   뜬다 — dev 스크립트가 `src/index.cjs`를 명시적으로 지정하는 이유가 바로 이 `"main"`
   변경과 dev 워크플로를 분리하기 위해서다.
-- 백엔드 코드를 고쳤다면 **`npm run build:backend`를 먼저 실행**하지 않으면 이 워크스페이스가
-  참조하는 `@mystock/backend`(`dist/index.js`)가 최신이 아니다.
+- 이 워크스페이스는 `@mystock/backend`(`dist/index.js`)를 require한다 — **루트 `npm run dev`는 `scripts/dev-electron.cjs`가
+  백엔드 `tsc -w`를 돌리며 오류 0건으로 다시 빌드될 때마다, 그리고 `electron/src/**`가 바뀔 때마다 Electron을 다시 띄운다**(2026-11-17).
+  이전 프로세스가 완전히 끝난 뒤 띄운다(단일 인스턴스 락·백엔드 포트). 사용자가 앱을 끝내면 스크립트도 끝나 `concurrently -k`가 Vite까지 내린다.
+  ⚠ 다시 뜰 때마다 토스 토큰을 새로 받는다(메모리 토큰) — 토스 쪽을 연달아 고칠 땐 감안. dev 밖(`electron` 워크스페이스 `npm run dev`
+  단독, 실서버 점검)은 여전히 `npm run build:backend`를 먼저 돌려야 dist가 최신이다.
 
 ## 플랫폼별 배포용 빌드 (`npm run package:mac`/`package:linux`/`package:win`, 루트에서)
 
@@ -439,5 +442,4 @@ safeStorage는 **비동기 API만** 쓴다(Electron 45에서 동기 API 사용 �
   참고.
 - Windows NSIS 인스톨러(`MyStock Setup *.exe`)는 실제 설치 마법사 플로우까지는 검증하지
   않았다 — 위 "Windows" 참고.
-- 백엔드 dev 모드 파일 변경 시 자동 재시작 안 됨 — 수동으로 `build:backend` 후 Electron
-  재시작 필요.
+- dev 자동 재시작은 루트 `npm run dev`에서만 — 위 "개발/빌드".

@@ -46,8 +46,9 @@ npm run build:backend   # electron이 dist/index.js를 require하므로 최초 1
 npm run dev              # frontend(Vite) + electron을 동시에 실행
 ```
 
-- **백엔드(`backend/src/**`)를 수정하면 `npm run build:backend`로 재빌드 후 Electron을
-  재시작해야 반영된다.** 프론트엔드(`frontend/src/**`)는 Vite HMR로 자동 반영된다.
+- **`npm run dev` 중엔 백엔드(`backend/src/**`)·Electron 메인(`electron/src/**`)을 고치면 저절로 다시 빌드하고 Electron을 다시 띄운다**
+  (`scripts/dev-electron.cjs` — `tsc -w`가 오류 0건으로 끝날 때마다, 오류가 있으면 지금 앱을 둔다. 다시 뜰 때마다 토스 토큰을 새로 받는다).
+  프론트엔드(`frontend/src/**`)는 Vite HMR로 자동 반영된다. dev 밖에서 백엔드를 쓰는 것(실서버 점검 `check:*` 등)은 여전히 `npm run build:backend`.
 - 백엔드는 `127.0.0.1`에서만 리슨한다 (외부 노출 없음). 포트는 4317이 기본이고, 사용 중이면
   빈 포트로 옮긴다(dev Vite 5173도 마찬가지) — `electron/CLAUDE.md`의 "포트는 고정이 아니다" 참고.
 - `npm run build` (backend → frontend → electron 순서)로 전체 빌드 검증 가능.
@@ -125,4 +126,3 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 
 - **키움·LS·DB 실키 연동 확인**(키를 받으면 `check:kiwoom`/`check:ls`/`check:db -- --record` 먼저), KIS 해외·NH 실데이터 검증(`check:kis`/`check:nh`), KIS 모의투자
 - 배포용 빌드 코드 서명/공증 (Mac Apple Developer ID, Windows 코드 서명 인증서 — 현재는 서명 없이 배포)
-- 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

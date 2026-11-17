@@ -362,6 +362,19 @@ td {
 
 /* 다가오는 배당 표의 계좌·종목 칸 — 국내 ETF 이름과 "증권사 · 별칭 (계좌번호)"가 길어 기본 창 폭(1280)에서도 표가 넘쳐
    오른쪽 세전 금액 칸이 잘렸다(2026-11-17). 표 컨테이너(.table-scroll, container-type) 폭의 24%씩으로 줄이고 전체는 title로 본다. */
+/* 다가오는 배당 — 지급일이 오늘인 행(받은 기록이 생기면 목록에서 빠진다). 상태 색이 아니라 중립 배지. */
+.today-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .upcoming-cell-truncate {
   display: inline-block;
   vertical-align: bottom;

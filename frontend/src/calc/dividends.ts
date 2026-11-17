@@ -94,11 +94,6 @@ export function monthlySummaryRows(records: DividendRecord[]): MonthlySummaryRow
     .sort((a, b) => (a.month < b.month ? -1 : 1));
 }
 
-/**
- * 그래프의 흐린 "예상" 막대 — 아직 지급 전인 다가오는 배당(확정·예상·추정)을 지급월(없으면 기준월)로 묶는다.
- * 배당 기록은 **세후**라 같은 기준으로 맞춘다: 확정은 세전 − 세금, 나머지는 원천징수를 가정해 국내 15.4%·미국 15%를 뺀다
- * (ETF 분배금의 과세 대상분 차이 등은 무시한 근사). 그래프와 같은 증권사·연도 필터를 탄다.
- */
 /** 받은 기록과 다가오는 배당의 지급일이 이만큼(일) 안이면 같은 배당으로 본다 — 실제 입금일·직접 적은 날짜가 예상 지급일과 하루이틀
  *  어긋나도 맞추되, 미국 주간 분배 ETF(7일 간격)의 다음 주 몫은 남게 7일보다 좁게. */
 const RECEIVED_MATCH_DAYS = 3;
@@ -128,7 +123,12 @@ export function excludeReceived(
   });
 }
 
-/** 다가오는 배당 → 월별 예상 막대(받은 것은 호출부가 `excludeReceived`로 미리 뺀다). */
+/**
+ * 그래프의 흐린 "예상" 막대 — 아직 지급 전인 다가오는 배당(확정·예상·추정)을 지급월(없으면 기준월)로 묶는다.
+ * 배당 기록은 **세후**라 같은 기준으로 맞춘다: 세금이 있으면(확정, ISA·연금 계좌의 원화 건은 0) 세전 − 세금, 없으면 원천징수를 가정해 국내 15.4%·미국 15%를 뺀다
+ * (ETF 분배금의 과세 대상분 차이 등은 무시한 근사). 그래프와 같은 증권사·연도 필터를 탄다.
+ * 받은 것은 호출부가 `excludeReceived`로 미리 뺀다.
+ */
 export function upcomingMonthlyRows(items: UpcomingDividend[], broker: BrokerFilter, year: YearFilter): MonthlySummaryRow[] {
   const byMonth = new Map<string, MonthlySummaryRow>();
   for (const i of items) {

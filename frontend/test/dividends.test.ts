@@ -7,6 +7,7 @@ import {
   grandTotal,
   investedAsOf,
   quantityBySymbol,
+  excludeReceived,
   upcomingMonthlyRows,
 } from '../src/calc/dividends';
 import type { DividendRecord, StoredTrade, UpcomingDividend } from '../src/types';
@@ -70,6 +71,20 @@ test('예상 배당: 확정은 세전−세금, 나머지는 국내 15.4%·미�
     2026
   );
   assert.deepEqual(rows, [{ month: '2026-12', totalKrw: 846 + 900, totalUsd: 8.5, count: 3 }]);
+});
+
+test('다가오는 배당: 받은 기록이 있는 것만 뺀다 — 같은 증권사라도 계좌가 다르면 남기고, 계좌 칸이 빈 기록은 증권사 단위', () => {
+  const up = (p: Partial<UpcomingDividend>): UpcomingDividend =>
+    ({ status: 'estimated', broker: 'kb', accountId: '111-11', symbol: 'A', name: 'A', currency: 'KRW', payDate: '2026-11-17', recordDate: null, quantity: 1, perShare: null, grossAmount: 1000, tax: null, source: 'ksd-schedule', ...p }) as UpcomingDividend;
+  const items = [up({}), up({ accountId: '222-22' }), up({ broker: 'kis', accountId: '333-33' }), up({ payDate: '2026-12-17' })];
+  const left = excludeReceived(items, [{ broker: 'kb', accountId: '111-11', symbol: 'A', paidDate: '2026-11-17' }]);
+  assert.deepEqual(left.map((i) => `${i.broker}/${i.accountId}/${i.payDate}`), ['kb/222-22/2026-11-17', 'kis/333-33/2026-11-17', 'kb/111-11/2026-12-17']);
+  const byBroker = excludeReceived(items, [{ broker: 'kb', accountId: null, symbol: 'A', paidDate: '2026-11-17' }]);
+  assert.deepEqual(byBroker.map((i) => `${i.broker}/${i.accountId}`), ['kis/333-33', 'kb/111-11']);
+  // 입금일이 예상 지급일과 3일 안으로 어긋나도 같은 배당, 7일 뒤(주간 분배)는 다른 배당
+  assert.equal(excludeReceived([up({})], [{ broker: 'kb', accountId: '111-11', symbol: 'A', paidDate: '2026-11-19' }]).length, 0);
+  assert.equal(excludeReceived([up({})], [{ broker: 'kb', accountId: '111-11', symbol: 'A', paidDate: '2026-11-10' }]).length, 1);
+  assert.equal(excludeReceived([up({})], [{ broker: 'kb', accountId: '111-11', symbol: 'B', paidDate: '2026-11-17' }]).length, 1, '다른 종목');
 });
 
 test('증권사별 줄: 달러가 있으면 원화/달러/합계(환산) 3줄, 배당은 지급월 환율, 투자금은 오늘 환율', () => {

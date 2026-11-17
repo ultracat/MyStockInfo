@@ -99,6 +99,36 @@ export function monthlySummaryRows(records: DividendRecord[]): MonthlySummaryRow
  * 배당 기록은 **세후**라 같은 기준으로 맞춘다: 확정은 세전 − 세금, 나머지는 원천징수를 가정해 국내 15.4%·미국 15%를 뺀다
  * (ETF 분배금의 과세 대상분 차이 등은 무시한 근사). 그래프와 같은 증권사·연도 필터를 탄다.
  */
+/** 받은 기록과 다가오는 배당의 지급일이 이만큼(일) 안이면 같은 배당으로 본다 — 실제 입금일·직접 적은 날짜가 예상 지급일과 하루이틀
+ *  어긋나도 맞추되, 미국 주간 분배 ETF(7일 간격)의 다음 주 몫은 남게 7일보다 좁게. */
+const RECEIVED_MATCH_DAYS = 3;
+const dayNumber = (ymd: string) => Date.UTC(+ymd.slice(0, 4), +ymd.slice(5, 7) - 1, +ymd.slice(8, 10)) / 864e5;
+
+/**
+ * 다가오는 배당에서 **이미 받은 것**을 뺀다 — 다가오는 배당은 지급일 당일까지 남는데(입금이 오후 늦게 되기도 함), **같은 계좌에 같은
+ * 종목의 배당이 들어왔으면**(받은 배당 기록 — 토스·NH·키움은 실제 입금, KB 등은 직접 입력, 한국투자증권은 지급일 동기화) 그때 목록·
+ * 그래프에서 빠진다(2026-11-17 사용자 요청). 같은 증권사·**계좌**·종목이고 지급일이 앞뒤 3일 안이면 같은 배당 — 한 증권사 여러 계좌에
+ * 같은 종목이 있으면 받은 계좌 몫만 빠진다(계좌 칸이 빈 기록은 그 증권사 전체로 본다).
+ */
+export function excludeReceived(
+  items: UpcomingDividend[],
+  received: Pick<DividendRecord, 'broker' | 'accountId' | 'symbol' | 'paidDate'>[]
+): UpcomingDividend[] {
+  const byKey = new Map<string, Array<{ accountId: string | null; day: number }>>();
+  for (const r of received) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(r.paidDate)) continue;
+    const k = `${r.broker}|${r.symbol}`;
+    byKey.set(k, [...(byKey.get(k) ?? []), { accountId: r.accountId ?? null, day: dayNumber(r.paidDate) }]);
+  }
+  return items.filter((i) => {
+    if (!i.payDate) return true;
+    const day = dayNumber(i.payDate);
+    const got = byKey.get(`${i.broker}|${i.symbol}`) ?? [];
+    return !got.some((r) => Math.abs(r.day - day) <= RECEIVED_MATCH_DAYS && (r.accountId === null || i.accountId === null || r.accountId === i.accountId));
+  });
+}
+
+/** 다가오는 배당 → 월별 예상 막대(받은 것은 호출부가 `excludeReceived`로 미리 뺀다). */
 export function upcomingMonthlyRows(items: UpcomingDividend[], broker: BrokerFilter, year: YearFilter): MonthlySummaryRow[] {
   const byMonth = new Map<string, MonthlySummaryRow>();
   for (const i of items) {

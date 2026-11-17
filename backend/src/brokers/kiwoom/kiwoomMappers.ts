@@ -1,3 +1,4 @@
+import type { KiwoomListRow, KiwoomTxnRow } from './kiwoomClient';
 import type { HoldingPosition, TradeRecord } from '../types';
 import type { CashFlowSummary, CashFlowYear } from '../toss/tossCashFlows';
 
@@ -28,7 +29,7 @@ export function kwYmd(v: unknown): string {
 
 /** 계좌평가잔고(kt00018) 종목 → 보유. **같은 종목이 여러 줄**(현금·신용 잔고 등 — 공식 예시에도 삼성전자 두 줄)로 올 수
  *  있어 종목별로 합친다. 가격 필드는 부호(전일 대비 방향)가 붙어 올 수 있어 절댓값으로 쓴다. */
-export function mapKiwoomDomesticPositions(items: Record<string, unknown>[]): HoldingPosition[] {
+export function mapKiwoomDomesticPositions(items: KiwoomListRow<'kt00018', 'acnt_evlt_remn_indv_tot'>[]): HoldingPosition[] {
   const bySymbol = new Map<string, HoldingPosition>();
   for (const r of items) {
     const symbol = kwSymbol(r.stk_cd);
@@ -73,7 +74,7 @@ export function mapKiwoomDomesticPositions(items: Record<string, unknown>[]): Ho
 }
 
 /** 미국주식 원장잔고(ust21070) `result_list` → 보유(USD만). 수익률 `pl_rt`는 퍼센트. */
-export function mapKiwoomUsPositions(items: Record<string, unknown>[]): HoldingPosition[] {
+export function mapKiwoomUsPositions(items: KiwoomListRow<'ust21070', 'result_list'>[]): HoldingPosition[] {
   const out: HoldingPosition[] = [];
   for (const r of items) {
     const quantity = kwNum(r.poss_qty) || kwNum(r.qty);
@@ -102,7 +103,7 @@ export function mapKiwoomUsPositions(items: Record<string, unknown>[]): HoldingP
 /** 위탁종합거래내역(kt00015) 매수(tp 4)·매도(tp 5) → 체결. 방향은 요청 코드로 정해져 적요를 해석하지 않는다.
  *  id는 거래일 + 거래번호(`trde_no`, 9자리). 원화 줄은 국내, USD 줄은 미국 주식으로 본다(그 밖의 통화는 뺀다).
  *  ⚠ 가정: 해외 줄의 단가는 `trde_unit`("거래단가/환율" — 무엇이 오는지 불분명)을 쓰지 않고 외화 거래금액 ÷ 수량으로 구한다. */
-export function mapKiwoomTrades(rows: Record<string, unknown>[], side: 'BUY' | 'SELL'): TradeRecord[] {
+export function mapKiwoomTrades(rows: KiwoomTxnRow[], side: 'BUY' | 'SELL'): TradeRecord[] {
   const out: TradeRecord[] = [];
   for (const r of rows) {
     const date = kwYmd(r.trde_dt);
@@ -164,7 +165,7 @@ export interface KiwoomDividendCandidate {
  *  - 원화: `exct_amt`(정산금액)가 계좌에 들어온 세후 금액, `incm_resi_tax`(소득/주민세)가 원천징수 세금.
  *    정산금액이 0이면 거래금액 − 세금.
  *  - 달러: `fc_exct_amt`(정산금액(외))가 세후, `frgn_pay_txam`(외국납부세액(외))이 현지 세금. 없으면 `fc_trde_amt`. */
-export function classifyKiwoomDividends(rows: Record<string, unknown>[]): KiwoomDividendCandidate[] {
+export function classifyKiwoomDividends(rows: KiwoomTxnRow[]): KiwoomDividendCandidate[] {
   const out: KiwoomDividendCandidate[] = [];
   for (const r of rows) {
     const summary = str(r.rmrk_nm);
@@ -190,7 +191,7 @@ export function classifyKiwoomDividends(rows: Record<string, unknown>[]): Kiwoom
 const NOT_PRINCIPAL = /배당|분배|이자|이용료|환급|세금|세액|수수료|취소|정정|환전/;
 
 /** 입출금 줄 하나의 방향 — 입출구분명(`io_tp_nm`)·적요에 "입금"/"출금". 배당·이자·세금·환전 등은 원금이 아니다(null). */
-export function kiwoomFlowDirection(r: Record<string, unknown>): 'in' | 'out' | null {
+export function kiwoomFlowDirection(r: KiwoomTxnRow): 'in' | 'out' | null {
   const io = str(r.io_tp_nm);
   const summary = str(r.rmrk_nm);
   if (NOT_PRINCIPAL.test(summary) || NOT_PRINCIPAL.test(io)) return null;
@@ -204,7 +205,7 @@ export function kiwoomFlowDirection(r: Record<string, unknown>): 'in' | 'out' | 
 
 /** 입출금(tp 1) → 원금 요약(토스·NH와 같은 모양). 원화 줄만(달러 입출금은 환전으로 들어오는 게 보통이라 원금에서 뺀다).
  *  타사 입고 건수는 입출고(tp 2)의 "입고" 적요. ⚠ 가정: 금액은 거래금액(`trde_amt`), 없으면 정산금액. */
-export function summarizeKiwoomCashFlows(rows: Record<string, unknown>[], transferRows: Record<string, unknown>[] = []): CashFlowSummary {
+export function summarizeKiwoomCashFlows(rows: KiwoomTxnRow[], transferRows: KiwoomTxnRow[] = []): CashFlowSummary {
   const years = new Map<string, CashFlowYear>();
   const s: CashFlowSummary = {
     firstDate: null, depositKrw: 0, withdrawalKrw: 0, depositUsd: 0, withdrawalUsd: 0,
@@ -241,7 +242,7 @@ export function summarizeKiwoomCashFlows(rows: Record<string, unknown>[], transf
 
 /** 공식 실현손익 → 비교 카드 행(KIS와 같은 모양). 국내 ka10073: `tdy_sel_pl`은 수수료·세금 차감 후
  *  (공식 예시: 158200 − 97602.96 − 500 − 284 = 59813.04). */
-export function mapKiwoomDomesticRealized(rows: Record<string, unknown>[]) {
+export function mapKiwoomDomesticRealized(rows: KiwoomListRow<'ka10073', 'dt_stk_rlzt_pl'>[]) {
   return rows
     .filter((r) => kwNum(r.cntr_qty) > 0)
     .map((r) => {
@@ -261,7 +262,7 @@ export function mapKiwoomDomesticRealized(rows: Record<string, unknown>[]) {
 }
 
 /** 미국 ust21530(원화 기준 요청) → 비교 카드 행. `pl_amt`는 수수료·제세금 차감 손익으로 본다(⚠ 가정). */
-export function mapKiwoomUsRealized(rows: Record<string, unknown>[]) {
+export function mapKiwoomUsRealized(rows: KiwoomListRow<'ust21530', 'result_list'>[]) {
   return rows
     .filter((r) => kwNum(r.sell_qty) > 0)
     .map((r) => ({

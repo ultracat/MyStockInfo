@@ -4,6 +4,7 @@ import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
 import { SecretJsonStore } from '../../secretJsonStore';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
+import type { KiwoomRequests, KiwoomResponses } from './kiwoomSpec.gen';
 import type { FetchOpts } from '../types';
 
 // 키움증권 REST API. 정본: 공식 저장소 github.com/Kiwoom-Securities/Kiwoom-REST-API의 `kiwoom/_data/kiwoom_api_spec.json`
@@ -25,7 +26,8 @@ const BASE_URL = 'https://api.kiwoom.com';
 // 공개된 초당 한도 수치가 없다(오류코드 1700 API별·1701 전체·1702 그룹 초과만 있음). 공식 예제가 페이지 사이에 0.2초를
 // 쉬어서, 그보다 보수적인 초당 3건으로 시작한다 — 실키로 한도를 확인하면 조정.
 const kiwoomLimiter = new RateLimiter({ tps: 3 }, 'KIWOOM');
-const MAX_PAGES = 50;
+/** 연속조회 상한 — 닿으면 **던진다**(조용히 끊으면 배당 동기화가 잘린 목록으로 기존 기록을 지운다, 2026-11-17). */
+const MAX_PAGES = 200;
 
 export class KiwoomApiError extends Error {
   constructor(message: string, readonly status: number, readonly body: string, readonly returnCode: number | null = null) {
@@ -117,6 +119,18 @@ async function getToken(force = false): Promise<string> {
 // ── 호출 ───────────────────────────────────────────────────────────────────────
 export type KiwoomBody = Record<string, unknown> & { return_code?: unknown; return_msg?: unknown };
 
+// ── 공식 명세에서 생성한 요청·응답 모양(kiwoomSpec.gen.ts, `npm run spec:types`) ────────────────────
+export type KiwoomApiId = Exclude<keyof KiwoomRequests, 'au10001'>;
+type ListKeys<A extends KiwoomApiId> = {
+  [K in keyof KiwoomResponses[A]]-?: NonNullable<KiwoomResponses[A][K]> extends readonly unknown[] ? K : never;
+}[keyof KiwoomResponses[A]];
+/** 그 TR 응답의 목록 필드 한 줄(예: kt00018의 `acnt_evlt_remn_indv_tot`). 명세상 전부 선택·문자열. */
+export type KiwoomListRow<A extends KiwoomApiId, K extends ListKeys<A>> = NonNullable<KiwoomResponses[A][K]> extends readonly (infer E)[]
+  ? E
+  : never;
+/** 그 TR 응답 본문(최상위 요약 필드). */
+export type KiwoomSummary<A extends KiwoomApiId> = KiwoomResponses[A];
+
 export function returnCodeOf(body: Record<string, unknown>): number | null {
   const v = body.return_code;
   if (v === undefined || v === null || v === '') return null;
@@ -145,10 +159,10 @@ export interface KiwoomPage {
   nextKey: string | null;
 }
 
-export async function kiwoomPost(
+export async function kiwoomPost<A extends KiwoomApiId>(
   path: string,
-  apiId: string,
-  body: Record<string, string>,
+  apiId: A,
+  body: KiwoomRequests[A],
   cont?: { contYn: string; nextKey: string }
 ): Promise<KiwoomPage> {
   return kiwoomLimiter.schedule(async () => {
@@ -202,17 +216,25 @@ export async function kiwoomPost(
 }
 
 /** 연속조회를 끝까지(`cont-yn=Y`인 동안). 같은 next-key가 다시 오면 멈춘다(무한루프 방지). */
-export async function kiwoomPostAll(path: string, apiId: string, body: Record<string, string>): Promise<KiwoomBody[]> {
+export async function kiwoomPostAll<A extends KiwoomApiId>(path: string, apiId: A, body: KiwoomRequests[A]): Promise<KiwoomBody[]> {
   const pages: KiwoomBody[] = [];
+  const seen = new Set<string>();
   let cont: { contYn: string; nextKey: string } | undefined;
   for (let i = 0; i < MAX_PAGES; i++) {
     const page = await kiwoomPost(path, apiId, body, cont);
     pages.push(page.body);
-    if ((page.contYn ?? '').toUpperCase() !== 'Y' || !page.nextKey) break;
-    if (cont && cont.nextKey === page.nextKey) break;
+    if ((page.contYn ?? '').toUpperCase() !== 'Y' || !page.nextKey) return pages;
+    // 이미 받은 next-key로 되돌아오면 멈춘다(A→B→A 순환까지, NH와 같은 방어).
+    if (seen.has(page.nextKey)) return pages;
+    seen.add(page.nextKey);
     cont = { contYn: 'Y', nextKey: page.nextKey };
   }
-  return pages;
+  throw new KiwoomApiError(`키움증권 연속조회가 ${MAX_PAGES}페이지를 넘어 끝까지 받지 못했습니다: ${apiId}`, 502, '');
+}
+
+/** `listOf`의 결과를 그 TR의 명세 모양으로 — 매퍼가 명세에 없는 필드를 읽으면 컴파일 오류가 된다. */
+function typedList<A extends KiwoomApiId, K extends ListKeys<A>>(_apiId: A, pages: KiwoomBody[], key: K & string): KiwoomListRow<A, K>[] {
+  return pages.flatMap((p) => listOf(p, key)) as KiwoomListRow<A, K>[];
 }
 
 /** 응답 본문의 배열 필드(예: `acnt_evlt_remn_indv_tot`). 없거나 배열이 아니면 빈 배열. */
@@ -250,7 +272,10 @@ export function fetchKiwoomDomesticBalance(opts: FetchOpts = {}) {
     PORTFOLIO_TTL_MS,
     async () => {
       const pages = await kiwoomPostAll(DOMESTIC, 'kt00018', { qry_tp: '1', dmst_stex_tp: 'KRX' });
-      return { summary: pages[0] ?? {}, items: pages.flatMap((p) => listOf(p, 'acnt_evlt_remn_indv_tot')) };
+      return {
+        summary: (pages[0] ?? {}) as KiwoomSummary<'kt00018'>,
+        items: typedList('kt00018', pages, 'acnt_evlt_remn_indv_tot'),
+      };
     },
     opts
   );
@@ -258,7 +283,12 @@ export function fetchKiwoomDomesticBalance(opts: FetchOpts = {}) {
 
 /** 예수금상세현황(kt00001, 일반조회 2) — `entr`가 원화 예수금. */
 export function fetchKiwoomDeposit(opts: FetchOpts = {}) {
-  return withCache('kiwoom:deposit', PORTFOLIO_TTL_MS, async () => (await kiwoomPost(DOMESTIC, 'kt00001', { qry_tp: '2' })).body, opts);
+  return withCache(
+    'kiwoom:deposit',
+    PORTFOLIO_TTL_MS,
+    async () => (await kiwoomPost(DOMESTIC, 'kt00001', { qry_tp: '2' })).body as KiwoomSummary<'kt00001'>,
+    opts
+  );
 }
 
 /** 미국주식 원장잔고확인(ust21070) — 거래소 전체. 요약(USD·원화) + `result_list`. */
@@ -268,7 +298,7 @@ export function fetchKiwoomUsBalance(opts: FetchOpts = {}) {
     PORTFOLIO_TTL_MS,
     async () => {
       const pages = await kiwoomPostAll(US, 'ust21070', { stex_tp: '', stk_cd: '' });
-      return { summary: pages[0] ?? {}, items: pages.flatMap((p) => listOf(p, 'result_list')) };
+      return { summary: (pages[0] ?? {}) as KiwoomSummary<'ust21070'>, items: typedList('ust21070', pages, 'result_list') };
     },
     opts
   );
@@ -276,7 +306,12 @@ export function fetchKiwoomUsBalance(opts: FetchOpts = {}) {
 
 /** 해외주식 예수금(ust21110) — 통화별 `result_list`, USD 줄의 `fc_entra`가 달러 예수금. */
 export function fetchKiwoomUsDeposit(opts: FetchOpts = {}) {
-  return withCache('kiwoom:us-deposit', PORTFOLIO_TTL_MS, async () => (await kiwoomPost(US, 'ust21110', {})).body, opts);
+  return withCache(
+    'kiwoom:us-deposit',
+    PORTFOLIO_TTL_MS,
+    async () => (await kiwoomPost(US, 'ust21110', {})).body as KiwoomSummary<'ust21110'>,
+    opts
+  );
 }
 
 // ── 위탁종합거래내역(kt00015) — 매매·배당·입출금의 원천 ──────────────────────────
@@ -289,12 +324,12 @@ export function fetchKiwoomTransactions(
   tp: '1' | '2' | '4' | '5' | '6' | '7',
   gdsTp: '0' | '1' | '3',
   opts: FetchOpts = {}
-): Promise<Record<string, unknown>[]> {
+): Promise<KiwoomTxnRow[]> {
   return withCache(
     `kiwoom:txn:${tp}:${gdsTp}:${from}:${to}`,
     PORTFOLIO_TTL_MS,
     async () => {
-      const rows: Record<string, unknown>[] = [];
+      const rows: KiwoomTxnRow[] = [];
       for (const [a, b] of yearWindows(from, to)) {
         const pages = await kiwoomPostAll(DOMESTIC, 'kt00015', {
           strt_dt: compact(a),
@@ -307,7 +342,7 @@ export function fetchKiwoomTransactions(
           dmst_stex_tp: '%',
           qry_sort_tp: '2',
         });
-        rows.push(...pages.flatMap((p) => listOf(p, 'trst_ovrl_trde_prps_array')));
+        rows.push(...typedList('kt00015', pages, 'trst_ovrl_trde_prps_array'));
       }
       return rows;
     },
@@ -331,13 +366,15 @@ export function yearWindows(from: string, to: string): Array<[string, string]> {
 
 // ── 공식 실현손익 ──────────────────────────────────────────────────────────────
 /** 일자별종목별실현손익_기간(ka10073) — 매도 건(일자·종목)별 `dt_stk_rlzt_pl`. */
-export async function fetchKiwoomDomesticRealized(from: string, to: string): Promise<Record<string, unknown>[]> {
+export async function fetchKiwoomDomesticRealized(from: string, to: string): Promise<KiwoomListRow<'ka10073', 'dt_stk_rlzt_pl'>[]> {
   const pages = await kiwoomPostAll(DOMESTIC, 'ka10073', { stk_cd: '', strt_dt: compact(from), end_dt: compact(to) });
-  return pages.flatMap((p) => listOf(p, 'dt_stk_rlzt_pl'));
+  return typedList('ka10073', pages, 'dt_stk_rlzt_pl');
 }
 
 /** 미국주식 실현손익(ust21530) — **원화(1)** 기준, 매도 건별 `result_list`. */
-export async function fetchKiwoomUsRealized(from: string, to: string): Promise<Record<string, unknown>[]> {
+export async function fetchKiwoomUsRealized(from: string, to: string): Promise<KiwoomListRow<'ust21530', 'result_list'>[]> {
   const pages = await kiwoomPostAll(US, 'ust21530', { strt_dt: compact(from), end_dt: compact(to), fc_krw_tp: '1' });
-  return pages.flatMap((p) => listOf(p, 'result_list'));
+  return typedList('ust21530', pages, 'result_list');
 }
+
+export type KiwoomTxnRow = KiwoomListRow<'kt00015', 'trst_ovrl_trde_prps_array'>;

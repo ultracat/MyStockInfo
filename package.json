@@ -32,7 +32,10 @@
     "package:mac": "npm run build && electron-builder --mac",
     "package:linux": "npm run build && electron-builder --linux",
     "package:win": "npm run build && electron-builder --win",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "spec:check": "node scripts/spec-watch.cjs check",
+    "spec:update": "node scripts/spec-watch.cjs update",
+    "spec:types": "node scripts/spec-watch.cjs types"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
@@ -46,6 +49,7 @@
     "electron-builder": "^26.18.1",
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "openapi-typescript": "^7.13.0",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.72.2"
   },

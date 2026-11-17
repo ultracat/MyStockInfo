@@ -86,11 +86,12 @@ npm run dev              # frontend(Vite) + electron
 npm test                 # 자동 테스트(가짜 서버, 키 불필요)
 npm run lint
 npm run check:toss       # 실서버 점검(조회만, 저장된 키 사용) — check:kis / check:nh / check:kiwoom
+npm run spec:check       # 증권사 공식 명세가 바뀌었는지(쓰는 엔드포인트의 필드 구조만 비교)
 ```
 
 - 더블클릭 실행: macOS `start-mac.command`, Windows `start-windows.bat`, Linux `./start.sh`.
 - 백엔드를 고치면 `npm run build:backend` 후 Electron 재시작, 프론트엔드는 자동 반영.
-- push·PR마다 GitHub Actions가 빌드 → 린트 → 테스트를 돌립니다.
+- push·PR마다 GitHub Actions가 빌드 → 린트 → 테스트를 돌리고, 매주 증권사 공식 명세(토스·NH·키움·한국투자증권 예제)를 점검합니다.
 - `check:toss`는 앱의 토큰을 끊으므로 **앱을 닫고** 실행하세요. 점검 결과에 계좌번호·금액은 나오지 않습니다.
 - 데이터는 설치본과 dev가 같은 폴더를 씁니다: macOS `~/Library/Application Support/@mystock/electron/data/`,
   Windows `%APPDATA%\@mystock\electron\data\`, Linux `~/.config/@mystock/electron/data/`.

@@ -540,6 +540,8 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 - **공식 실현손익**(`GET /api/kiwoom/realized`): 국내 `ka10073`(매도 건별) — 공식 예시로 `tdy_sel_pl` = 매도 − 매입 − 수수료 − 세금
   (158200 − 97602.96 − 500 − 284 = 59813.04, 테스트로 고정). 미국 `ust21530`(`fc_krw_tp=1` 원화) `pl_amt`.
 - **입금 기준 원금**(`GET /api/kiwoom/cash-flows`): 입출금(1)의 입금/출금(입출구분명·적요), 배당·이자·환전 등 제외, 원화만. 입고 건수는 입출고(2).
+- **타입·연속조회**: 요청 본문과 응답 목록 줄은 공식 명세에서 생성한 `kiwoomSpec.gen.ts`(`KiwoomRequests`·`KiwoomListRow<TR, 필드>`) —
+  명세상 전부 문자열·선택. 연속조회는 이미 받은 next-key면 멈추고 200페이지 상한에 닿으면 던진다(NH와 같은 이유).
 - 테스트: `test/kiwoomClient.test.ts` — 응답은 **명세의 공식 응답 예시**(`test/fixtures/kiwoom-spec-examples.json`, 예시 JSON의 빠진
   쉼표만 보정)로 돈다. 배당·입출금 줄은 명세에 예시가 없어 지어낸 값.
 
@@ -555,11 +557,20 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   숫자 필드는 실측상 JSON number(명세 그대로), `nhNum`은 문자열도 받는다.
 - **토큰**: `POST /oauth2/token`(쿼리 `appkey`·`appsecretkey`, form 헤더, 운영 도메인만). 24시간, **재발급마다 계좌주에게 보안
   알림** → `nh-token.json`에 저장(앱키 해시 `keyHash`로 키 변경 감지, 원문 미저장), 동시 요청은 발급 하나 공유, 재발급은 401·
-  IGW40043/40044만(429엔 안 함).
+  IGW40043("유효하지 않은 token")·IGW40044("기간이 만료된 token", 공식 오류코드표 www.nhplug.com/testbed-howto)·본문
+  "유효하지 않은 token"(SDK 판정)만(429엔 안 함). **동시에 401을 받은 요청은 한 번만 재발급한다** — `getToken(staleToken)`이 캐시
+  토큰이 이미 바뀌었으면 그걸 쓴다(예전엔 늦게 401을 받은 쪽이 또 발급해 보안 알림이 두 번 갔다). 발급은 네트워크 오류·IGW40054
+  (인증 서버 일시 장애)에 두 번 더 해 본다.
 - **연속조회**: 응답 **헤더** `cts`/`cts_flag`(본문 아님). 플래그가 없으면 응답코드 `00165`/`00218`/`XA109`면 계속(SDK 실측값).
-  **같은 cts가 다시 오면 멈춘다**(전체 문자열 비교, 끝 2~3자만 바뀌는 경우가 있음). 잔고는 "끝까지 조회해야 요약이 채워진다"는
+  **이미 받은 cts가 다시 오면 멈춘다**(본 것 전부와 전체 문자열 비교 — 끝 2~3자만 바뀌는 경우, A→B→A 순환). **200페이지 상한에
+  닿으면 던진다** — 예전엔 50에서 조용히 끊어, 2000년부터 받는 배당 동기화(전체 교체)가 잘린 목록으로 기존 기록을 지울 수 있었다
+  (2026-11-17 SDK 대조, SDK는 기본 무제한). 잔고는 "끝까지 조회해야 요약이 채워진다"는
   명세라 마지막 페이지 `Output_0`을 요약으로 쓴다. 실측: 마지막 페이지에도 `cts`가 오고 `cts_flag=N`.
-- **속도**: 명세 초당 5건 → 리미터 초당 4건(SDK 기본값). IGW42901~3/HTTP 429는 백오프 재시도 + `penalizeUntil`.
+- **속도**: 명세 초당 5건 → 리미터 초당 4건(SDK 기본값). IGW42901~3/HTTP 429는 백오프 재시도(`Retry-After`가 있으면 그 값) +
+  `penalizeUntil`. 요청마다 **15초 제한**(SDK 10초) — 응답이 없으면 같은 캐시 키를 기다리는 화면이 다 멈춘다.
+- **오류 메시지**: 게이트웨이 `error_code`·`error_description` 또는 업무 `rsp_cd`·`rsp_msg`를 담는다(SDK와 같은 순서, `redactText`).
+- **타입**: 요청 `Input_0`과 응답 줄은 공식 명세에서 생성한 `nhSpec.gen.ts`(`NhInput<경로>`·`NhRow<경로, 'Output_0'|'Output_1'>`) —
+  매퍼(`nhMappers.ts`·`nhCashFlows.ts`)가 명세에 없는 필드를 읽으면 컴파일 오류다. 아래 "공식 명세 감시".
 - **계좌**: `/n2/acctinfo`가 앱키에 연결된 계좌를 섞어 준다 — `01` 일반·`02` 주문대리인(운영), `03` 모의투자. 실측: 실전 1 +
   모의투자 3. 모르는 구분은 버린다. 화면은 실전을 앞에(첫 계좌가 기본 선택).
 - **모의투자(03)**: `moapi.nhplug.com:8443`으로만 조회된다(운영 도메인에 03 계좌를 쓰면 실패). 토큰은 운영에서 받은 것 그대로
@@ -1153,6 +1164,29 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
 github.com/koreainvestment/open-trading-api)를 확인하고 필드명/엔드포인트/에러 포맷을
 그대로 반영한다. 추측해서 채우지 않는다.
 
+### 공식 명세 감시 (`backend/spec/`, `scripts/spec-watch.cjs`, 2026-11-17)
+
+증권사 공식 저장소의 라이브러리를 그대로 쓰지 않는 이유(2026-11-17 조사): 공식 코드는 전부 **Python**(KIS 예제 모음·키움 SDK·NH SDK,
+KB는 테스트 화면)이라 Electron 메인 프로세스(Node) 안에 넣으려면 Python 런타임을 같이 배포해야 하고, **키움은 라이선스가 복제·수정·배포를
+금지**, KIS·KB는 라이선스 표기가 없다(MIT는 NH뿐). 토스는 공식 SDK가 없다. JS로 여러 증권사를 묶은 오픈소스 라이브러리도 없다(비공식
+0.x·관리 중단뿐). 그래서 **TS로 직접 구현하고, 공식 명세를 정본으로 고정해 바뀌면 알게** 한다:
+- `spec/watch.json` — 우리가 실제로 쓰는 것 목록(토스·NH operationId, 키움 TR, KIS TR → 공식 예제 파일). **새 API를 쓰기 시작하면
+  여기 한 줄 + `npm run spec:update`.**
+- `spec/snapshots/*.json` — 그 부분의 **구조만**(필드 이름·형식·필수, 설명문·예시 없음 — 명세 전체를 공개 저장소에 복사하지 않으려고).
+  KIS는 기계가 읽을 명세가 없어 예제 파일의 `API_URL`·TR ID·요청 파라미터 이름 + 파일 해시(구조가 같고 해시만 다르면 "참고").
+- `npm run spec:check` — 최신 공식 명세와 비교, 구조가 바뀌면 종료 코드 1. `.github/workflows/spec-watch.yml`이 **매주 월요일** 돌린다
+  (실패 = 소유자에게 메일, 바뀐 경로는 잡 요약). 대응: 클라이언트 확인·수정 → `npm run spec:update` → `npm run build`(타입 오류가 고칠 곳)
+  → `npm test`.
+- `npm run spec:types` — 스냅샷에서 `toss/tossSpec.gen.ts`·`nh/nhSpec.gen.ts`(openapi-typescript, devDependency)·
+  `kiwoom/kiwoomSpec.gen.ts`(스크립트 자체 생성)를 만든다. **생성물은 직접 고치지 않는다** — CI가 다시 만들어 `git diff`로 확인한다.
+  - 토스: `tossCore.ts`의 원형 타입(`RawToss*`)·`TossTransaction`·종목 정보·시세·일봉이 생성 타입 별칭이다. 생성 타입이 드러낸 것:
+    `Price.usd`·`Order.price`·`Cost.tax`는 **생략될 수 있다**(`?`) — 예전 코드는 `=== null`만 봐서 필드가 빠져 오면 `toNum(undefined)`로
+    던졌을 것이다(공식 예시·실측에선 아직 빠진 적 없음) → `== null`.
+  - NH·키움: 위 각 절의 "타입".
+- `test/fixtures/toss-spec-examples.json` — `spec:update`가 토스 명세의 **공식 응답 예시**(쓰는 operation 17개, 예시 40여 개)를 뽑아 둔다.
+  `test/tossSpecExamples.test.ts`가 예시 전부를 가짜 서버로 돌려 예외 없이 숫자로 바뀌는지 본다 — 이 테스트가 **같은 커서 반복 시 거래내역
+  200페이지를 다 돌던 문제**를 잡았다(지금은 같은 커서면 멈추고, 상한에 닿으면 던진다). NH·KIS 명세엔 응답 예시가 없다.
+
 ### 자동 테스트 (`backend/test/`)
 
 `npm test`(루트) 또는 `npm run test -w backend` — Node 내장 `node:test`를 `tsx --test`로
@@ -1184,6 +1218,7 @@ KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tos
   NH 헤더 cts와 같은 cts 종료), 해외 조회 실패 격리, 응답→화면 모양 매핑, NH 모의투자 moapi 라우팅.
   - 모듈 전역 상태가 테스트 사이에 남는다(메모리 토큰, `responseCache`) — 테스트마다 앱키를 바꾸고(NH·KIS는 키 해시/
     파일로 갈림) `forceRefresh: true`로 부른다. 리미터 간격(초당 1~5건) 때문에 이 세 파일이 전체 시간의 대부분이다.
+- **공식 명세 예시**: 키움(`kiwoomClient.test.ts`)·토스(`tossSpecExamples.test.ts`)는 명세의 응답 예시를 그대로 입력으로 쓴다(위 "공식 명세 감시").
 - **실서버 점검(자동 테스트 아님)** — `npm run check:nh` / `check:kis` / `check:toss`(`scripts/*-live-check.cjs`,
   공용 `scripts/lib/live-check.cjs`). 설정에 저장한 키로 **조회 API만** 불러 기대 필드·숫자 변환·요약 합계와 종목 합
   대조·적요 해석·배당 세전/세후를 PASS/WARN/FAIL/SKIP으로 찍는다. 계좌번호·금액·종목은 출력하지 않는다(건수·필드명·적요만).

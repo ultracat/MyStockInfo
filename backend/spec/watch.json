@@ -45,26 +45,29 @@
     "apiIds": ["au10001", "ka00001", "ka10073", "kt00001", "kt00015", "kt00018", "ust21070", "ust21110", "ust21530"]
   },
   "kis": {
+    "$comment": "KIS는 기계가 읽을 명세가 없어 공식 예제(examples_llm) 전체를 카탈로그(kis-catalog.json)로 만들고 쓰는 TR만 비교한다. 앱 코드의 TR과 이 목록이 같은지 kis:verify가 확인한다.",
     "repo": "koreainvestment/open-trading-api",
     "branch": "main",
-    "files": {
-      "CTCA0903R": "examples_llm/domestic_stock/chk_holiday/chk_holiday.py",
-      "CTPF1002R": "examples_llm/domestic_stock/search_stock_info/search_stock_info.py",
-      "CTRP6504R": "examples_llm/overseas_stock/inquire_present_balance/inquire_present_balance.py",
-      "CTSC9215R": "examples_llm/domestic_stock/inquire_daily_ccld/inquire_daily_ccld.py",
-      "FHKST01010100": "examples_llm/domestic_stock/inquire_price/inquire_price.py",
-      "FHKST01011800": "examples_llm/domestic_stock/news_title/news_title.py",
-      "FHKST121600C0": "examples_llm/etfetn/inquire_component_stock_price/inquire_component_stock_price.py",
-      "FHKST663300C0": "examples_llm/domestic_stock/invest_opinion/invest_opinion.py",
-      "FHKST66430300": "examples_llm/domestic_stock/finance_financial_ratio/finance_financial_ratio.py",
-      "FHPST02400000": "examples_llm/etfetn/inquire_price/inquire_price.py",
-      "HHDFS78330900": "examples_llm/overseas_stock/rights_by_ice/rights_by_ice.py",
-      "HHKDB669102C0": "examples_llm/domestic_stock/ksdinfo_dividend/ksdinfo_dividend.py",
-      "TTTC0081R": "examples_llm/domestic_stock/inquire_daily_ccld/inquire_daily_ccld.py",
-      "TTTC8434R": "examples_llm/domestic_stock/inquire_balance/inquire_balance.py",
-      "TTTC8715R": "examples_llm/domestic_stock/inquire_period_trade_profit/inquire_period_trade_profit.py",
-      "TTTS3035R": "examples_llm/overseas_stock/inquire_ccnl/inquire_ccnl.py",
-      "TTTS3039R": "examples_llm/overseas_stock/inquire_period_profit/inquire_period_profit.py"
-    }
+    "trIds": [
+      "CTCA0903R",
+      "CTPF1002R",
+      "CTRGA011R",
+      "CTRGT011R",
+      "CTRP6504R",
+      "CTSC9215R",
+      "FHKST01010100",
+      "FHKST01011800",
+      "FHKST121600C0",
+      "FHKST663300C0",
+      "FHKST66430300",
+      "FHPST02400000",
+      "HHDFS78330900",
+      "HHKDB669102C0",
+      "TTTC0081R",
+      "TTTC8434R",
+      "TTTC8715R",
+      "TTTS3035R",
+      "TTTS3039R"
+    ]
   }
 }

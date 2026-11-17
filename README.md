@@ -87,6 +87,7 @@ npm test                 # 자동 테스트(가짜 서버, 키 불필요)
 npm run lint
 npm run check:toss       # 실서버 점검(조회만, 저장된 키 사용) — check:kis / check:nh / check:kiwoom
 npm run spec:check       # 증권사 공식 명세가 바뀌었는지(쓰는 엔드포인트의 필드 구조만 비교)
+npm run kis:verify       # 한국투자증권: 공식 예제·실제 응답 기록·코드 대조(kis:record로 응답 모양 기록 — 값은 남기지 않음)
 ```
 
 - 더블클릭 실행: macOS `start-mac.command`, Windows `start-windows.bat`, Linux `./start.sh`.

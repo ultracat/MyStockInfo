@@ -1,0 +1,131 @@
+# KIS 자동 업데이트(2026-11-17) — 한국투자증권 공식 예제(koreainvestment/open-trading-api의 examples_llm)가 바뀌면
+# 카탈로그·스냅샷·생성 타입(kisSpec.gen.ts)을 다시 만들고, 빌드(타입 검사)·테스트·KIS 검증 결과를 붙여 업데이트 PR을 연다.
+# - 앱 코드는 고치지 않는다: 앱이 쓰는 필드가 사라졌으면 빌드가 실패한 채로 PR이 열리고, 그게 고칠 곳이다(scripts/kis-auto-update.cjs).
+# - 실제 응답 기록(kis-live.json)은 실제 키가 있어야 해서 갱신하지 않는다 — PR 본문이 `npm run kis:record`를 안내한다.
+# - PR은 항상 같은 브랜치 `bot/kis-spec-update` 하나 — 열려 있으면 그 PR을 갱신한다(매주 새로 쌓이지 않게).
+# - 저장소 설정 "Allow GitHub Actions to create and approve pull requests"(2026-11-17 켬)가 꺼지면 PR을 못 만든다 → 브랜치만 올리고
+#   이슈(“KIS 공식 예제 업데이트 대기”)에 PR 만들기 링크를 남긴다.
+# - ⚠ GITHUB_TOKEN으로 만든 PR에는 ci.yml이 자동으로 돌지 않는다(GitHub 정책) — 그래서 이 잡이 빌드·테스트를 직접 돌려 PR에 적는다.
+# - 외부 액션은 ci.yml과 같은 커밋 해시로 고정.
+name: KIS auto update
+
+on:
+  schedule:
+    - cron: '47 0 * * 1' # 매주 월요일 09:47 KST(spec-watch 30분 뒤)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kis-auto-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # bot/kis-spec-update 브랜치 push
+      pull-requests: write
+      issues: write # PR을 못 만들 때 알림 이슈
+    env:
+      BRANCH: bot/kis-spec-update
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 공식 예제 확인·카탈로그 갱신
+        id: kis
+        run: node scripts/kis-auto-update.cjs "$RUNNER_TEMP/kis-report.md"
+
+      - name: 의존성 설치
+        if: steps.kis.outputs.changed == 'true'
+        run: npm ci
+
+      - name: 빌드(타입 검사)
+        id: build
+        if: steps.kis.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: 테스트
+        id: test
+        if: steps.kis.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tail -40 | tee "$RUNNER_TEMP/test.log"
+
+      - name: KIS 검증 묶음
+        id: verify
+        if: steps.kis.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run --silent kis:verify -- --offline 2>&1 | tee "$RUNNER_TEMP/verify.log"
+
+      - name: PR 열기(또는 갱신)
+        if: steps.kis.outputs.changed == 'true'
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+          USED_CHANGED: ${{ steps.kis.outputs.used_changed }}
+        run: |
+          mark() { [ "$1" = success ] && echo "✅ 통과" || echo "❌ 실패"; }
+          {
+            echo "한국투자증권 공식 예제가 바뀌어 **자동으로 만든 업데이트**입니다(.github/workflows/kis-auto-update.yml)."
+            echo "카탈로그·주간 비교 스냅샷·생성 타입만 바꿨고 앱 코드는 그대로입니다."
+            echo
+            cat "$RUNNER_TEMP/kis-report.md"
+            echo
+            echo "### 자동 확인"
+            echo "- 빌드(타입 검사): $(mark "$BUILD")$([ "$BUILD" = success ] || echo ' — 앱이 읽는 필드나 보내는 파라미터가 바뀐 것. 아래 로그의 파일:줄을 고쳐 이 브랜치에 올린다')"
+            echo "- 테스트: $(mark "$TEST")"
+            echo "- KIS 검증 묶음(오프라인): $(mark "$VERIFY")"
+            if [ "$BUILD" != success ]; then
+              echo; echo '<details><summary>빌드 오류</summary>'; echo; echo '```'; grep -E 'error TS|Error' "$RUNNER_TEMP/build.log" | head -60; echo '```'; echo '</details>'
+            fi
+            echo; echo '<details><summary>kis:verify</summary>'; echo; echo '```'; cat "$RUNNER_TEMP/verify.log"; echo '```'; echo '</details>'
+            echo
+            echo "### 머지 전에"
+            if [ "$USED_CHANGED" = true ]; then
+              echo "- [ ] **앱이 쓰는 TR이 바뀌었습니다** — 로컬에서 이 브랜치를 받아 \`npm run kis:record\`(실제 키, 값은 남기지 않음)로 실제 응답을 다시 기록하고 \`npm run kis:types\` → \`npm run build\`"
+              echo "- [ ] 바뀐 필드를 읽는 화면(보유 종목·매매내역·배당·실현손익)을 실제 앱에서 확인"
+            else
+              echo "- 앱이 쓰는 TR은 그대로라 카탈로그(참고 목록)만 바뀌었습니다 — 자동 확인이 통과했으면 바로 머지해도 됩니다."
+            fi
+            echo "- 이 PR엔 ci.yml이 자동으로 돌지 않습니다(GitHub 정책) — 위 자동 확인이 같은 빌드·테스트입니다."
+          } > "$RUNNER_TEMP/body.md"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$BRANCH"
+          git add backend/spec/kis-catalog.json backend/spec/snapshots/kis.json backend/src/brokers/kis/kisSpec.gen.ts
+          git commit -q -m "chore(kis): 공식 예제 변경 반영 — 카탈로그·스냅샷·생성 타입 자동 갱신"
+          git push -q -f origin "$BRANCH"
+
+          title="chore(kis): 공식 예제 변경 반영(자동)"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            echo "PR #$pr 갱신" >> "$GITHUB_STEP_SUMMARY"
+          elif gh pr create --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"; then
+            echo "PR 생성" >> "$GITHUB_STEP_SUMMARY"
+          else
+            # Actions가 PR을 만들 수 없게 설정돼 있으면 — 브랜치는 올렸으니 이슈로 알린다(이미 열린 이슈면 댓글).
+            link="https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1"
+            { echo "PR 만들기: $link"; echo; cat "$RUNNER_TEMP/body.md"; } > "$RUNNER_TEMP/issue.md"
+            ititle="KIS 공식 예제 업데이트 대기"
+            issue=$(gh issue list --state open --search "in:title \"$ititle\"" --json number -q '.[0].number')
+            if [ -n "$issue" ]; then gh issue comment "$issue" --body-file "$RUNNER_TEMP/issue.md"; else gh issue create --title "$ititle" --body-file "$RUNNER_TEMP/issue.md"; fi
+            echo "PR을 만들 수 없어 이슈로 알림: $link" >> "$GITHUB_STEP_SUMMARY"
+          fi

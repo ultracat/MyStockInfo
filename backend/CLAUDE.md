@@ -479,7 +479,7 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   **`etf_cnfg_issu_cnt > 0`이면 ETF**(주식이면 NAV 등이 전부 0으로 온다, 실측). ETF → NAV·괴리율(`dprt`)·추적오차
   (`trc_errt`)·순자산(`etf_ntas_ttam`, 억원)·분배주기(`etf_dvdn_cycl`, 코드표 없음 — KODEX 200이 `3`=분기)·구성종목
   (`FHKST121600C0` output2 — **상위 30개만**, 비중 합 ~83%). 주식 → 연간 재무비율(`FHKST66430300`, 최신 줄은 결산 전
-  누적일 수 있음, 예 `202606`)·최근 6개월 투자의견(`FHKST663300C0`, 날짜는 `00YYYYMMDD`). 둘 다 뉴스 제목
+  누적일 수 있음, 예 `202606`; ⚠ 2026-11-17 HTTP 404 — 아래 "KIS API 검증 묶음")·최근 6개월 투자의견(`FHKST663300C0`, 날짜는 `00YYYYMMDD`). 둘 다 뉴스 제목
   (`FHKST01011800`) — **`FID_INPUT_ISCD`를 줘도 다른 종목 뉴스가 섞여 온다**(40건 중 ~25건만 해당 종목) →
   `iscd1~10`에 그 코드가 있는 것만 남긴다. 칸별 실패는 null(나머지는 보여줌). 캐시: 재무 1일·의견/구성 6시간·뉴스 10분·ETF 시세 1분.
 
@@ -1173,7 +1173,7 @@ KB는 테스트 화면)이라 Electron 메인 프로세스(Node) 안에 넣으�
 - `spec/watch.json` — 우리가 실제로 쓰는 것 목록(토스·NH operationId, 키움 TR, KIS TR → 공식 예제 파일). **새 API를 쓰기 시작하면
   여기 한 줄 + `npm run spec:update`.**
 - `spec/snapshots/*.json` — 그 부분의 **구조만**(필드 이름·형식·필수, 설명문·예시 없음 — 명세 전체를 공개 저장소에 복사하지 않으려고).
-  KIS는 기계가 읽을 명세가 없어 예제 파일의 `API_URL`·TR ID·요청 파라미터 이름 + 파일 해시(구조가 같고 해시만 다르면 "참고").
+  KIS는 기계가 읽을 명세가 없어 아래 "KIS API 검증 묶음"의 카탈로그에서 쓰는 TR만 뽑는다(주소·TR ID·요청 파라미터·응답 필드 이름).
 - `npm run spec:check` — 최신 공식 명세와 비교, 구조가 바뀌면 종료 코드 1. `.github/workflows/spec-watch.yml`이 **매주 월요일** 돌린다
   (실패 = 소유자에게 메일, 바뀐 경로는 잡 요약). 대응: 클라이언트 확인·수정 → `npm run spec:update` → `npm run build`(타입 오류가 고칠 곳)
   → `npm test`.
@@ -1183,9 +1183,46 @@ KB는 테스트 화면)이라 Electron 메인 프로세스(Node) 안에 넣으�
     `Price.usd`·`Order.price`·`Cost.tax`는 **생략될 수 있다**(`?`) — 예전 코드는 `=== null`만 봐서 필드가 빠져 오면 `toNum(undefined)`로
     던졌을 것이다(공식 예시·실측에선 아직 빠진 적 없음) → `== null`.
   - NH·키움: 위 각 절의 "타입".
+- 생성 타입 `kis/kisSpec.gen.ts`는 KIS 검증 묶음이 만든다(`spec:types`·`spec:update`가 같이 부름).
 - `test/fixtures/toss-spec-examples.json` — `spec:update`가 토스 명세의 **공식 응답 예시**(쓰는 operation 17개, 예시 40여 개)를 뽑아 둔다.
   `test/tossSpecExamples.test.ts`가 예시 전부를 가짜 서버로 돌려 예외 없이 숫자로 바뀌는지 본다 — 이 테스트가 **같은 커서 반복 시 거래내역
   200페이지를 다 돌던 문제**를 잡았다(지금은 같은 커서면 멈추고, 상한에 닿으면 던진다). NH·KIS 명세엔 응답 예시가 없다.
+
+### KIS API 검증 묶음 (`scripts/kis-verify.cjs`, `kis/kisResponseShape.ts`, 2026-11-17)
+
+KIS는 OpenAPI 같은 명세가 없다. 포털(apiportal) 화면의 필드 표·엑셀은 브라우저 세션이 있어야 받아져(직접 부르면 `/intro`로 되돌림)
+자동화하지 않았고, 공식 저장소 MCP 폴더의 `data.csv`(MIT)는 **갱신이 몇 달씩 밀린다**(2026-07-09 이후 그대로 — 11-16 예제 수정이 안 들어감).
+그래서 세 가지를 맞대어 본다:
+1. **공식 예제 카탈로그** `spec/kis-catalog.json` — `npm run kis:catalog`가 공식 저장소 `examples_llm/` 전체(API 334개)를 git으로 얕게 받아
+   주소·TR(실전·모의)·요청 파라미터(필수)·블록 이름·응답 필드+한글명(`chk_*.py`의 `COLUMN_MAPPING`)을 뽑는다(`scripts/lib/kis-catalog.cjs`).
+   KIS가 실제로 고치는 곳이 이 예제 파일이다. 응답 필드는 output1/output2가 한 목록으로 섞여 있고 타입이 없다.
+2. **실제 응답 기록** `spec/snapshots/kis-live.json` — `npm run kis:record`(= `check:kis --record`, Electron·저장된 키·조회 TR만)가 앱이 쓰는
+   TR을 실제로 불러 **블록별 필드 이름과 값의 형태(number/text/empty)만** 남긴다(값·계좌번호·금액 없음, 테스트가 확인). 줄이 없던 블록
+   (해외 보유 0건 등)은 예전 기록을 둔다. 점검에 없는 TR(휴장일·종목명·종목 상세·ETF·해외 권리)은 공개 종목(삼성전자·KODEX 200·AAPL)으로 부른다.
+3. **생성 타입** `kis/kisSpec.gen.ts`(`npm run kis:types`) — 실측한 블록은 그 필드(필수), 실측 전 블록은 예제 목록(선택). `kisGet<T>`가 TR별로
+   요청 파라미터(`KisParams<T>`, 예제 이름을 대문자로 — KIS 쿼리는 대소문자를 안 가림)와 응답 블록을 타입으로 받고, 줄 타입은 `KisRow<TR, 블록>`.
+   예전 손 인터페이스(`[key: string]: unknown` — 오타가 안 잡혔다)는 전부 이 별칭이다.
+- `npm run kis:verify`(`-- --offline`은 CI 매 푸시): 앱 코드가 부르는 TR(주석 뺀 코드의 따옴표 문자열) = `watch.json`의 `kis.trIds` ⊂ 카탈로그,
+  최신 공식 예제와 비교(쓰는 TR의 주소·파라미터·필드), 실측↔예제 대조, 기록 나이(90일 넘으면 WARN), 생성 타입 최신 여부.
+- **자동 업데이트**(`.github/workflows/kis-auto-update.yml` + `scripts/kis-auto-update.cjs`, 매주 월 09:47 KST): 공식 예제 구조가 바뀌었으면
+  카탈로그·`snapshots/kis.json`·`kisSpec.gen.ts`를 다시 만들고 빌드·테스트·`kis:verify --offline` 결과를 붙여 **`bot/kis-spec-update` PR 하나**를
+  열거나 갱신한다(저장소 커밋만 바뀌면 아무것도 안 함). **앱 코드는 고치지 않는다** — 쓰는 필드가 사라지면 PR의 빌드가 실패한 채로 열리고 그게
+  고칠 곳이다. 실행 중 앱이 필드를 추측해 바꿔 읽는 방식은 금액을 조용히 틀리게 할 수 있어 안 한다. `kis-live.json`은 키가 필요해 CI가 못 만든다
+  (앱이 쓰는 TR이 바뀌었으면 PR 본문이 로컬 `kis:record`를 안내). 저장소 설정 "Allow GitHub Actions to create and approve pull requests"를
+  2026-11-17에 켰다(기본 토큰 권한은 읽기 그대로, 이 잡만 쓰기) — 꺼지면 브랜치만 올리고 이슈 "KIS 공식 예제 업데이트 대기"에 PR 만들기 링크를 남긴다. GITHUB_TOKEN이 만든 PR엔 ci.yml이
+  돌지 않아(GitHub 정책) 이 잡이 같은 빌드·테스트를 직접 돌린다. 봇 커밋 작성자는 `github-actions[bot]`.
+- **앱 안 감지**: `kisGet`이 성공 응답마다 `noteKisResponse` → 기록(`KIS_LIVE_FIELDS`)에 있던 필드가 **빠졌으면** 로그 파일에 한 번 경고
+  (`[kis] 응답 모양이 기록(kis-live.json)과 다릅니다 …`, 필드 이름만). 새 필드만 생긴 건 앱을 깨지 않아 경고하지 않는다.
+- **처음 돌려서 찾은 것(2026-11-17)**:
+  - 감시 목록에 **배당 원천 `CTRGA011R`·해외 권리 `CTRGT011R`이 빠져 있었다** → 코드와 목록이 같은지 검사로 고정.
+  - 공식 예제가 틀린 필드: 국내 체결 `cnc_cfrm_qty`·`excg_id_dvsn_Cd` → 실제는 `cncl_cfrm_qty`·`excg_id_dvsn_cd`. 앱이 쓰는 `isin_name`(배당
+    일정)·`mbcr_name`(투자의견)·`iscd6~10`(뉴스)은 **예제엔 없고 응답에만 있다** — 예제만으로 타입을 만들면 틀린다(실측이 정본).
+  - 해외 잔고(`CTRP6504R`)·해외 기간손익(`TTTS3039R`) 줄엔 예제상 **종목명 필드가 없다** — 코드가 읽던 `prdt_name`·`ovrs_item_name`은
+    없으면 종목코드로 대신 쓴다(해외 거래가 생기면 `kis:record`로 확인).
+  - **재무비율 `FHKST66430300`이 HTTP 404**(같은 계열 `balance-sheet`는 응답, 예제 주소 그대로) — KIS 쪽 변경·장애로 보임. 종목 상세는 칸별
+    실패를 null로 두므로 재무 칸만 빈다. `kis-live.json`에 기록이 없어 `kis:verify`가 WARN.
+- KIS 연속조회도 다른 증권사와 같이: 이미 받은 `ctx_area_nk*`로 되돌아오면 멈추고, `MAX_PAGES`(200)에 닿으면 **던진다**(권리현황·실현손익·
+  체결·해외 FK200) — 권리현황은 배당 기록 전체 교체의 원천이라 잘리면 안 된다.
 
 ### 자동 테스트 (`backend/test/`)
 
@@ -1219,6 +1256,7 @@ KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tos
   - 모듈 전역 상태가 테스트 사이에 남는다(메모리 토큰, `responseCache`) — 테스트마다 앱키를 바꾸고(NH·KIS는 키 해시/
     파일로 갈림) `forceRefresh: true`로 부른다. 리미터 간격(초당 1~5건) 때문에 이 세 파일이 전체 시간의 대부분이다.
 - **공식 명세 예시**: 키움(`kiwoomClient.test.ts`)·토스(`tossSpecExamples.test.ts`)는 명세의 응답 예시를 그대로 입력으로 쓴다(위 "공식 명세 감시").
+  KIS 검증 묶음의 순수 부분(응답 모양에 값이 안 남는지, 기록과의 차이 경고, 예제 파일 해석)은 `kisVerification.test.ts`.
 - **실서버 점검(자동 테스트 아님)** — `npm run check:nh` / `check:kis` / `check:toss`(`scripts/*-live-check.cjs`,
   공용 `scripts/lib/live-check.cjs`). 설정에 저장한 키로 **조회 API만** 불러 기대 필드·숫자 변환·요약 합계와 종목 합
   대조·적요 해석·배당 세전/세후를 PASS/WARN/FAIL/SKIP으로 찍는다. 계좌번호·금액·종목은 출력하지 않는다(건수·필드명·적요만).

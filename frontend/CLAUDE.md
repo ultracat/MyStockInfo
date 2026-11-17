@@ -389,8 +389,19 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - 프론트엔드 테스트: `frontend/test/*.test.ts`(`npm run test -w frontend`, 루트 `npm test`가 같이 돈다). `api.ts`는 `window`를 읽으니
   테스트할 로직은 api를 import하지 않는 순수 모듈(`fx.ts`, `csv.ts`)에 둔다.
 
+### 2026-11-17 대시보드·분석 데이터 공유(`overview/overviewStore.ts`)
+- 예전엔 `useOverviewData`가 화면마다 상태와 받기를 따로 가져서, 분석을 처음 열거나 다시 볼 때 대시보드가 받은 전 증권사 보유·배당·매매·월별 종가·
+  월평균 환율·지수를 처음부터 다시 받았다. 지금은 **모듈 저장소 한 벌 + `useSyncExternalStore` 구독**이다.
+- `reloadOverview({ maxAgeMs, forceRefresh })`: 진행 중인 받기는 같이 기다리고, `maxAgeMs` 안에 (어느 화면에서든) 받았으면 건너뛴다. 처음 마운트·다시 보일 때는
+  `RESUME_REFRESH_MS`(30초), 숨긴 동안 데이터가 바뀌었으면(`dataChanged`) 나이 상관없이 다시. 새로고침 버튼은 진행 중인 일반 받기가 끝난 뒤 캐시를 건너뛰고 한 번 더.
+  실패하면 이전 값을 두고 `error`만. 월별 종가·월평균 환율은 요청 번호로 늦게 온 옛 응답을 버린다. 순자산 기록은 받을 때마다(오늘 날짜로 덮어씀).
+- 실측(데이터 사본): 대시보드 로딩 뒤 분석 진입 4초 동안 `/api/accounts` 재요청 0건(분석 전용 SPY·QQQ 종가·세금 유형·planner만).
+- 테스트 `frontend/test/overviewStore.test.ts` — `api.ts`가 불러올 때 `window.location.hash`를 읽어 가짜 `window`·`fetch`를 먼저 두고 `before`에서 동적 import한다
+  (tsx 테스트 변환이 최상위 await를 못 받는다).
+
 ### 2026-11-17 분석 화면·절세·적립·검색(두 번째 묶음)
 - `pages/Analysis.tsx` — **대시보드와 같은 `useOverviewData()`**(보유·매매·배당·월별 종가·국내 지수)를 그대로 쓰고 SPY·QQQ 월말 종가와 세금 유형만 더 받는다.
+  데이터는 **공용 저장소 `overview/overviewStore.ts` 한 벌**(아래 "대시보드·분석 데이터 공유")이라 대시보드를 본 뒤 분석을 열면 다시 받지 않는다.
   카드: `analysis/AnalysisCards`(벤치마크·위험·분산·비용, calc/analysis.ts), `analysis/SimulationCard`(calc/simulation.ts, 입력은 planner.simulation).
   ⚠ 내 월간 수익률은 `monthlyAmountRows`(최근 12개월, 지금 보유 종목의 매매내역 재구성) 기준이라 기간이 최대 11~12개월이다. 자산군은 이름 정규식(`assetClassOf`).
 - 실현손익 `realized/YearEndTaxCard`(calc/yearEndTax.ts — 올해·일반 계좌·해외 상장만, 평가손익은 지금 환율 근사), 매매내역 `trades/SavingsPlanCard`(calc/savings.ts).
@@ -400,7 +411,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - **2026-11-17 UI 점검 반영**: `usePlanner`는 **모듈 저장소 하나 + `useSyncExternalStore`**(화면마다 따로 받아 어긋나던 것), `PUT /planner`는 `BACKGROUND_WRITES`
   (데이터 변경으로 잡혀 숨긴 화면의 무거운 재조회를 부르던 것), `loadAllHoldings`는 진행 중 공유 + 30초 재사용, App의 화면은 `memo(PageSlot)`(App 상태 —
   검색 창·줌 높이 — 가 바뀔 때 열어 둔 화면 전부가 다시 그려지던 것), 네트워크 effect의 배열 의존성은 `join(',')` 키, 분석 화면은
-  `useOverviewData({ captureSnapshot: false })`. 배당금 화면은 다가오는 배당을 **12개월치로 한 번** 받아 목록(확정 + 이번 달 예상)·12개월 카드·달력이 같이 쓴다.
+  `useOverviewData()`(공용 저장소). 배당금 화면은 다가오는 배당을 **12개월치로 한 번** 받아 목록(확정 + 이번 달 예상)·12개월 카드·달력이 같이 쓴다.
   상태 색은 손익에만 — 상관 높음·한도 초과·기준 근접은 굵게 + 글자로. QuickSearch는 `role=dialog aria-modal`, Tab 가둠, 닫으면 포커스 복귀, listbox/option.
 
 ### 2026-11-17 계획·분석·알림·보고서
@@ -423,7 +434,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 
 | 화면 | 본체 | 하위 폴더 | 계산 |
 |---|---|---|---|
-| 대시보드 | `Overview.tsx` | `overview/`: `useOverviewData`(조회·환율·월별 종가/월평균 환율 지연 로딩, `loadAll`), `HoldingsCards`(보유·섹터 비중 + 상세 팝업), `DividendCards`, `TrendCards` | `calc/overview.ts` — 비중·계좌별 묶음·`accountDividendRows`·`heldDividendTotal`·`monthlyAmountRows`(평단가·월 종가 맵 포함)·`indexComparisonRows` |
+| 대시보드 | `Overview.tsx` | `overview/`: `overviewStore`(공용 저장소 — 조회·환율·월별 종가/월평균 환율 지연 로딩·순자산 기록, `reloadOverview`) + `useOverviewData`(구독·다시 보일 때 갱신·환율 함수), `HoldingsCards`(보유·섹터 비중 + 상세 팝업), `DividendCards`, `TrendCards` | `calc/overview.ts` — 비중·계좌별 묶음·`accountDividendRows`·`heldDividendTotal`·`monthlyAmountRows`(평단가·월 종가 맵 포함)·`indexComparisonRows` |
 | 보유 종목 | `Dashboard.tsx` | `holdings/`: `useHoldings`(선택·포트폴리오·1분 새로고침·`loadLivePortfolioAll`·KB 동기화), `HoldingsTransfer`(CSV·Sheets), `StatTiles`(`AmountTile`·`RateTile`) | `calc/portfolio.ts` — `holdingRows`(비중·배당 포함 손익), `dividendTotals` |
 | 배당금 | `Dividends.tsx` | `dividends/`: `useUpcomingDividends`, `useDividendSync`(`isRowSyncOwned`), `useInvestedByBroker`, `DividendSummaryCard`, `DividendAddCard`, `DividendListCard`, `DividendTransferBar` | `calc/dividends.ts` — `upcomingMonthlyRows`, `brokerDividendSums`, `brokerLines`, `grandTotal` |
 | 매매내역 | `Trades.tsx` | `trades/`: `useTradesData`(선택·조회·KB 동기화 + 저장소를 바꾼 뒤 화면 맞추기 `refreshAfter*`), `TradesToolbar`, `TradeAddCard`, `TradeListCard` | `calc/trades.ts` — `tradeBuckets`, `tradeTotals`, `toDisplayTrades` |

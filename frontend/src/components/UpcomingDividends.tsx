@@ -162,13 +162,17 @@ function DividendSection({
                     </span>
                   </td>
                   <td style={{ textAlign: 'left' }}>
-                    <span className="cell-name-truncate">
-                      {BROKER_LABELS[i.broker]} ·{' '}
-                      {formatAccountOption({ id: i.accountId }, findAccountLabel(accountLabels, i.broker, i.accountId))}
-                    </span>
+                    {(() => {
+                      const account = `${BROKER_LABELS[i.broker]} · ${formatAccountOption({ id: i.accountId }, findAccountLabel(accountLabels, i.broker, i.accountId))}`;
+                      return (
+                        <span className="upcoming-cell-truncate" title={account}>
+                          {account}
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td style={{ textAlign: 'left' }}>
-                    <span className="cell-name-truncate">
+                    <span className="upcoming-cell-truncate" title={`${i.name} ${i.symbol}`}>
                       {i.name} <span style={{ color: 'var(--text-muted)' }}>{i.symbol}</span>
                     </span>
                   </td>

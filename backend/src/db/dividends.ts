@@ -164,6 +164,15 @@ export function replaceSyncedDividends(
   rows: NewDividendInput[]
 ): SyncReplaceResult {
   const result: SyncReplaceResult = { added: 0, removed: 0, unchanged: 0 };
+  // 증권사가 일시적으로 "성공 + 0건"을 주면 그 계좌 배당 기록이 통째로 지워진다 — 이제 백그라운드 동기화(alerts.ts)도 무인으로 돌아서
+  // 0건 응답으로는 기존 기록을 지우지 않는다(2026-11-17 점검). 정말 다 없어진 경우는 거의 없고, 남은 기록은 사용자가 지울 수 있다.
+  if (rows.length === 0) {
+    const scopedCount = store().read().map(normalize).filter((r) => r.broker === broker && inScope(r)).length;
+    if (scopedCount > 0) {
+      console.warn(`[dividends] ${broker} 동기화가 0건이라 기존 기록 ${scopedCount}건을 그대로 둡니다.`);
+      return { added: 0, removed: 0, unchanged: scopedCount };
+    }
+  }
   store().update((current) => {
     const all = current.map(normalize);
     const scoped = all.filter((r) => r.broker === broker && inScope(r));

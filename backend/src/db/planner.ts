@@ -61,6 +61,8 @@ export interface AlertSettings {
   warnings: boolean;
   /** 금요일 저녁 주간 요약 */
   weeklySummary: boolean;
+  /** 알림에 종목·금액을 숨기고 종류만(잠금 화면·화면 공유 대비) */
+  hideDetails: boolean;
 }
 
 /** 은퇴·목표 시뮬레이션 입력(분석 화면) — 화면이 그대로 저장·복원한다. 시작 자산은 비우면 지금 평가금액. */
@@ -110,7 +112,7 @@ const DEFAULT_STATE: PlannerState = {
   taxLimits: DEFAULT_TAX_LIMITS,
   taxAccounts: [],
   targets: [],
-  alerts: { targetPrice: true, dividendReceived: true, warnings: true, weeklySummary: true },
+  alerts: { targetPrice: true, dividendReceived: true, warnings: true, weeklySummary: true, hideDetails: false },
   watchTargets: [],
   simulation: null,
   savingsPlans: [],
@@ -151,23 +153,33 @@ const textOf = (v: unknown, max: number, what: string): string => {
   return v.trim();
 };
 
+/** 평범한 객체만(배열·원시값·null 거절) — `k in t`가 원시값에서 던지거나 배열이 키로 섞이지 않게. */
+const plainObject = (v: unknown, what: string): Record<string, unknown> => {
+  if (v === undefined || v === null) return {};
+  if (typeof v !== 'object' || Array.isArray(v)) throw new PlannerValidationError(`${what} 형식이 올바르지 않습니다.`);
+  return v as Record<string, unknown>;
+};
+
 /** 일부 필드만 바꾼다 — 보낸 필드만 검증해 덮어쓴다. */
 export function updatePlanner(patch: Record<string, unknown>): PlannerState {
   const next: Partial<PlannerState> = {};
   if ('dividendGoalMonthlyKrw' in patch) next.dividendGoalMonthlyKrw = optMoney(patch.dividendGoalMonthlyKrw, '월 배당 목표');
   if ('taxLimits' in patch) {
-    const t = (patch.taxLimits ?? {}) as Record<string, unknown>;
-    const limits = { ...DEFAULT_TAX_LIMITS };
+    const t = plainObject(patch.taxLimits, '한도');
+    const limits = { ...getPlanner().taxLimits }; // 보낸 한도만 바꾸고 나머지는 지금 값 그대로
     for (const k of Object.keys(DEFAULT_TAX_LIMITS) as Array<keyof TaxLimits>) if (k in t) limits[k] = money(t[k], '한도');
     next.taxLimits = limits;
   }
   if ('taxAccounts' in patch) {
     if (!Array.isArray(patch.taxAccounts) || patch.taxAccounts.length > 100) throw new PlannerValidationError('계좌 목록이 올바르지 않습니다.');
     next.taxAccounts = patch.taxAccounts.map((raw) => {
-      const a = (raw ?? {}) as Record<string, unknown>;
+      const a = plainObject(raw, '계좌');
       const contributions: Record<string, number> = {};
-      for (const [year, amount] of Object.entries((a.contributions ?? {}) as Record<string, unknown>)) {
-        if (!/^\d{4}$/.test(year)) throw new PlannerValidationError('납입 연도 형식이 올바르지 않습니다.');
+      const entries = Object.entries(plainObject(a.contributions, '납입액'));
+      // 연도는 1990~2100, 계좌당 120개까지 — 저장 파일(요청·알림마다 읽는다)이 끝없이 커지지 않게(2026-11-17 보안 점검)
+      if (entries.length > 120) throw new PlannerValidationError('납입 연도가 너무 많습니다.');
+      for (const [year, amount] of entries) {
+        if (!/^\d{4}$/.test(year) || Number(year) < 1990 || Number(year) > 2100) throw new PlannerValidationError('납입 연도 형식이 올바르지 않습니다.');
         contributions[year] = money(amount, '납입액');
       }
       const openedOn = a.openedOn === undefined || a.openedOn === null || a.openedOn === '' ? undefined : String(a.openedOn);
@@ -190,13 +202,14 @@ export function updatePlanner(patch: Record<string, unknown>): PlannerState {
     });
   }
   if ('alerts' in patch) {
-    const a = (patch.alerts ?? {}) as Record<string, unknown>;
+    const a = plainObject(patch.alerts, '알림 설정');
     const cur = getPlanner().alerts;
     next.alerts = {
       targetPrice: typeof a.targetPrice === 'boolean' ? a.targetPrice : cur.targetPrice,
       dividendReceived: typeof a.dividendReceived === 'boolean' ? a.dividendReceived : cur.dividendReceived,
       warnings: typeof a.warnings === 'boolean' ? a.warnings : cur.warnings,
       weeklySummary: typeof a.weeklySummary === 'boolean' ? a.weeklySummary : cur.weeklySummary,
+      hideDetails: typeof a.hideDetails === 'boolean' ? a.hideDetails : cur.hideDetails,
     };
   }
   if ('watchTargets' in patch) {

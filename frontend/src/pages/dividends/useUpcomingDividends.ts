@@ -18,7 +18,7 @@ export function useUpcomingDividends() {
     if (upcomingTimer.current) clearTimeout(upcomingTimer.current);
     if (refresh) setUpcoming((u) => ({ ...u, refreshing: true }));
     api
-      .getUpcomingDividends(refresh)
+      .getUpcomingDividends(refresh, 12) // 12개월치를 한 번에 — 목록(이번 달)·12개월 예상·달력이 같은 일정을 쓴다
       .then((r) => {
         if (!upcomingAlive.current) return;
         setUpcoming({ items: r.items, available: r.available, error: null, builtAt: r.builtAt, refreshing: r.refreshing });

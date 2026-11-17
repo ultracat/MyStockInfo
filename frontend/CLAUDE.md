@@ -397,6 +397,11 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - **빠른 종목 검색** `components/QuickSearch.tsx`(calc/stockSearch.ts) — App.tsx가 ⌘K/Ctrl+K와 사이드바 "종목 검색"으로 연다. 열 때마다 로컬 저장소 네 개만 읽는다(API 호출 없음).
   `position: fixed` 모달이라 `document.body`로 포털(화면 줌 절). 이동은 App의 `goTo`.
 - 테스트: `frontend/test/analysis.test.ts`.
+- **2026-11-17 UI 점검 반영**: `usePlanner`는 **모듈 저장소 하나 + `useSyncExternalStore`**(화면마다 따로 받아 어긋나던 것), `PUT /planner`는 `BACKGROUND_WRITES`
+  (데이터 변경으로 잡혀 숨긴 화면의 무거운 재조회를 부르던 것), `loadAllHoldings`는 진행 중 공유 + 30초 재사용, App의 화면은 `memo(PageSlot)`(App 상태 —
+  검색 창·줌 높이 — 가 바뀔 때 열어 둔 화면 전부가 다시 그려지던 것), 네트워크 effect의 배열 의존성은 `join(',')` 키, 분석 화면은
+  `useOverviewData({ captureSnapshot: false })`. 배당금 화면은 다가오는 배당을 **12개월치로 한 번** 받아 목록(확정 + 이번 달 예상)·12개월 카드·달력이 같이 쓴다.
+  상태 색은 손익에만 — 상관 높음·한도 초과·기준 근접은 굵게 + 글자로. QuickSearch는 `role=dialog aria-modal`, Tab 가둠, 닫으면 포커스 복귀, listbox/option.
 
 ### 2026-11-17 계획·분석·알림·보고서
 - **사용자 설정은 `usePlanner()`**(`src/usePlanner.ts`, 백엔드 `planner.json`) — 월 배당 목표·ISA/연금·목표 비중·알림·목표가. 보낸 필드만 바뀐다.

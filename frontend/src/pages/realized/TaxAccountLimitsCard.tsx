@@ -148,24 +148,25 @@ export function TaxAccountLimitsCard({
                       <select
                         value={s.isaType}
                         onChange={(e) => void save({ ...plan, isaType: e.target.value as 'GENERAL' | 'SEOMIN' })}
-                        aria-label="ISA 유형"
+                        aria-label={`${label(s.broker, s.accountId)} ISA 유형`}
                       >
                         <option value="GENERAL">일반형</option>
                         <option value="SEOMIN">서민형</option>
                       </select>{' '}
-                      <input
-                        type="date"
-                        defaultValue={s.openedOn ?? ''}
-                        onBlur={(e) => e.target.value !== (s.openedOn ?? '') && void save({ ...plan, openedOn: e.target.value || undefined })}
-                        aria-label="가입일"
-                        style={{ width: 140 }}
+                      <OpenedOnInput
+                        value={s.openedOn ?? ''}
+                        onSave={(v) => void save({ ...plan, openedOn: v || undefined })}
+                        label={`${label(s.broker, s.accountId)} 가입일`}
                       />
                     </td>
                     <td>{won(s.realizedKrw)}</td>
                     <td>{won(s.dividendsKrw)}</td>
                     <td>
                       {won(s.netIncomeKrw)} / {won(s.limitKrw)}
-                      <div style={{ fontSize: 11, color: s.overKrw > 0 ? 'var(--critical)' : 'var(--text-muted)' }}>{pct(Math.max(0, s.netIncomeKrw), s.limitKrw)}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: s.overKrw > 0 ? 700 : undefined }}>
+                        {pct(Math.max(0, s.netIncomeKrw), s.limitKrw)}
+                        {s.overKrw > 0 ? ' · 한도 초과' : ''}
+                      </div>
                     </td>
                     <td>{s.overKrw > 0 ? won(s.estimatedTaxKrw) : '없음'}</td>
                     <td>
@@ -179,7 +180,7 @@ export function TaxAccountLimitsCard({
                       )}
                     </td>
                     <td>
-                      <ContributionInput value={s.contributionThisYear} onSave={(v) => saveContribution(s.broker, s.accountId, v)} />
+                      <ContributionInput value={s.contributionThisYear} onSave={(v) => saveContribution(s.broker, s.accountId, v)} label={`${label(s.broker, s.accountId)} ${year}년 납입액(원)`} />
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                         / {won(s.annualContributionLimit)} ({pct(s.contributionThisYear, s.annualContributionLimit)})
                       </div>
@@ -214,7 +215,7 @@ export function TaxAccountLimitsCard({
                     </td>
                     <td style={{ textAlign: 'left' }}>{a.taxType === 'IRP' ? 'IRP' : '연금저축'}</td>
                     <td>
-                      <ContributionInput value={a.contribution} onSave={(v) => saveContribution(a.broker, a.accountId, v)} />
+                      <ContributionInput value={a.contribution} onSave={(v) => saveContribution(a.broker, a.accountId, v)} label={`${label(a.broker, a.accountId)} ${year}년 납입액(원)`} />
                     </td>
                   </tr>
                 ))}
@@ -265,7 +266,23 @@ export function TaxAccountLimitsCard({
 }
 
 /** 납입액 칸 — 입력을 마치면(포커스가 빠지면) 저장한다. */
-function ContributionInput({ value, onSave }: { value: number; onSave: (raw: string) => void }) {
+/** ISA 가입일 — 저장된 값을 따라가는 입력(저장에 실패하거나 다른 곳에서 바뀌면 화면도 그 값으로 돌아간다). */
+function OpenedOnInput({ value, onSave, label }: { value: string; onSave: (v: string) => void; label: string }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <input
+      type="date"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => draft !== value && onSave(draft)}
+      aria-label={label}
+      style={{ width: 140 }}
+    />
+  );
+}
+
+function ContributionInput({ value, onSave, label }: { value: number; onSave: (raw: string) => void; label: string }) {
   const [draft, setDraft] = useState(value ? String(value) : '');
   useEffect(() => setDraft(value ? String(value) : ''), [value]);
   return (
@@ -276,7 +293,7 @@ function ContributionInput({ value, onSave }: { value: number; onSave: (raw: str
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft !== (value ? String(value) : '') && onSave(draft)}
       style={{ width: 120, textAlign: 'right' }}
-      aria-label="납입액(원)"
+      aria-label={label}
     />
   );
 }

@@ -1180,6 +1180,12 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
 - **planner 필드 추가(같은 날 두 번째 묶음)**: `simulation`(은퇴·목표 시뮬레이션 입력 — 범위 검증), `savingsPlans`(적립식 계획 — 종목·월 금액·시작 달),
   `alerts.weeklySummary`. **주간 요약 알림**(`alerts.ts` `maybeWeeklySummary`, 30분마다 확인): 금요일 KST 18시 이후 그날 한 번(`lastWeeklySummary`) —
   문구는 순수 함수 `weeklySummaryText`(순자산 기록의 7일 전 대비, 최근 7일 배당, 다음 7일 다가오는 배당(세전), 이번 달 적립이 95% 미만인 계획 — 달러 매수는 지금 환율).
+- **2026-11-17 코드·보안 점검 반영**(알림): 목표가는 `marketMaybeOpen`(국내 평일 8:50~15:40, 미국 평일 21시~다음 날 7시 KST)일 때만·한 번에 40종목,
+  `alerts.hideDetails`면 종류만, OS 알림이 없을 때 콘솔엔 **종류만**(콘솔 → main.log, 로그 가리기가 종목명·작은 금액은 못 가림), 배당 알림 중복은
+  `dividendNotified`(증권사|계좌|종목|지급일, 30일)로, 새 배당 판정은 id가 아니라 내용 키 + 동기화한 증권사만(`dividendSyncAll.ts`), 매수 유의사항은 토스 키가
+  없으면 상태를 쓰지 않고 조회 실패 종목은 이전 기록 유지(`getActiveWarningsDetailed`), 주간 요약은 `horizonMonths: 1`(월말에 다음 달 초 예정이 빠지지 않게).
+  `replaceSyncedDividends`는 **0건 응답이면 기존 기록을 지우지 않는다**(무인 백그라운드 동기화 안전장치). planner의 `taxLimits` 부분 갱신은 지금 값 기준,
+  객체 필드는 평범한 객체만, 납입 연도 1990~2100·계좌당 120개.
 - **12개월 예상 배당**: `GET /dividends/upcoming?months=12` — `itemsFromSnapshot`의 `until`을 1년 뒤로(확정은 원래대로 120일). 저장 일정·추정 로직은 그대로.
 - **ETF 구성 펼치기**: `GET /kis/etf-lookthrough?symbols=` — 종목마다 `fetchKisEtfComponents`(상위 30, 6시간 캐시), 구성이 비면(주식) 빠진다. 60종목까지.
 - **입금 기준 연환산 수익률**: 토스·NH·키움 원금 요약(`CashFlowSummary`)에 `byMonth`(월별 순입금, 원화 환산)를 더했다 — 화면 `calc/xirr.ts`.

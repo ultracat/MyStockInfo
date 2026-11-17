@@ -2,8 +2,8 @@ import { resetDataDir } from './setup';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_TAX_LIMITS, getPlanner, PlannerValidationError, updatePlanner } from '../src/db/planner';
-import { maybeBackgroundDividendSync, maybeWeeklySummary, notifyDividends, setNotifier, weeklySummaryText } from '../src/alerts';
-import type { DividendRecord } from '../src/db/dividends';
+import { marketMaybeOpen, maybeBackgroundDividendSync, maybeWeeklySummary, notifyDividends, setNotifier, weeklySummaryText } from '../src/alerts';
+import { listDividends, replaceSyncedDividends, type DividendRecord } from '../src/db/dividends';
 
 // 계획·목표 저장소(db/planner.ts)와 알림(alerts.ts) — 값은 지어낸 것.
 beforeEach(() => resetDataDir());
@@ -11,7 +11,7 @@ beforeEach(() => resetDataDir());
 test('planner: 기본값, 보낸 필드만 바뀌고 나머지는 그대로', () => {
   const p = getPlanner();
   assert.deepEqual(p.taxLimits, DEFAULT_TAX_LIMITS);
-  assert.deepEqual(p.alerts, { targetPrice: true, dividendReceived: true, warnings: true, weeklySummary: true });
+  assert.deepEqual(p.alerts, { targetPrice: true, dividendReceived: true, warnings: true, weeklySummary: true, hideDetails: false });
   assert.equal(p.simulation, null);
   assert.deepEqual(p.savingsPlans, []);
   updatePlanner({ dividendGoalMonthlyKrw: 500000 });
@@ -20,7 +20,7 @@ test('planner: 기본값, 보낸 필드만 바뀌고 나머지는 그대로', ()
   assert.equal(q.dividendGoalMonthlyKrw, 500000);
   assert.deepEqual(q.targets, [{ symbol: 'SCHD', name: 'SCHD', weight: 40 }]);
   updatePlanner({ alerts: { warnings: false } });
-  assert.deepEqual(getPlanner().alerts, { targetPrice: true, dividendReceived: true, warnings: false, weeklySummary: true });
+  assert.deepEqual(getPlanner().alerts, { targetPrice: true, dividendReceived: true, warnings: false, weeklySummary: true, hideDetails: false });
   updatePlanner({ taxLimits: { isaGeneral: 5_000_000 } });
   assert.equal(getPlanner().taxLimits.isaGeneral, 5_000_000);
   assert.equal(getPlanner().taxLimits.pensionTotal, DEFAULT_TAX_LIMITS.pensionTotal);
@@ -47,10 +47,36 @@ test('배당 알림: 최근 7일 지급분만, 4건 이상이면 한 번에, 끄
   assert.equal(notifyDividends([div({}), div({ paidDate: '2026-10-01' })], '2026-11-17'), 1);
   assert.match(got[0], /배당 입금 — 가짜리츠\|10,000원/);
   got.length = 0;
-  notifyDividends([div({}), div({}), div({}), div({ currency: 'USD', amount: 1.5 })], '2026-11-17');
+  notifyDividends([div({ symbol: 'A1' }), div({ symbol: 'A2' }), div({ symbol: 'A3' }), div({ symbol: 'U1', currency: 'USD', amount: 1.5 })], '2026-11-17');
   assert.deepEqual(got, ['배당 입금 4건|30,000원 · $1.50 (세후)']);
+  // 같은 배당(증권사·계좌·종목·지급일)이 세금 정정 등으로 새 id가 돼도 다시 알리지 않는다
+  got.length = 0;
+  assert.equal(notifyDividends([div({ id: 'other', tax: 1540, amount: 8460 })], '2026-11-17'), 0);
+  assert.deepEqual(got, []);
+  // 숨기기를 켜면 종류만
+  updatePlanner({ alerts: { hideDetails: true } });
+  notifyDividends([div({ symbol: 'H1' })], '2026-11-17');
+  assert.deepEqual(got, ['배당 입금|MyStock에서 확인하세요.']);
   updatePlanner({ alerts: { dividendReceived: false } });
-  assert.equal(notifyDividends([div({})], '2026-11-17'), 0);
+  assert.equal(notifyDividends([div({ symbol: 'Z9' })], '2026-11-17'), 0);
+});
+
+test('목표가 확인 시간: 국내는 평일 장중, 미국은 평일 밤~다음 날 아침(KST)', () => {
+  const kst = (iso: string) => Date.parse(iso) - 9 * 3600_000; // iso를 KST 시각으로 읽는다
+  assert.equal(marketMaybeOpen('111110', kst('2026-11-17T10:00:00Z')), true); // 화 10시
+  assert.equal(marketMaybeOpen('111110', kst('2026-11-17T20:00:00Z')), false);
+  assert.equal(marketMaybeOpen('111110', kst('2026-11-21T10:00:00Z')), false); // 토
+  assert.equal(marketMaybeOpen('AAPL', kst('2026-11-17T23:30:00Z')), true); // 화 밤
+  assert.equal(marketMaybeOpen('AAPL', kst('2026-11-21T05:00:00Z')), true); // 토 새벽(금요일 장)
+  assert.equal(marketMaybeOpen('AAPL', kst('2026-11-22T05:00:00Z')), false); // 일 새벽
+  assert.equal(marketMaybeOpen('AAPL', kst('2026-11-17T12:00:00Z')), false);
+});
+
+test('planner: 한도·납입액은 객체만, 납입 연도 범위', () => {
+  assert.throws(() => updatePlanner({ taxLimits: 'x' }), PlannerValidationError);
+  assert.throws(() => updatePlanner({ taxAccounts: [{ broker: 'kis', accountId: '1', contributions: [1] }] }), PlannerValidationError);
+  assert.throws(() => updatePlanner({ taxAccounts: [{ broker: 'kis', accountId: '1', contributions: { '9999': 1 } }] }), PlannerValidationError);
+  assert.throws(() => updatePlanner({ alerts: 5 }), PlannerValidationError);
 });
 
 test('백그라운드 배당 동기화: 한국 시간 9~21시, 4시간 간격', async () => {
@@ -104,4 +130,19 @@ test('주간 요약: 금요일 18시(KST) 이후 하루 한 번, 끄면 안 보�
   assert.deepEqual(got, ['이번 주 요약']);
   updatePlanner({ alerts: { weeklySummary: false } });
   assert.equal(await maybeWeeklySummary(Date.parse('2026-11-27T09:30:00Z')), false);
+});
+
+test('planner: 한도를 일부만 보내면 나머지는 지금 값 그대로(기본값으로 되돌리지 않음)', () => {
+  updatePlanner({ taxLimits: { isaAnnualContribution: 40000000 } });
+  updatePlanner({ taxLimits: { isaGeneral: 5000000 } });
+  const t = getPlanner().taxLimits;
+  assert.deepEqual([t.isaGeneral, t.isaAnnualContribution], [5000000, 40000000]);
+});
+
+test('배당 동기화 교체: 증권사가 0건을 주면 기존 기록을 지우지 않는다', () => {
+  replaceSyncedDividends('toss', () => true, [
+    { broker: 'toss', accountId: '1', symbol: '123456', name: '가짜', currency: 'KRW', amount: 100, tax: 0, paidDate: '2026-11-01', memo: null },
+  ] as never);
+  const r = replaceSyncedDividends('toss', () => true, []);
+  assert.deepEqual([r.removed, listDividends().length], [0, 1]);
 });

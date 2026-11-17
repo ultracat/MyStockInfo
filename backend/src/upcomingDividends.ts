@@ -318,7 +318,8 @@ export function itemsFromSnapshot(
 
   const krPlans = new Map<string, PlannedDividend[]>();
   const usPlans = new Map<string, PlannedDividend[]>();
-  const usCal = usMarketClosedDays(addDays(today, -420), addDays(today, 180));
+  // 미국 휴장일은 규칙으로 계산하므로 추정 끝(`until`, 12개월 예상이면 1년 뒤)까지 넉넉히 만든다
+  const usCal = usMarketClosedDays(addDays(today, -420), addDays(until > addDays(today, 150) ? until : today, 30));
   for (const h of holdings) {
     if (h.quantity <= 0) continue;
     const usd = h.currency === 'USD';

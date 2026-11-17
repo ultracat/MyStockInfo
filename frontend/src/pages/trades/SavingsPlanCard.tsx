@@ -35,7 +35,8 @@ export function SavingsPlanCard({ allTrades, fxRate }: { allTrades: StoredTrade[
     return () => {
       alive = false;
     };
-  }, [usdMonths]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [[...usdMonths].sort().join(',')]); // 내용이 같으면 다시 부르지 않는다
   const status = useMemo(
     () => savingsStatus(plans, allTrades, (m) => monthlyRateOr(rates, m, fxRate), localToday()),
     [plans, allTrades, rates, fxRate]

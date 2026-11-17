@@ -122,18 +122,25 @@ export function todayKst(now = Date.now()): string {
 
 /** 여러 종목의 활성 경고 — 경고가 있는 종목만 키로 넣는다. 종목 하나의 실패가 나머지를 막지 않는다. */
 export async function getActiveWarnings(symbols: string[]): Promise<Record<string, ActiveWarning[]>> {
-  if (!isTossConfigured()) return {};
+  return (await getActiveWarningsDetailed(symbols)).active;
+}
+
+/** 위와 같되 조회에 실패한 종목도 돌려준다 — 알림(alerts.ts)이 "실패 = 경고 없음"으로 오해해 다음에 같은 경고를 또 알리지 않게. */
+export async function getActiveWarningsDetailed(symbols: string[]): Promise<{ active: Record<string, ActiveWarning[]>; failed: string[] }> {
+  if (!isTossConfigured()) return { active: {}, failed: [] };
   const today = todayKst();
-  const out: Record<string, ActiveWarning[]> = {};
+  const active: Record<string, ActiveWarning[]> = {};
+  const failed: string[] = [];
   const unique = [...new Set(symbols.filter((s) => SYMBOL_RE.test(s)))];
   await Promise.all(
     unique.map(async (s) => {
-      const list = await fetchTossStockWarnings(s).catch(() => []);
-      const active = activeWarnings(list, today);
-      if (active.length > 0) out[s] = active;
+      const list = await fetchTossStockWarnings(s).catch(() => null);
+      if (list === null) return void failed.push(s);
+      const act = activeWarnings(list, today);
+      if (act.length > 0) active[s] = act;
     })
   );
-  return out;
+  return { active, failed };
 }
 
 // ---------------------------------------------------------------- 지수 월말 종가

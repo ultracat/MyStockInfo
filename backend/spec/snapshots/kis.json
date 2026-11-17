@@ -1,60 +1,360 @@
 {
-  "examples_llm/domestic_stock/chk_holiday/chk_holiday.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/quotations/chk-holiday",
+  "CTCA0903R": {
+    "blocks": [
+      "output"
+    ],
+    "example": "domestic_stock/chk_holiday",
+    "fields": [
+      "bass_dt",
+      "bzdy_yn",
+      "opnd_yn",
+      "sttl_day_yn",
+      "tr_day_yn",
+      "wday_dvsn_cd"
+    ],
+    "method": "GET",
     "params": [
       "BASS_DT",
       "CTX_AREA_FK",
       "CTX_AREA_NK"
     ],
-    "sha256": "d645cfb9de40a28c",
+    "requiredParams": [
+      "BASS_DT"
+    ],
     "trIds": [
       "CTCA0903R"
     ],
-    "usedBy": [
-      "CTCA0903R"
-    ]
+    "url": "/uapi/domestic-stock/v1/quotations/chk-holiday"
   },
-  "examples_llm/domestic_stock/finance_financial_ratio/finance_financial_ratio.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/finance/financial-ratio",
+  "CTPF1002R": {
+    "blocks": [
+      "output"
+    ],
+    "example": "domestic_stock/search_stock_info",
+    "fields": [
+      "admn_item_yn",
+      "bfdy_clpr",
+      "clpr_chng_dt",
+      "cpta",
+      "cptt_trad_tr_psbl_yn",
+      "crfd_item_yn",
+      "dpsi_aptm_erlm_yn",
+      "dpsi_erlm_cncl_dt",
+      "elec_scty_yn",
+      "etf_chas_erng_rt_dbnb",
+      "etf_cu_qty",
+      "etf_dvsn_cd",
+      "etf_etn_ivst_heed_item_yn",
+      "etf_txtn_type_cd",
+      "etf_type_cd",
+      "excg_dvsn_cd",
+      "frbd_mket_lstg_abol_dt",
+      "frbd_mket_lstg_dt",
+      "frnr_psnl_lmt_rt",
+      "idx_bztp_lcls_cd",
+      "idx_bztp_lcls_cd_name",
+      "idx_bztp_mcls_cd",
+      "idx_bztp_mcls_cd_name",
+      "idx_bztp_scls_cd",
+      "idx_bztp_scls_cd_name",
+      "issu_istt_cd",
+      "issu_pric",
+      "kosdaq_mket_lstg_abol_dt",
+      "kosdaq_mket_lstg_dt",
+      "kospi200_item_yn",
+      "lstg_abol_dt",
+      "lstg_cptl_amt",
+      "lstg_rqsr_issu_istt_cd",
+      "lstg_rqsr_item_cd",
+      "lstg_stqt",
+      "mfnd_end_dt",
+      "mfnd_opng_dt",
+      "mket_id_cd",
+      "nwst_odst_dvsn_cd",
+      "nxt_tr_stop_yn",
+      "ocr_no",
+      "oilf_fund_yn",
+      "papr",
+      "pdno",
+      "prdt_abrv_name",
+      "prdt_eng_abrv_name",
+      "prdt_eng_name",
+      "prdt_eng_name120",
+      "prdt_name",
+      "prdt_name120",
+      "prdt_type_cd",
+      "reits_kind_cd",
+      "sbst_pric",
+      "scts_mket_lstg_abol_dt",
+      "scts_mket_lstg_dt",
+      "scty_grp_id_cd",
+      "setl_mmdd",
+      "stck_kind_cd",
+      "std_idst_clsf_cd",
+      "std_idst_clsf_cd_name",
+      "std_pdno",
+      "stln_int_rt_dvsn_cd",
+      "thco_sbst_pric",
+      "thco_sbst_pric_chng_dt",
+      "thdt_clpr",
+      "tr_stop_yn",
+      "trst_istt_issu_istt_cd"
+    ],
+    "method": "GET",
     "params": [
-      "FID_DIV_CLS_CODE",
-      "fid_cond_mrkt_div_code",
-      "fid_input_iscd"
+      "PDNO",
+      "PRDT_TYPE_CD"
     ],
-    "sha256": "a2420c00b2065ea1",
+    "requiredParams": [],
     "trIds": [
-      "FHKST66430300"
+      "CTPF1002R"
     ],
-    "usedBy": [
-      "FHKST66430300"
-    ]
+    "url": "/uapi/domestic-stock/v1/quotations/search-stock-info"
   },
-  "examples_llm/domestic_stock/inquire_balance/inquire_balance.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/trading/inquire-balance",
+  "CTRGA011R": {
+    "blocks": [
+      "output"
+    ],
+    "example": "domestic_stock/period_rights",
+    "fields": [
+      "acno10",
+      "bass_dt",
+      "cash_dfrm_dt",
+      "cblc_qty",
+      "dlay_int_amt",
+      "excs_alct_qty",
+      "last_alct_amt",
+      "last_alct_qty",
+      "last_ftsk_chgs",
+      "last_ftsk_qty",
+      "lstg_dt",
+      "lstg_stqt",
+      "pdno",
+      "prdt_name",
+      "prdt_type_cd",
+      "rdpt_prca",
+      "rfnd_amt",
+      "rfnd_dt",
+      "rght_cblc_type_cd",
+      "rght_type_cd",
+      "rptt_pdno",
+      "rqst_amt",
+      "rqst_dt",
+      "rqst_qty",
+      "sbsc_end_dt",
+      "sbsc_unpr",
+      "shtn_pdno",
+      "tax_amt",
+      "tot_alct_qty"
+    ],
+    "method": "GET",
     "params": [
       "ACNT_PRDT_CD",
-      "AFHR_FLPR_YN",
       "CANO",
       "CTX_AREA_FK100",
       "CTX_AREA_NK100",
-      "FNCG_AMT_AUTO_RDPT_YN",
-      "FUND_STTL_ICLD_YN",
+      "CUST_RNCNO25",
+      "HMID",
       "INQR_DVSN",
-      "OFL_YN",
-      "PRCS_DVSN",
-      "UNPR_DVSN"
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "PDNO",
+      "PRDT_TYPE_CD",
+      "RGHT_TYPE_CD"
     ],
-    "sha256": "32f2759f925dfaf9",
+    "requiredParams": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "INQR_DVSN",
+      "INQR_END_DT",
+      "INQR_STRT_DT"
+    ],
     "trIds": [
-      "TTTC8434R",
-      "VTTC8434R"
+      "CTRGA011R"
     ],
-    "usedBy": [
-      "TTTC8434R"
-    ]
+    "url": "/uapi/domestic-stock/v1/trading/period-rights"
   },
-  "examples_llm/domestic_stock/inquire_daily_ccld/inquire_daily_ccld.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+  "CTRGT011R": {
+    "blocks": [
+      "output"
+    ],
+    "example": "overseas_stock/period_rights",
+    "fields": [
+      "acpl_bass_dt",
+      "alct_frcr_unpr",
+      "bass_dt",
+      "cash_alct_rt",
+      "crcy_cd",
+      "crcy_cd2",
+      "crcy_cd3",
+      "crcy_cd4",
+      "dfnt_yn",
+      "pdno",
+      "prdt_name",
+      "prdt_type_cd",
+      "rght_type_cd",
+      "sbsc_end_dt",
+      "sbsc_strt_dt",
+      "stck_alct_rt",
+      "std_pdno",
+      "stkp_dvdn_frcr_amt2",
+      "stkp_dvdn_frcr_amt3",
+      "stkp_dvdn_frcr_amt4"
+    ],
+    "method": "GET",
+    "params": [
+      "CTX_AREA_FK50",
+      "CTX_AREA_NK50",
+      "INQR_DVSN_CD",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "PDNO",
+      "PRDT_TYPE_CD",
+      "RGHT_TYPE_CD"
+    ],
+    "requiredParams": [
+      "INQR_DVSN_CD",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "RGHT_TYPE_CD"
+    ],
+    "trIds": [
+      "CTRGT011R"
+    ],
+    "url": "/uapi/overseas-price/v1/quotations/period-rights"
+  },
+  "CTRP6504R": {
+    "blocks": [
+      "output1",
+      "output2",
+      "output3"
+    ],
+    "example": "overseas_stock/inquire_present_balance",
+    "fields": [
+      "acpl_cstd_crcy_yn",
+      "avg_unpr3",
+      "bass_exrt",
+      "buy_crcy_cd",
+      "buy_mgn_amt",
+      "cblc_qty13",
+      "ccld_qty_smtl1",
+      "cma_evlu_amt",
+      "crcy_cd",
+      "dncl_amt",
+      "etc_mgna",
+      "evlu_amt_smtl",
+      "evlu_amt_smtl_amt",
+      "evlu_erng_rt1",
+      "evlu_pfls_amt2",
+      "evlu_pfls_amt_smtl",
+      "evlu_pfls_rt1",
+      "frcr_buy_amt_smtl",
+      "frcr_buy_mgn_amt",
+      "frcr_dncl_amt_2",
+      "frcr_drwg_psbl_amt_1",
+      "frcr_etc_mgna",
+      "frcr_evlu_amt2",
+      "frcr_evlu_tota",
+      "frcr_pchs_amt",
+      "frcr_sll_amt_smtl",
+      "frcr_use_psbl_amt",
+      "frst_bltn_exrt",
+      "item_lnkg_excg_cd",
+      "loan_dt",
+      "loan_expd_dt",
+      "loan_rmnd",
+      "mgna_tota",
+      "natn_kor_name",
+      "nxdy_frcr_drwg_psbl_amt",
+      "ord_psbl_qty1",
+      "output3",
+      "ovrs_excg_cd",
+      "ovrs_now_pric1",
+      "pchs_amt_smtl",
+      "pchs_amt_smtl_amt",
+      "pchs_rmnd_wcrc_amt",
+      "pdno",
+      "prdt_type_cd",
+      "std_pdno",
+      "thdt_buy_ccld_frcr_amt",
+      "thdt_buy_ccld_qty1",
+      "thdt_sll_ccld_frcr_amt",
+      "thdt_sll_ccld_qty1",
+      "tot_asst_amt",
+      "tot_dncl_amt",
+      "tot_evlu_pfls_amt",
+      "tot_frcr_cblc_smtl",
+      "tot_loan_amt",
+      "tr_mket_name",
+      "unit_amt",
+      "ustl_buy_amt_smtl",
+      "ustl_sll_amt_smtl",
+      "wdrw_psbl_tot_amt"
+    ],
+    "method": "GET",
+    "params": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "INQR_DVSN_CD",
+      "NATN_CD",
+      "TR_MKET_CD",
+      "WCRC_FRCR_DVSN_CD"
+    ],
+    "requiredParams": [],
+    "trIds": [
+      "CTRP6504R",
+      "VTRP6504R"
+    ],
+    "url": "/uapi/overseas-stock/v1/trading/inquire-present-balance"
+  },
+  "CTSC9215R": {
+    "blocks": [
+      "output1",
+      "output2"
+    ],
+    "example": "domestic_stock/inquire_daily_ccld",
+    "fields": [
+      "avg_prvs",
+      "ccld_cndt_name",
+      "cnc_cfrm_qty",
+      "cncl_yn",
+      "cpbc_ordp_infm_mthd_dvsn_cd",
+      "cpbc_ordp_mtrl_dvsn_cd",
+      "cpbc_ordp_ord_rcit_dvsn_cd",
+      "ctac_tlno",
+      "excg_dvsn_cd",
+      "excg_id_dvsn_Cd",
+      "infm_tmd",
+      "inqr_ip_addr",
+      "loan_dt",
+      "odno",
+      "ord_dt",
+      "ord_dvsn_cd",
+      "ord_dvsn_name",
+      "ord_gno_brno",
+      "ord_orgno",
+      "ord_qty",
+      "ord_tmd",
+      "ord_unpr",
+      "ordr_empno",
+      "orgn_odno",
+      "pchs_avg_pric",
+      "pdno",
+      "prdt_name",
+      "prdt_type_cd",
+      "prsm_tlex_smtl",
+      "rjct_qty",
+      "rmn_qty",
+      "rsvn_ord_end_dt",
+      "sll_buy_dvsn_cd",
+      "sll_buy_dvsn_cd_name",
+      "stpm_cndt_pric",
+      "stpm_efct_occr_dtmd",
+      "tot_ccld_amt",
+      "tot_ccld_qty",
+      "tot_ord_qty"
+    ],
+    "method": "GET",
     "params": [
       "ACNT_PRDT_CD",
       "CANO",
@@ -71,20 +371,637 @@
       "PDNO",
       "SLL_BUY_DVSN_CD"
     ],
-    "sha256": "9a039eef4f4c61e6",
+    "requiredParams": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CCLD_DVSN",
+      "INQR_DVSN",
+      "INQR_DVSN_3",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "SLL_BUY_DVSN_CD"
+    ],
     "trIds": [
       "CTSC9215R",
       "TTTC0081R",
       "VTSC9215R",
       "VTTC0081R"
     ],
-    "usedBy": [
-      "CTSC9215R",
-      "TTTC0081R"
-    ]
+    "url": "/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
   },
-  "examples_llm/domestic_stock/inquire_period_trade_profit/inquire_period_trade_profit.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/trading/inquire-period-trade-profit",
+  "FHKST01010100": {
+    "blocks": [
+      "output"
+    ],
+    "example": "domestic_stock/inquire_price",
+    "fields": [
+      "acml_tr_pbmn",
+      "acml_vol",
+      "apprch_rate",
+      "aspr_unit",
+      "bps",
+      "bstp_kor_isnm",
+      "clpr_rang_cont_yn",
+      "cpfn",
+      "cpfn_cnnm",
+      "crdt_able_yn",
+      "d250_hgpr",
+      "d250_hgpr_date",
+      "d250_hgpr_vrss_prpr_rate",
+      "d250_lwpr",
+      "d250_lwpr_date",
+      "d250_lwpr_vrss_prpr_rate",
+      "dmrs_val",
+      "dmsp_val",
+      "dryy_hgpr_date",
+      "dryy_hgpr_vrss_prpr_rate",
+      "dryy_lwpr_date",
+      "dryy_lwpr_vrss_prpr_rate",
+      "elw_pblc_yn",
+      "eps",
+      "fcam_cnnm",
+      "frgn_hldn_qty",
+      "frgn_ntby_qty",
+      "grmn_rate_cls_code",
+      "hts_avls",
+      "hts_deal_qty_unit_val",
+      "hts_frgn_ehrt",
+      "invt_caful_yn",
+      "iscd_stat_cls_code",
+      "last_ssts_cntg_qty",
+      "lstn_stcn",
+      "mang_issu_cls_code",
+      "marg_rate",
+      "mrkt_warn_cls_code",
+      "new_hgpr_lwpr_cls_code",
+      "oprc_rang_cont_yn",
+      "ovtm_vi_cls_code",
+      "pbr",
+      "per",
+      "pgtr_ntby_qty",
+      "prdy_ctrt",
+      "prdy_vrss",
+      "prdy_vrss_sign",
+      "prdy_vrss_vol_rate",
+      "pvt_frst_dmrs_prc",
+      "pvt_frst_dmsp_prc",
+      "pvt_pont_val",
+      "pvt_scnd_dmrs_prc",
+      "pvt_scnd_dmsp_prc",
+      "rprs_mrkt_kor_name",
+      "rstc_wdth_prc",
+      "short_over_yn",
+      "sltr_yn",
+      "ssts_yn",
+      "stac_month",
+      "stck_dryy_hgpr",
+      "stck_dryy_lwpr",
+      "stck_fcam",
+      "stck_hgpr",
+      "stck_llam",
+      "stck_lwpr",
+      "stck_mxpr",
+      "stck_oprc",
+      "stck_prpr",
+      "stck_sdpr",
+      "stck_shrn_iscd",
+      "stck_sspr",
+      "temp_stop_yn",
+      "vi_cls_code",
+      "vol_tnrt",
+      "w52_hgpr",
+      "w52_hgpr_date",
+      "w52_hgpr_vrss_prpr_ctrt",
+      "w52_lwpr",
+      "w52_lwpr_date",
+      "w52_lwpr_vrss_prpr_ctrt",
+      "wghn_avrg_stck_prc",
+      "whol_loan_rmnd_rate"
+    ],
+    "method": "GET",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "requiredParams": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "trIds": [
+      "FHKST01010100"
+    ],
+    "url": "/uapi/domestic-stock/v1/quotations/inquire-price"
+  },
+  "FHKST01011800": {
+    "blocks": [
+      "output"
+    ],
+    "example": "domestic_stock/news_title",
+    "fields": [
+      "cntt_usiq_srno",
+      "data_dt",
+      "data_tm",
+      "dorg",
+      "hts_pbnt_titl_cntt",
+      "iscd1",
+      "iscd2",
+      "iscd3",
+      "iscd4",
+      "iscd5",
+      "news_lrdv_code",
+      "news_ofer_entp_code",
+      "output1"
+    ],
+    "method": "GET",
+    "params": [
+      "FID_COND_MRKT_CLS_CODE",
+      "FID_INPUT_DATE_1",
+      "FID_INPUT_HOUR_1",
+      "FID_INPUT_ISCD",
+      "FID_INPUT_SRNO",
+      "FID_NEWS_OFER_ENTP_CODE",
+      "FID_RANK_SORT_CLS_CODE",
+      "FID_TITL_CNTT"
+    ],
+    "requiredParams": [],
+    "trIds": [
+      "FHKST01011800"
+    ],
+    "url": "/uapi/domestic-stock/v1/quotations/news-title"
+  },
+  "FHKST121600C0": {
+    "blocks": [
+      "output1",
+      "output2"
+    ],
+    "example": "etfetn/inquire_component_stock_price",
+    "fields": [
+      "acml_tr_pbmn",
+      "acml_vol",
+      "etf_cnfg_issu_avls",
+      "etf_cnfg_issu_cnt",
+      "etf_cnfg_issu_rlim",
+      "etf_cu_unit_scrt_cnt",
+      "etf_ntas_ttam",
+      "etf_vltn_amt",
+      "hprc_nav",
+      "hts_avls",
+      "hts_kor_isnm",
+      "lprc_nav",
+      "nav",
+      "nav_prdy_ctrt",
+      "nav_prdy_vrss",
+      "nav_prdy_vrss_sign",
+      "oprc_nav",
+      "prdy_clpr_nav",
+      "prdy_ctrt",
+      "prdy_vrss",
+      "prdy_vrss_sign",
+      "prdy_vrss_vol",
+      "stck_prpr",
+      "stck_shrn_iscd",
+      "tday_rsfl_rate",
+      "tr_pbmn_tnrt"
+    ],
+    "method": "GET",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_COND_SCR_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "requiredParams": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_COND_SCR_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "trIds": [
+      "FHKST121600C0"
+    ],
+    "url": "/uapi/etfetn/v1/quotations/inquire-component-stock-price"
+  },
+  "FHKST663300C0": {
+    "blocks": [
+      "output"
+    ],
+    "example": "domestic_stock/invest_opinion",
+    "fields": [
+      "dprt",
+      "hts_goal_prc",
+      "invt_opnn",
+      "invt_opnn_cls_code",
+      "nday_dprt",
+      "rgbf_invt_opnn",
+      "rgbf_invt_opnn_cls_code",
+      "stck_bsop_date",
+      "stck_nday_esdg",
+      "stck_prdy_clpr",
+      "stft_esdg"
+    ],
+    "method": "GET",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_COND_SCR_DIV_CODE",
+      "FID_INPUT_DATE_1",
+      "FID_INPUT_DATE_2",
+      "FID_INPUT_ISCD"
+    ],
+    "requiredParams": [],
+    "trIds": [
+      "FHKST663300C0"
+    ],
+    "url": "/uapi/domestic-stock/v1/quotations/invest-opinion"
+  },
+  "FHKST66430300": {
+    "blocks": [
+      "output"
+    ],
+    "example": "domestic_stock/finance_financial_ratio",
+    "fields": [
+      "bps",
+      "bsop_prfi_inrt",
+      "eps",
+      "grs",
+      "lblt_rate",
+      "ntin_inrt",
+      "roe_val",
+      "rsrv_rate",
+      "sps",
+      "stac_yymm"
+    ],
+    "method": "GET",
+    "params": [
+      "FID_DIV_CLS_CODE",
+      "fid_cond_mrkt_div_code",
+      "fid_input_iscd"
+    ],
+    "requiredParams": [],
+    "trIds": [
+      "FHKST66430300"
+    ],
+    "url": "/uapi/domestic-stock/v1/finance/financial-ratio"
+  },
+  "FHPST02400000": {
+    "blocks": [
+      "output"
+    ],
+    "example": "etfetn/inquire_price",
+    "fields": [
+      "acml_vol",
+      "bstp_kor_isnm",
+      "crcd",
+      "dprt",
+      "dryy_hgpr_date",
+      "dryy_hgpr_vrss_prpr_rate",
+      "dryy_lwpr_date",
+      "dryy_lwpr_vrss_prpr_rate",
+      "etf_cnfg_issu_cnt",
+      "etf_crcl_ntas_ttam",
+      "etf_crcl_stcn",
+      "etf_cu_unit_scrt_cnt",
+      "etf_div_name",
+      "etf_dvdn_cycl",
+      "etf_frcr_crcl_ntas_ttam",
+      "etf_frcr_last_ntas_wrth_val",
+      "etf_frcr_ntas_ttam",
+      "etf_ntas_ttam",
+      "etf_rprs_bstp_kor_isnm",
+      "etf_trc_ert_mltp",
+      "etf_trgt_nmix_bstp_code",
+      "frgn_hldn_qty",
+      "frgn_hldn_qty_rate",
+      "frgn_limt_rate",
+      "frgn_oder_able_qty",
+      "lp_hldn_rate",
+      "lp_hldn_vol",
+      "lp_oder_able_cls_code",
+      "lstn_stcn",
+      "mbcr_name",
+      "mtrt_date",
+      "nav",
+      "nav_prdy_ctrt",
+      "nav_prdy_vrss",
+      "nav_prdy_vrss_sign",
+      "nmix_ctrt",
+      "prdy_clpr_vrss_hgpr_rate",
+      "prdy_clpr_vrss_lwpr_rate",
+      "prdy_clpr_vrss_oprc_rate",
+      "prdy_ctrt",
+      "prdy_last_nav",
+      "prdy_vol",
+      "prdy_vrss",
+      "prdy_vrss_sign",
+      "shrg_type_code",
+      "stck_dryy_hgpr",
+      "stck_dryy_lwpr",
+      "stck_hgpr",
+      "stck_llam",
+      "stck_lstn_date",
+      "stck_lwpr",
+      "stck_mxpr",
+      "stck_oprc",
+      "stck_prdy_clpr",
+      "stck_prpr",
+      "stck_sdpr",
+      "stck_sspr",
+      "trc_errt",
+      "vi_cls_code"
+    ],
+    "method": "GET",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "requiredParams": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "trIds": [
+      "FHPST02400000"
+    ],
+    "url": "/uapi/etfetn/v1/quotations/inquire-price"
+  },
+  "HHDFS78330900": {
+    "blocks": [
+      "output1"
+    ],
+    "example": "overseas_stock/rights_by_ice",
+    "fields": [
+      "anno_dt",
+      "ca_title",
+      "delist_dt",
+      "div_lock_dt",
+      "early_redempt_dt",
+      "effective_dt",
+      "local_end_dt",
+      "lock_dt",
+      "pay_dt",
+      "record_dt",
+      "redempt_dt",
+      "validity_dt"
+    ],
+    "method": "GET",
+    "params": [
+      "ED_YMD",
+      "NCOD",
+      "ST_YMD",
+      "SYMB"
+    ],
+    "requiredParams": [
+      "NCOD",
+      "SYMB"
+    ],
+    "trIds": [
+      "HHDFS78330900"
+    ],
+    "url": "/uapi/overseas-price/v1/quotations/rights-by-ice"
+  },
+  "HHKDB669102C0": {
+    "blocks": [
+      "output1"
+    ],
+    "example": "domestic_stock/ksdinfo_dividend",
+    "fields": [
+      "divi_kind",
+      "divi_pay_dt",
+      "divi_rate",
+      "face_val",
+      "high_divi_gb",
+      "odd_pay_dt",
+      "per_sto_divi_amt",
+      "record_date",
+      "sht_cd",
+      "stk_div_pay_dt",
+      "stk_divi_rate",
+      "stk_kind"
+    ],
+    "method": "GET",
+    "params": [
+      "CTS",
+      "F_DT",
+      "GB1",
+      "HIGH_GB",
+      "SHT_CD",
+      "T_DT"
+    ],
+    "requiredParams": [],
+    "trIds": [
+      "HHKDB669102C0"
+    ],
+    "url": "/uapi/domestic-stock/v1/ksdinfo/dividend"
+  },
+  "TTTC0081R": {
+    "blocks": [
+      "output1",
+      "output2"
+    ],
+    "example": "domestic_stock/inquire_daily_ccld",
+    "fields": [
+      "avg_prvs",
+      "ccld_cndt_name",
+      "cnc_cfrm_qty",
+      "cncl_yn",
+      "cpbc_ordp_infm_mthd_dvsn_cd",
+      "cpbc_ordp_mtrl_dvsn_cd",
+      "cpbc_ordp_ord_rcit_dvsn_cd",
+      "ctac_tlno",
+      "excg_dvsn_cd",
+      "excg_id_dvsn_Cd",
+      "infm_tmd",
+      "inqr_ip_addr",
+      "loan_dt",
+      "odno",
+      "ord_dt",
+      "ord_dvsn_cd",
+      "ord_dvsn_name",
+      "ord_gno_brno",
+      "ord_orgno",
+      "ord_qty",
+      "ord_tmd",
+      "ord_unpr",
+      "ordr_empno",
+      "orgn_odno",
+      "pchs_avg_pric",
+      "pdno",
+      "prdt_name",
+      "prdt_type_cd",
+      "prsm_tlex_smtl",
+      "rjct_qty",
+      "rmn_qty",
+      "rsvn_ord_end_dt",
+      "sll_buy_dvsn_cd",
+      "sll_buy_dvsn_cd_name",
+      "stpm_cndt_pric",
+      "stpm_efct_occr_dtmd",
+      "tot_ccld_amt",
+      "tot_ccld_qty",
+      "tot_ord_qty"
+    ],
+    "method": "GET",
+    "params": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CCLD_DVSN",
+      "CTX_AREA_FK100",
+      "CTX_AREA_NK100",
+      "INQR_DVSN",
+      "INQR_DVSN_1",
+      "INQR_DVSN_3",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "ODNO",
+      "ORD_GNO_BRNO",
+      "PDNO",
+      "SLL_BUY_DVSN_CD"
+    ],
+    "requiredParams": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CCLD_DVSN",
+      "INQR_DVSN",
+      "INQR_DVSN_3",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "SLL_BUY_DVSN_CD"
+    ],
+    "trIds": [
+      "CTSC9215R",
+      "TTTC0081R",
+      "VTSC9215R",
+      "VTTC0081R"
+    ],
+    "url": "/uapi/domestic-stock/v1/trading/inquire-daily-ccld"
+  },
+  "TTTC8434R": {
+    "blocks": [
+      "output1",
+      "output2"
+    ],
+    "example": "domestic_stock/inquire_balance",
+    "fields": [
+      "asst_icdc_amt",
+      "asst_icdc_erng_rt",
+      "bfdy_buy_amt",
+      "bfdy_buy_qty",
+      "bfdy_cprs_icdc",
+      "bfdy_sll_amt",
+      "bfdy_sll_qty",
+      "bfdy_tlex_amt",
+      "bfdy_tot_asst_evlu_amt",
+      "cma_evlu_amt",
+      "d2_auto_rdpt_amt",
+      "dnca_tot_amt",
+      "evlu_amt",
+      "evlu_amt_smtl_amt",
+      "evlu_erng_rt",
+      "evlu_pfls_amt",
+      "evlu_pfls_rt",
+      "evlu_pfls_smtl_amt",
+      "expd_dt",
+      "fltt_rt",
+      "fncg_gld_auto_rdpt_yn",
+      "grta_rt_name",
+      "hldg_qty",
+      "item_mgna_rt_name",
+      "loan_amt",
+      "loan_dt",
+      "nass_amt",
+      "nxdy_auto_rdpt_amt",
+      "nxdy_excc_amt",
+      "ord_psbl_qty",
+      "pchs_amt",
+      "pchs_amt_smtl_amt",
+      "pchs_avg_pric",
+      "pdno",
+      "prdt_name",
+      "prpr",
+      "prvs_rcdl_excc_amt",
+      "sbst_pric",
+      "scts_evlu_amt",
+      "stck_loan_unpr",
+      "stln_slng_chgs",
+      "thdt_buy_amt",
+      "thdt_buyqty",
+      "thdt_sll_amt",
+      "thdt_sll_qty",
+      "thdt_tlex_amt",
+      "tot_evlu_amt",
+      "tot_loan_amt",
+      "tot_stln_slng_chgs",
+      "trad_dvsn_name"
+    ],
+    "method": "GET",
+    "params": [
+      "ACNT_PRDT_CD",
+      "AFHR_FLPR_YN",
+      "CANO",
+      "CTX_AREA_FK100",
+      "CTX_AREA_NK100",
+      "FNCG_AMT_AUTO_RDPT_YN",
+      "FUND_STTL_ICLD_YN",
+      "INQR_DVSN",
+      "OFL_YN",
+      "PRCS_DVSN",
+      "UNPR_DVSN"
+    ],
+    "requiredParams": [
+      "ACNT_PRDT_CD",
+      "AFHR_FLPR_YN",
+      "CANO",
+      "FNCG_AMT_AUTO_RDPT_YN",
+      "FUND_STTL_ICLD_YN",
+      "INQR_DVSN",
+      "PRCS_DVSN",
+      "UNPR_DVSN"
+    ],
+    "trIds": [
+      "TTTC8434R",
+      "VTTC8434R"
+    ],
+    "url": "/uapi/domestic-stock/v1/trading/inquire-balance"
+  },
+  "TTTC8715R": {
+    "blocks": [
+      "output1",
+      "output2"
+    ],
+    "example": "domestic_stock/inquire_period_trade_profit",
+    "fields": [
+      "buy_amt",
+      "buy_excc_amt_smtl",
+      "buy_fee_smtl",
+      "buy_qty",
+      "buy_tax_smtl",
+      "buy_tr_amt_smtl",
+      "buyqty_smtl",
+      "fee",
+      "hldg_qty",
+      "loan_dt",
+      "loan_int",
+      "pchs_unpr",
+      "pdno",
+      "pfls_rt",
+      "prdt_name",
+      "rlzt_pfls",
+      "sll_amt",
+      "sll_excc_amt_smtl",
+      "sll_fee_smtl",
+      "sll_pric",
+      "sll_qty",
+      "sll_qty_smtl",
+      "sll_tltx_smtl",
+      "sll_tr_amt_smtl",
+      "tl_tax",
+      "tot_excc_amt",
+      "tot_fee",
+      "tot_pftrt",
+      "tot_qty",
+      "tot_rlzt_pfls",
+      "tot_tltx",
+      "tot_tr_amt",
+      "trad_dt",
+      "trad_dvsn_name"
+    ],
+    "method": "GET",
     "params": [
       "ACNT_PRDT_CD",
       "CANO",
@@ -96,128 +1013,59 @@
       "PDNO",
       "SORT_DVSN"
     ],
-    "sha256": "b8b716bcd3f6800a",
+    "requiredParams": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CBLC_DVSN",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "SORT_DVSN"
+    ],
     "trIds": [
       "TTTC8715R"
     ],
-    "usedBy": [
-      "TTTC8715R"
-    ]
+    "url": "/uapi/domestic-stock/v1/trading/inquire-period-trade-profit"
   },
-  "examples_llm/domestic_stock/inquire_price/inquire_price.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/quotations/inquire-price",
-    "params": [
-      "FID_COND_MRKT_DIV_CODE",
-      "FID_INPUT_ISCD"
+  "TTTS3035R": {
+    "blocks": [
+      "output"
     ],
-    "sha256": "bf2a715da0d8617b",
-    "trIds": [
-      "FHKST01010100"
+    "example": "overseas_stock/inquire_ccnl",
+    "fields": [
+      "dmst_ord_dt",
+      "ft_ccld_amt3",
+      "ft_ccld_qty",
+      "ft_ccld_unpr3",
+      "ft_ord_qty",
+      "ft_ord_unpr3",
+      "loan_dt",
+      "loan_type_cd",
+      "mdia_dvsn_name",
+      "nccs_qty",
+      "odno",
+      "ord_dt",
+      "ord_gno_brno",
+      "ord_tmd",
+      "orgn_odno",
+      "ovrs_excg_cd",
+      "pdno",
+      "prcs_stat_name",
+      "prdt_name",
+      "rjct_rson",
+      "rjct_rson_name",
+      "rvse_cncl_dvsn",
+      "rvse_cncl_dvsn_name",
+      "sll_buy_dvsn_cd",
+      "sll_buy_dvsn_cd_name",
+      "splt_buy_attr_name",
+      "thco_ord_tmd",
+      "tr_crcy_cd",
+      "tr_mket_name",
+      "tr_natn",
+      "tr_natn_name",
+      "usa_amk_exts_rqst_yn"
     ],
-    "usedBy": [
-      "FHKST01010100"
-    ]
-  },
-  "examples_llm/domestic_stock/invest_opinion/invest_opinion.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/quotations/invest-opinion",
-    "params": [
-      "FID_COND_MRKT_DIV_CODE",
-      "FID_COND_SCR_DIV_CODE",
-      "FID_INPUT_DATE_1",
-      "FID_INPUT_DATE_2",
-      "FID_INPUT_ISCD"
-    ],
-    "sha256": "1ed9c4b78f1ed208",
-    "trIds": [
-      "FHKST663300C0"
-    ],
-    "usedBy": [
-      "FHKST663300C0"
-    ]
-  },
-  "examples_llm/domestic_stock/ksdinfo_dividend/ksdinfo_dividend.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/ksdinfo/dividend",
-    "params": [
-      "CTS",
-      "F_DT",
-      "GB1",
-      "HIGH_GB",
-      "SHT_CD",
-      "T_DT"
-    ],
-    "sha256": "e45641acbcd379c7",
-    "trIds": [
-      "HHKDB669102C0"
-    ],
-    "usedBy": [
-      "HHKDB669102C0"
-    ]
-  },
-  "examples_llm/domestic_stock/news_title/news_title.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/quotations/news-title",
-    "params": [
-      "FID_COND_MRKT_CLS_CODE",
-      "FID_INPUT_DATE_1",
-      "FID_INPUT_HOUR_1",
-      "FID_INPUT_ISCD",
-      "FID_INPUT_SRNO",
-      "FID_NEWS_OFER_ENTP_CODE",
-      "FID_RANK_SORT_CLS_CODE",
-      "FID_TITL_CNTT"
-    ],
-    "sha256": "e1d0b5d3f53ff270",
-    "trIds": [
-      "FHKST01011800"
-    ],
-    "usedBy": [
-      "FHKST01011800"
-    ]
-  },
-  "examples_llm/domestic_stock/search_stock_info/search_stock_info.py": {
-    "apiUrl": "/uapi/domestic-stock/v1/quotations/search-stock-info",
-    "params": [
-      "PDNO",
-      "PRDT_TYPE_CD"
-    ],
-    "sha256": "342e0be8577953b1",
-    "trIds": [
-      "CTPF1002R"
-    ],
-    "usedBy": [
-      "CTPF1002R"
-    ]
-  },
-  "examples_llm/etfetn/inquire_component_stock_price/inquire_component_stock_price.py": {
-    "apiUrl": "/uapi/etfetn/v1/quotations/inquire-component-stock-price",
-    "params": [
-      "FID_COND_MRKT_DIV_CODE",
-      "FID_COND_SCR_DIV_CODE",
-      "FID_INPUT_ISCD"
-    ],
-    "sha256": "91fc582ca462aed3",
-    "trIds": [
-      "FHKST121600C0"
-    ],
-    "usedBy": [
-      "FHKST121600C0"
-    ]
-  },
-  "examples_llm/etfetn/inquire_price/inquire_price.py": {
-    "apiUrl": "/uapi/etfetn/v1/quotations/inquire-price",
-    "params": [
-      "FID_COND_MRKT_DIV_CODE",
-      "FID_INPUT_ISCD"
-    ],
-    "sha256": "b0e4a42a97e6e435",
-    "trIds": [
-      "FHPST02400000"
-    ],
-    "usedBy": [
-      "FHPST02400000"
-    ]
-  },
-  "examples_llm/overseas_stock/inquire_ccnl/inquire_ccnl.py": {
-    "apiUrl": "/uapi/overseas-stock/v1/trading/inquire-ccnl",
+    "method": "GET",
     "params": [
       "ACNT_PRDT_CD",
       "CANO",
@@ -234,17 +1082,42 @@
       "SLL_BUY_DVSN",
       "SORT_SQN"
     ],
-    "sha256": "9187975fe2602940",
+    "requiredParams": [],
     "trIds": [
       "TTTS3035R",
       "VTTS3035R"
     ],
-    "usedBy": [
-      "TTTS3035R"
-    ]
+    "url": "/uapi/overseas-stock/v1/trading/inquire-ccnl"
   },
-  "examples_llm/overseas_stock/inquire_period_profit/inquire_period_profit.py": {
-    "apiUrl": "/uapi/overseas-stock/v1/trading/inquire-period-profit",
+  "TTTS3039R": {
+    "blocks": [
+      "output1",
+      "output2"
+    ],
+    "example": "overseas_stock/inquire_period_profit",
+    "fields": [
+      "avg_sll_unpr",
+      "bass_dt",
+      "excc_dfrm_amt",
+      "exrt",
+      "frcr_pchs_amt1",
+      "frcr_sll_amt_smtl1",
+      "frst_bltn_exrt",
+      "ovrs_excg_cd",
+      "ovrs_pdno",
+      "ovrs_rlzt_pfls_amt",
+      "ovrs_rlzt_pfls_tot_amt",
+      "pchs_avg_pric",
+      "pftrt",
+      "slcl_qty",
+      "smtl_fee1",
+      "stck_buy_amt_smtl",
+      "stck_sll_amt_smtl",
+      "stck_sll_tlex",
+      "tot_pftrt",
+      "trad_day"
+    ],
+    "method": "GET",
     "params": [
       "ACNT_PRDT_CD",
       "CANO",
@@ -258,47 +1131,10 @@
       "PDNO",
       "WCRC_FRCR_DVSN_CD"
     ],
-    "sha256": "770bb1239a097238",
+    "requiredParams": [],
     "trIds": [
       "TTTS3039R"
     ],
-    "usedBy": [
-      "TTTS3039R"
-    ]
-  },
-  "examples_llm/overseas_stock/inquire_present_balance/inquire_present_balance.py": {
-    "apiUrl": "/uapi/overseas-stock/v1/trading/inquire-present-balance",
-    "params": [
-      "ACNT_PRDT_CD",
-      "CANO",
-      "INQR_DVSN_CD",
-      "NATN_CD",
-      "TR_MKET_CD",
-      "WCRC_FRCR_DVSN_CD"
-    ],
-    "sha256": "8819050ca1c324af",
-    "trIds": [
-      "CTRP6504R",
-      "VTRP6504R"
-    ],
-    "usedBy": [
-      "CTRP6504R"
-    ]
-  },
-  "examples_llm/overseas_stock/rights_by_ice/rights_by_ice.py": {
-    "apiUrl": "/uapi/overseas-price/v1/quotations/rights-by-ice",
-    "params": [
-      "ED_YMD",
-      "NCOD",
-      "ST_YMD",
-      "SYMB"
-    ],
-    "sha256": "1212001ce95942fd",
-    "trIds": [
-      "HHDFS78330900"
-    ],
-    "usedBy": [
-      "HHDFS78330900"
-    ]
+    "url": "/uapi/overseas-stock/v1/trading/inquire-period-profit"
   }
 }

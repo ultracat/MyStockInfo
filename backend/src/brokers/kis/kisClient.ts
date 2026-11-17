@@ -7,3 +7,4 @@ export * from './kisCore';
 export * from './kisDomestic';
 export * from './kisStockDetail';
 export * from './kisOverseas';
+export * from './kisResponseShape';

@@ -4,7 +4,8 @@ import { getDataDir } from '../../paths';
 import { JsonStore } from '../../jsonStore';
 import { DEFAULT_TTL_MS, PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
-import { KisAccountSummary, KisDailyCcldItem, KisHoldingItem, kisDailyCcldLimiter, kisGet, requireCredentials } from './kisCore';
+import { KisAccountSummary, KisDailyCcldItem, KisHoldingItem, KisRow, MAX_PAGES, kisDailyCcldLimiter, kisGet, requireCredentials } from './kisCore';
+import { asRows } from './kisStockDetail';
 async function fetchKisBalanceUncached(): Promise<{ items: KisHoldingItem[]; summary: KisAccountSummary }> {
   const creds = await requireCredentials();
 
@@ -22,9 +23,8 @@ async function fetchKisBalanceUncached(): Promise<{ items: KisHoldingItem[]; sum
     CTX_AREA_NK100: '',
   });
 
-  const items = Array.isArray(data.output1) ? (data.output1 as KisHoldingItem[]) : [];
-  const summaryRaw = data.output2;
-  const summary = Array.isArray(summaryRaw) ? summaryRaw[0] : summaryRaw;
+  const items: KisHoldingItem[] = asRows(data.output1);
+  const summary: KisAccountSummary | undefined = asRows(data.output2)[0];
 
   if (!summary || typeof summary !== 'object') {
     console.error('[kis] Unexpected inquire-balance response shape:', shapeForLog(data));
@@ -33,7 +33,7 @@ async function fetchKisBalanceUncached(): Promise<{ items: KisHoldingItem[]; sum
     );
   }
 
-  return { items, summary: summary as KisAccountSummary };
+  return { items, summary };
 }
 
 export async function fetchKisBalance(
@@ -58,18 +58,7 @@ function parseYmd(s: string): Date {
  *  `examples_llm/domestic_stock/period_rights/period_rights.py` 확인 2026-11-09) 한 행 — 배당 동기화에 쓰는
  *  필드만. 금액은 문자열(원). `rght_type_cd`는 실측상 `03`=주식 배당, `32`=ETF 분배금(코드표는 문서에 없음).
  *  `last_alct_amt`=최종배정금액(세전), `tax_amt`=세금, `cash_dfrm_dt`=현금지급일(미래면 지급 예정). */
-export interface KisPeriodRight {
-  rght_type_cd: string;
-  bass_dt: string;
-  pdno: string;
-  shtn_pdno: string;
-  prdt_name: string;
-  last_alct_amt: string;
-  tax_amt: string;
-  cash_dfrm_dt: string;
-  /** 잔고수량(기준일 보유 수량) — 다가오는 배당 확정 건의 "수량 × 주당"(주당 = 최종배정금액 ÷ 이 값). 공식 예제 COLUMN_MAPPING. */
-  cblc_qty?: string;
-}
+export type KisPeriodRight = KisRow<'CTRGA011R', 'output'>;
 
 /** 이 앱이 쓰는 KIS 계좌 id(`CANO-상품코드`) — kisAdapter의 계좌 목록과 같은 형식. */
 export async function getKisAccountId(): Promise<string> {
@@ -85,7 +74,8 @@ export async function fetchKisPeriodRights(from = '2000-01-01', to = '2099-12-31
   let fk100 = '';
   let nk100 = '';
   let trCont = '';
-  for (let page = 0; page < 200; page++) {
+  const seen = new Set<string>();
+  for (let page = 0; page < MAX_PAGES; page++) {
     const res = await kisGet(
       '/uapi/domestic-stock/v1/trading/period-rights',
       'CTRGA011R',
@@ -107,29 +97,21 @@ export async function fetchKisPeriodRights(from = '2000-01-01', to = '2099-12-31
       kisDailyCcldLimiter,
       5
     );
-    const out = res.output;
-    items.push(...((Array.isArray(out) ? out : out ? [out] : []) as KisPeriodRight[]));
-    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    items.push(...asRows(res.output));
+    if (res.trCont !== 'M' && res.trCont !== 'F') return items;
     fk100 = String(res.ctx_area_fk100 ?? '');
     nk100 = String(res.ctx_area_nk100 ?? '');
+    if (seen.has(nk100)) return items; // 같은 연속조회 키로 되돌아오면 멈춘다
+    seen.add(nk100);
     trCont = 'N';
   }
-  return items;
+  // 배당 동기화가 이 목록으로 기록을 통째로 교체한다 — 잘린 목록이면 기존 배당이 지워지므로 조용히 끊지 않는다.
+  throw new Error(`한국투자증권 권리현황이 ${MAX_PAGES}페이지를 넘어 끝까지 받지 못했습니다`);
 }
 
 /** 기간별매매손익현황조회(`TTTC8715R`, `inquire-period-trade-profit`, 공식 예제 확인 2026-11-09) 한 행 — 매도 체결별
  *  증권사가 계산한 실현손익. 금액은 문자열(원). 국내주식만. */
-export interface KisTradeProfitRow {
-  trad_dt: string;
-  pdno: string;
-  prdt_name: string;
-  sll_qty: string;
-  sll_amt: string;
-  buy_amt: string;
-  rlzt_pfls: string;
-  fee: string;
-  tl_tax: string;
-}
+export type KisTradeProfitRow = KisRow<'TTTC8715R', 'output1'>;
 
 /** 기간 내 국내 매도 실현손익 전체(50건씩 연속조회). 합계(output2)는 쓰지 않고 행을 더해 쓴다(페이지가 나뉘어서). */
 export async function fetchKisPeriodTradeProfit(from: string, to: string): Promise<KisTradeProfitRow[]> {
@@ -138,7 +120,8 @@ export async function fetchKisPeriodTradeProfit(from: string, to: string): Promi
   let fk100 = '';
   let nk100 = '';
   let trCont = '';
-  for (let page = 0; page < 100; page++) {
+  const seen = new Set<string>();
+  for (let page = 0; page < MAX_PAGES; page++) {
     const res = await kisGet(
       '/uapi/domestic-stock/v1/trading/inquire-period-trade-profit',
       'TTTC8715R',
@@ -157,14 +140,15 @@ export async function fetchKisPeriodTradeProfit(from: string, to: string): Promi
       kisDailyCcldLimiter,
       5
     );
-    const out = res.output1;
-    rows.push(...((Array.isArray(out) ? out : out ? [out] : []) as KisTradeProfitRow[]));
-    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    rows.push(...asRows(res.output1));
+    if (res.trCont !== 'M' && res.trCont !== 'F') return rows;
     fk100 = String(res.ctx_area_fk100 ?? '');
     nk100 = String(res.ctx_area_nk100 ?? '');
+    if (seen.has(nk100)) return rows;
+    seen.add(nk100);
     trCont = 'N';
   }
-  return rows;
+  throw new Error(`한국투자증권 기간 실현손익이 ${MAX_PAGES}페이지를 넘어 끝까지 받지 못했습니다`);
 }
 
 /** 국내휴장일조회 저장 — 공식 예제가 "원장 서비스와 연관돼 가급적 **1일 1회** 호출"을 요청해서 디스크에 하루 단위로 둔다. */
@@ -197,8 +181,7 @@ export async function fetchKisBusinessDays(from: string, to: string): Promise<Re
       { BASS_DT: from.replace(/-/g, ''), CTX_AREA_FK: fk, CTX_AREA_NK: nk },
       trCont
     );
-    const out = res.output;
-    const rows = (Array.isArray(out) ? out : out ? [out] : []) as Array<{ bass_dt: string; bzdy_yn: string }>;
+    const rows = asRows(res.output);
     for (const r of rows) {
       const m = /^(\d{4})(\d{2})(\d{2})$/.exec(r.bass_dt ?? '');
       if (m) days[`${m[1]}-${m[2]}-${m[3]}`] = r.bzdy_yn === 'Y';
@@ -215,14 +198,7 @@ export async function fetchKisBusinessDays(from: string, to: string): Promise<Re
 
 /** 예탁원정보 배당일정(`HHKDB669102C0`, `ksdinfo/dividend`) — **시장 전체**(계좌 무관) 국내 배당 일정.
  *  `per_sto_divi_amt`=주당 배당금(원, 미정이면 0), `record_date`=기준일(YYYYMMDD), `divi_pay_dt`=지급일(YYYY/MM/DD, 미정이면 빈 값). */
-export interface KisDividendScheduleRow {
-  record_date: string;
-  sht_cd: string;
-  isin_name: string;
-  divi_kind: string;
-  per_sto_divi_amt: string;
-  divi_pay_dt: string;
-}
+export type KisDividendScheduleRow = KisRow<'HHKDB669102C0', 'output1'>;
 
 /** `from`~`to`는 **기준일(record_date)** 범위다(2026-11-10 실측 — 오늘부터 조회하면 가장 이른 기준일이 오늘).
  *  `symbol`을 주면 그 종목만(시장 전체는 앞으로 일정이 듬성듬성 등록돼 있어 보유 종목별 조회가 정확하다).
@@ -237,8 +213,7 @@ export async function fetchKisDividendSchedule(from: string, to: string, symbol 
       { CTS: '', GB1: '0', F_DT: from.replace(/-/g, ''), T_DT: to.replace(/-/g, ''), SHT_CD: symbol, HIGH_GB: '' },
       trCont
     );
-    const out = res.output1 ?? res.output;
-    rows.push(...((Array.isArray(out) ? out : out ? [out] : []) as KisDividendScheduleRow[]));
+    rows.push(...asRows(res.output1));
     if (res.trCont !== 'M' && res.trCont !== 'F') break;
     trCont = 'N';
   }
@@ -247,7 +222,7 @@ export async function fetchKisDividendSchedule(from: string, to: string, symbol 
 
 /** Fetches every page of one 주식일별주문체결조회 query (single TR/date range), following `ctx_area_fk100`/`nk100` until `tr_cont` stops being 'M'/'F'. */
 async function fetchDailyCcldAllPages(
-  trId: string,
+  trId: 'TTTC0081R' | 'CTSC9215R',
   base: Record<string, string>
 ): Promise<KisDailyCcldItem[]> {
   const items: KisDailyCcldItem[] = [];
@@ -255,10 +230,9 @@ async function fetchDailyCcldAllPages(
   let nk100 = '';
   let trCont = '';
 
-  // Real accounts return up to 100 rows/page per docs — 50 pages is a
-  // generous safety cap well beyond a year of realistic personal trading
-  // activity, so a stuck continuation cursor can't loop forever.
-  for (let page = 0; page < 50; page++) {
+  // 같은 연속조회 키로 되돌아오면 멈추고(무한 반복 방지), 상한(MAX_PAGES)에 닿으면 던진다 — 조용히 끊으면 매매내역이 빠진 채 저장된다.
+  const seen = new Set<string>();
+  for (let page = 0; page < MAX_PAGES; page++) {
     const res = await kisGet(
       '/uapi/domestic-stock/v1/trading/inquire-daily-ccld',
       trId,
@@ -268,16 +242,16 @@ async function fetchDailyCcldAllPages(
       5
     );
 
-    const output1 = Array.isArray(res.output1) ? (res.output1 as KisDailyCcldItem[]) : [];
-    items.push(...output1);
+    items.push(...asRows(res.output1));
 
-    if (res.trCont !== 'M' && res.trCont !== 'F') break;
+    if (res.trCont !== 'M' && res.trCont !== 'F') return items;
     fk100 = String(res.ctx_area_fk100 ?? '');
     nk100 = String(res.ctx_area_nk100 ?? '');
+    if (seen.has(nk100)) return items;
+    seen.add(nk100);
     trCont = 'N';
   }
-
-  return items;
+  throw new Error(`한국투자증권 체결 내역이 ${MAX_PAGES}페이지를 넘어 끝까지 받지 못했습니다(${trId})`);
 }
 
 async function fetchKisTradeHistoryUncached(from: string, to: string): Promise<KisDailyCcldItem[]> {
@@ -368,9 +342,9 @@ export async function fetchKisDomesticPrice(symbol: string, opts: FetchOpts = {}
         FID_COND_MRKT_DIV_CODE: 'J',
         FID_INPUT_ISCD: symbol,
       });
-      const output = res.output;
-      if (!output || typeof output !== 'object' || !('stck_prpr' in output)) return null;
-      const price = Number((output as { stck_prpr: string }).stck_prpr);
+      const output = asRows(res.output)[0];
+      if (!output) return null;
+      const price = Number(output.stck_prpr);
       return Number.isFinite(price) ? price : null;
     },
     opts
@@ -393,8 +367,8 @@ export async function fetchKisStockName(symbol: string): Promise<string | null> 
     PRDT_TYPE_CD: '300',
     PDNO: symbol,
   });
-  const output = res.output;
-  if (!output || typeof output !== 'object' || !('prdt_name' in output)) return null;
-  const name = String((output as { prdt_name: string }).prdt_name).trim();
+  const output = asRows(res.output)[0];
+  if (!output) return null;
+  const name = String(output.prdt_name ?? '').trim();
   return name || null;
 }

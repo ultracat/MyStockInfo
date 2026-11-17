@@ -4,6 +4,16 @@ import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
 import { SecretJsonStore } from '../../secretJsonStore';
+import type { KisParamNames, KisResponses } from './kisSpec.gen';
+import { noteKisResponse } from './kisResponseShape';
+
+/** 이 앱이 부르는 KIS TR — 공식 예제 카탈로그·실제 응답 기록에서 만든 kisSpec.gen.ts의 키(`npm run kis:types`). */
+export type KisTrId = keyof KisResponses;
+/** 그 TR의 요청 파라미터 — 공식 예제에 없는 이름을 보내면 컴파일 오류다. */
+export type KisParams<T extends KisTrId> = Partial<Record<KisParamNames[T], string>>;
+type Elem<V> = V extends readonly (infer E)[] ? E : V;
+/** 그 TR 응답 블록의 한 줄(배열이면 원소). 실측한 블록은 필드가 필수, 실측 전 블록은 선택. */
+export type KisRow<T extends KisTrId, B extends keyof KisResponses[T]> = Elem<NonNullable<KisResponses[T][B]>>;
 
 // koreainvestment/open-trading-api (examples_user/kis_auth.py, checked
 // 2026-08-12): real-trading base URL. Paper trading
@@ -37,6 +47,9 @@ export const kisLimiter = new RateLimiter({ tps: 4 }, 'KIS');
 // 분리해 더 보수적으로(1건/초) 페이싱한다. 페이지네이션(최대 50페이지) + "3개월
 // 이내/이전" TR 분할로 짧은 시간에 여러 번 연속 호출되는 TR이라 재시도 여유도 더
 // 필요해서, kisGet 호출 시 maxAttempts도 이 TR만 늘려서 넘긴다.
+/** 연속조회 상한 — 닿으면 던진다(조용히 끊으면 배당 동기화·저장소 갱신이 잘린 목록으로 기존 기록을 지운다, 2026-11-17). */
+export const MAX_PAGES = 200;
+
 export const kisDailyCcldLimiter = new RateLimiter({ tps: 1 }, 'KIS-DailyCcld');
 
 interface KisTokenResponse {
@@ -64,47 +77,12 @@ export interface KisEnvelope {
   ctx_area_nk?: string;
 }
 
-export interface KisHoldingItem {
-  pdno: string;
-  prdt_name: string;
-  hldg_qty: string;
-  ord_psbl_qty: string;
-  pchs_avg_pric: string;
-  pchs_amt: string;
-  prpr: string;
-  evlu_amt: string;
-  evlu_pfls_amt: string;
-  evlu_pfls_rt: string;
-  [key: string]: unknown;
-}
-
-export interface KisAccountSummary {
-  pchs_amt_smtl_amt: string;
-  evlu_amt_smtl_amt: string;
-  evlu_pfls_smtl_amt: string;
-  scts_evlu_amt: string;
-  dnca_tot_amt: string;
-  tot_evlu_amt: string;
-  [key: string]: unknown;
-}
-
-/** 주식일별주문체결조회 output1 row — column names per the official example
- *  script's COLUMN_MAPPING (examples_llm/domestic_stock/inquire_daily_ccld/
- *  chk_inquire_daily_ccld.py, checked 2026-08-14). */
-export interface KisDailyCcldItem {
-  ord_dt: string; // 주문일자 YYYYMMDD
-  odno: string; // 주문번호
-  pdno: string; // 상품번호(종목코드)
-  prdt_name: string; // 상품명(종목명)
-  sll_buy_dvsn_cd: string; // 매도매수구분코드 (01: 매도, 02: 매수)
-  sll_buy_dvsn_cd_name: string; // "매도" / "매수"
-  ord_qty: string; // 주문수량
-  ord_unpr: string; // 주문단가
-  tot_ccld_qty: string; // 총체결수량
-  avg_prvs: string; // 평균가(체결평균단가)
-  tot_ccld_amt: string; // 총체결금액
-  [key: string]: unknown;
-}
+// 응답 줄 타입은 실제 응답 기록(kis-live.json)과 공식 예제에서 생성한 kisSpec.gen.ts를 그대로 쓴다(2026-11-17 — 예전엔 손으로 옮긴
+// 인터페이스에 `[key: string]: unknown`을 붙여 필드 이름 오타가 컴파일에서 안 잡혔다).
+export type KisHoldingItem = KisRow<'TTTC8434R', 'output1'>;
+export type KisAccountSummary = KisRow<'TTTC8434R', 'output2'>;
+/** 주식일별주문체결조회 output1 — 3개월 이내(TTTC0081R)·이전(CTSC9215R) TR이 같은 모양이다(실측). */
+export type KisDailyCcldItem = KisRow<'TTTC0081R', 'output1'>;
 
 export class KisApiError extends Error {
   constructor(message: string, readonly status: number, readonly body: string) {
@@ -213,16 +191,16 @@ async function getToken(forceRefresh = false): Promise<string> {
  * page is available. inquire-balance (this file's only other caller) never
  * pages, so it just omits the param and gets the default ''.
  */
-export async function kisGet(
+export async function kisGet<T extends KisTrId>(
   path: string,
-  trId: string,
-  params: Record<string, string>,
+  trId: T,
+  params: KisParams<T>,
   trCont = '',
   limiter: RateLimiter = kisLimiter,
   maxRetries = 3
-): Promise<KisEnvelope & { trCont: string }> {
+): Promise<KisEnvelope & KisResponses[T] & { trCont: string }> {
   const creds = await requireCredentials();
-  const query = new URLSearchParams(params);
+  const query = new URLSearchParams(params as Record<string, string>);
 
   const doFetch = async (token: string) =>
     fetch(`${BASE_URL}${path}?${query}`, {
@@ -298,7 +276,9 @@ export async function kisGet(
         throw new KisApiError(`한국투자증권 API 오류 (${json.msg_cd}): ${json.msg1}`, res.status, text);
       }
 
-      return { ...json, trCont: res.headers.get('tr_cont') ?? '' };
+      // 응답 모양 관찰(값 없이) — 기록(kis-live.json)과 필드가 달라졌으면 로그 파일에 한 번 경고, kis:record면 모양을 모은다.
+      noteKisResponse(trId, json as unknown as Record<string, unknown>);
+      return { ...(json as KisEnvelope & KisResponses[T]), trCont: res.headers.get('tr_cont') ?? '' };
     }
   });
 }

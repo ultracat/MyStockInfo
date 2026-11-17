@@ -4,7 +4,8 @@ import { getDataDir } from '../../paths';
 import { JsonStore } from '../../jsonStore';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
-import { KisEnvelope, kisDailyCcldLimiter, kisGet, kisLimiter, requireCredentials } from './kisCore';
+import { KisEnvelope, KisParams, KisRow, MAX_PAGES, kisDailyCcldLimiter, kisGet, kisLimiter, requireCredentials } from './kisCore';
+import type { KisResponses } from './kisSpec.gen';
 import { kstToday } from './kisDomestic';
 import { asRows } from './kisStockDetail';
 // ---------------------------------------------------------------- 해외주식(미국, 계좌)
@@ -14,29 +15,32 @@ import { asRows } from './kisStockDetail';
 // 필드 매핑은 공식 예제의 COLUMN_MAPPING 그대로다 — 해외 거래가 생기면 화면 숫자를 증권사 앱과 대조할 것.
 
 /** FK200/NK200 + `tr_cont`로 끝까지 받는다(해외 계좌 TR 공통 연속조회 방식). `pick`이 페이지마다 행을 꺼낸다. */
-async function fetchAllPages200(
+async function fetchAllPages200<T extends 'TTTS3035R' | 'TTTS3039R', R>(
   path: string,
-  trId: string,
-  params: Record<string, string>,
-  pick: (res: KisEnvelope & Record<string, unknown>) => unknown,
+  trId: T,
+  params: KisParams<T>,
+  pick: (res: KisEnvelope & KisResponses[T]) => R | R[] | undefined,
   limiter: RateLimiter = kisLimiter
-): Promise<{ rows: Record<string, string>[]; last: KisEnvelope & Record<string, unknown> }> {
-  const rows: Record<string, string>[] = [];
+): Promise<{ rows: R[] }> {
+  const rows: R[] = [];
+  const seen = new Set<string>();
   let fk = '';
   let nk = '';
   let trCont = '';
-  let last: (KisEnvelope & Record<string, unknown>) | null = null;
-  for (let page = 0; page < 50; page++) {
-    const res = (await kisGet(path, trId, { ...params, CTX_AREA_FK200: fk, CTX_AREA_NK200: nk }, trCont, limiter, 5)) as KisEnvelope &
-      Record<string, unknown> & { trCont: string };
-    last = res;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await kisGet(path, trId, { ...params, CTX_AREA_FK200: fk, CTX_AREA_NK200: nk } as KisParams<T>, trCont, limiter, 5);
     rows.push(...asRows(pick(res)));
-    if (res.trCont !== 'M' && res.trCont !== 'F') break;
-    fk = String(res.ctx_area_fk200 ?? '').trim();
-    nk = String(res.ctx_area_nk200 ?? '').trim();
+    if (res.trCont !== 'M' && res.trCont !== 'F') return { rows };
+    const ctx = res as unknown as Record<string, unknown>;
+    fk = String(ctx.ctx_area_fk200 ?? '').trim();
+    nk = String(ctx.ctx_area_nk200 ?? '').trim();
+    // 이미 받은 연속조회 키로 되돌아오면 멈춘다(NH·토스와 같은 방어).
+    if (seen.has(nk)) return { rows };
+    seen.add(nk);
     trCont = 'N';
   }
-  return { rows, last: last! };
+  // 상한에서 조용히 끊지 않는다 — 잘린 목록으로 저장소를 갱신하지 않게(NH·키움·토스와 같은 원칙).
+  throw new Error(`한국투자증권 연속조회가 ${MAX_PAGES}페이지를 넘어 끝까지 받지 못했습니다: ${trId}`);
 }
 
 export interface KisOverseasPosition {
@@ -70,7 +74,9 @@ async function fetchKisOverseasBalanceUncached(): Promise<{ positions: KisOverse
     .filter((p) => n0(p.cblc_qty13) > 0 && (!p.buy_crcy_cd || p.buy_crcy_cd === 'USD'))
     .map((p) => ({
       symbol: String(p.pdno ?? '').trim(),
-      name: String(p.prdt_name ?? p.pdno ?? '').trim(),
+      // ⚠ 공식 예제의 이 TR 응답 필드엔 종목명이 없다(국가명·시장명뿐, kis-catalog.json) — 오면 쓰고 없으면 티커.
+      //   해외 보유가 생기면 kis:record로 실제 필드를 확인할 것(2026-11-17 kis:verify가 짚음).
+      name: String((p as { prdt_name?: string }).prdt_name ?? p.pdno ?? '').trim(),
       quantity: n0(p.cblc_qty13),
       averagePurchasePrice: n0(p.avg_unpr3),
       lastPrice: n0(p.ovrs_now_pric1),
@@ -123,7 +129,7 @@ export async function fetchKisOverseasTrades(from: string, to: string, opts: Fet
           ORD_GNO_BRNO: '',
           ODNO: '',
         },
-        (res) => res.output ?? res.output1,
+        (res) => res.output, // 공식 예제: 이 TR은 output 하나
         kisDailyCcldLimiter
       );
       return rows
@@ -149,7 +155,7 @@ export async function fetchKisOverseasTrades(from: string, to: string, opts: Fet
 
 /** 해외주식 기간손익(`TTTS3039R`, 미국 `NASD`, **원화 기준** `WCRC_FRCR_DVSN_CD=02`) — 매도 한 줄씩. 실현손익 화면의
  *  공식 값 비교용(앱 추정치도 원화라 바로 비교된다). `ovrs_rlzt_pfls_amt`는 제비용 차감 손익. */
-export async function fetchKisOverseasPeriodProfit(from: string, to: string): Promise<Record<string, string>[]> {
+export async function fetchKisOverseasPeriodProfit(from: string, to: string): Promise<KisRow<'TTTS3039R', 'output1'>[]> {
   const creds = await requireCredentials();
   const { rows } = await fetchAllPages200(
     '/uapi/overseas-stock/v1/trading/inquire-period-profit',
@@ -178,13 +184,7 @@ export async function fetchKisOverseasPeriodProfit(from: string, to: string): Pr
  *  미리 들어온다**(O·SCHD는 한 달 뒤 지급분, 주간 분배 ETF는 그달 말까지). **주당 금액 필드는 없다.** 날짜는 YYYYMMDD,
  *  권리유형은 한글 `ca_title`(실측: 현금배당·공개매수·티커변경). 한 번에 최대 50건만 온다(400일 범위의 주간 분배 ETF가
  *  50건에서 잘렸다) — 기간을 짧게 잡는다. */
-export interface KisOverseasIceRight {
-  anno_dt: string;
-  ca_title: string;
-  div_lock_dt: string;
-  pay_dt: string;
-  record_dt: string;
-}
+export type KisOverseasIceRight = KisRow<'HHDFS78330900', 'output1'>;
 
 export async function fetchKisOverseasIceRights(symbol: string, from: string, to: string): Promise<KisOverseasIceRight[]> {
   const res = await kisGet('/uapi/overseas-price/v1/quotations/rights-by-ice', 'HHDFS78330900', {
@@ -193,21 +193,14 @@ export async function fetchKisOverseasIceRights(symbol: string, from: string, to
     ST_YMD: from.replace(/-/g, ''),
     ED_YMD: to.replace(/-/g, ''),
   });
-  return asRows(res.output1) as unknown as KisOverseasIceRight[];
+  return asRows(res.output1);
 }
 
 /** 해외주식 기간별권리조회(`CTRGT011R`, `overseas-price/v1/quotations/period-rights`, 공식 예제
  *  `examples_llm/overseas_stock/period_rights`) 한 행. `alct_frcr_unpr`=주당 배당(외화), `acpl_bass_dt`=현지 기준일,
  *  `rght_type_cd` 03=배당, `dfnt_yn`=확정 여부(N이면 바뀔 수 있음). **배당은 기준일 무렵에야 등록된다**(2026-11-16 실측 —
  *  ICE에 이미 있는 11월 말 기준일 건이 아직 없었다). */
-export interface KisOverseasPeriodRight {
-  pdno: string;
-  rght_type_cd: string;
-  acpl_bass_dt: string;
-  alct_frcr_unpr: string;
-  crcy_cd: string;
-  dfnt_yn: string;
-}
+export type KisOverseasPeriodRight = KisRow<'CTRGT011R', 'output'>;
 
 /** 미국 거래소 상품유형코드 — `CTRGT011R`은 `PDNO`만 주면 "조회된 자료가 없습니다"(`KIER2520`)이고 이 코드를 같이 줘야
  *  한다(2026-11-16 실측: AAPL 512, O 513, NVDY·MSTY 529 — NYSE Arca ETF가 아멕스 코드로 나온다). */
@@ -224,7 +217,7 @@ async function fetchKisOverseasPeriodRightsFor(
   let nk = '';
   let trCont = '';
   for (let page = 0; page < 10; page++) {
-    const res = (await kisGet(
+    const res = await kisGet(
       '/uapi/overseas-price/v1/quotations/period-rights',
       'CTRGT011R',
       {
@@ -238,11 +231,12 @@ async function fetchKisOverseasPeriodRightsFor(
         CTX_AREA_FK50: fk,
       },
       trCont
-    )) as KisEnvelope & Record<string, unknown> & { trCont: string };
-    rows.push(...(asRows(res.output) as unknown as KisOverseasPeriodRight[]));
+    );
+    rows.push(...asRows(res.output));
     if (res.trCont !== 'M' && res.trCont !== 'F') break;
-    fk = String(res.ctx_area_fk50 ?? '').trim();
-    nk = String(res.ctx_area_nk50 ?? '').trim();
+    const ctx = res as unknown as Record<string, unknown>;
+    fk = String(ctx.ctx_area_fk50 ?? '').trim();
+    nk = String(ctx.ctx_area_nk50 ?? '').trim();
     trCont = 'N';
   }
   return rows;

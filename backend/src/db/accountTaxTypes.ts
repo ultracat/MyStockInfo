@@ -31,6 +31,15 @@ export function listAccountTaxTypes(): AccountTaxTypeEntry[] {
   return store().read();
 }
 
+/** 배당에 세금을 **바로 떼지 않는** 계좌인가 — ISA(만기·해지 때 손익통산 후 과세)·연금저축·IRP(인출 때 과세)는 계좌 안에서 받은
+ *  배당·분배금이 원천징수 없이 그대로 들어온다. KIS 권리현황(CTRGA011R)은 이런 계좌에도 계산상 세금(`tax_amt`)을 주는데 실제로는
+ *  떼지 않는다(2026-11-17 사용자 ISA 계좌로 확인 — 세전 분배금이 그대로 입금, API는 계산상 세금을 줌). 배당 동기화가 이걸 보고
+ *  세전 금액을 그대로 실수령으로, 세금은 0으로 적는다. */
+export function isTaxDeferredAccount(broker: BrokerId, accountId: string): boolean {
+  const t = store().read().find((e) => e.broker === broker && e.accountId === accountId)?.taxType;
+  return t === 'ISA' || t === 'PENSION_SAVINGS' || t === 'IRP';
+}
+
 export function upsertAccountTaxType(broker: BrokerId, accountId: string, taxType: AccountTaxType): AccountTaxTypeEntry {
   const entry: AccountTaxTypeEntry = { broker, accountId, taxType };
   store().update((current) => {

@@ -193,7 +193,7 @@ export interface LedgerDividend {
  * ⚠ 가정(세금이 0인 예시뿐이라 확인 못 함): `MnyDvdAmt`(없으면 `TrdAmt`)가 세전, 세금 = `TaxSumAmt`(없으면 소득세+주민세),
  *   세후 = 정산금액(`AdjstAmt`)이 있으면 그것, 없으면 세전 − 세금. 원화 줄만(해외 배당은 회사별 별도 TR — db/dbClient.ts).
  */
-export function classifyLedgerDividends(rows: LedgerRow[]): LedgerDividend[] {
+export function classifyLedgerDividends(rows: LedgerRow[], opts: { taxDeferred?: boolean } = {}): LedgerDividend[] {
   const out: LedgerDividend[] = [];
   for (const r of rows) {
     const summary = xStr(r.SmryNm);
@@ -204,8 +204,9 @@ export function classifyLedgerDividends(rows: LedgerRow[]): LedgerDividend[] {
     const cur = xStr(r.CrcyCode).toUpperCase() || 'KRW';
     if (!kind || !raw || !paidDate || cur !== 'KRW') continue;
     const gross = Math.abs(xNum(r.MnyDvdAmt)) || Math.abs(xNum(r.TrdAmt));
-    const tax = Math.abs(xNum(r.TaxSumAmt)) || Math.abs(xNum(r.Ictax)) + Math.abs(xNum(r.Ihtax));
-    const amount = Math.abs(xNum(r.AdjstAmt)) || gross - tax;
+    // ISA·연금저축·IRP는 원천징수가 없다(db/accountTaxTypes.ts isTaxDeferredAccount) — 세금 칸에 계산값이 와도 세전 그대로.
+    const tax = opts.taxDeferred ? 0 : Math.abs(xNum(r.TaxSumAmt)) || Math.abs(xNum(r.Ictax)) + Math.abs(xNum(r.Ihtax));
+    const amount = opts.taxDeferred ? gross : Math.abs(xNum(r.AdjstAmt)) || gross - tax;
     if (amount > 0) out.push({ symbol: krSymbol(raw), name: xStr(r.IsuNm) || krSymbol(raw), currency: 'KRW', amount, tax, paidDate, kind });
   }
   return out;

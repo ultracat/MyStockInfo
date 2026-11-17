@@ -1,0 +1,1613 @@
+{
+  "components": {
+    "schemas": {}
+  },
+  "info": {
+    "title": "NH Investment & Securities Open API (MyStock 사용분)",
+    "version": "{\"common\":\"v1\",\"krstock\":\"v1\",\"gbstock\":\"v1\"}"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/common/inquiry/v1/depositWithdrawal": {
+      "post": {
+        "operationId": "commonInquiryDepositWithdrawal",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "cts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {
+                      "act_no": {
+                        "type": "string"
+                      },
+                      "act_trd_dtl_cd": {
+                        "type": "string"
+                      },
+                      "iqr_end_dt": {
+                        "type": "string"
+                      },
+                      "iqr_sta_dt": {
+                        "type": "string"
+                      },
+                      "iqr_tp_cd": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act_no",
+                      "act_trd_dtl_cd",
+                      "iqr_end_dt",
+                      "iqr_sta_dt",
+                      "iqr_tp_cd"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "items": {
+                        "properties": {
+                          "act_trd_tp_nm": {
+                            "type": "string"
+                          },
+                          "cli_pe_fnm": {
+                            "type": "string"
+                          },
+                          "opi_cus_fnm": {
+                            "type": "string"
+                          },
+                          "ral_trd_dt": {
+                            "type": "string"
+                          },
+                          "sps_cd_krl_anm": {
+                            "type": "string"
+                          },
+                          "trd_af_dca": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_dt": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/common/inquiry/v1/totalTransaction": {
+      "post": {
+        "operationId": "commonInquiryTotalTransaction",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "cts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {
+                      "act_no": {
+                        "type": "string"
+                      },
+                      "act_trd_dtl_cd": {
+                        "type": "string"
+                      },
+                      "iem_llf_cd": {
+                        "type": "string"
+                      },
+                      "iqr_end_dt": {
+                        "type": "string"
+                      },
+                      "iqr_rge_cd": {
+                        "type": "string"
+                      },
+                      "iqr_sta_dt": {
+                        "type": "string"
+                      },
+                      "iqr_tp_cd": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act_no",
+                      "act_trd_dtl_cd",
+                      "iem_llf_cd",
+                      "iqr_end_dt",
+                      "iqr_rge_cd",
+                      "iqr_sta_dt",
+                      "iqr_tp_cd"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "items": {
+                        "properties": {
+                          "cli_pe_fnm": {
+                            "type": "string"
+                          },
+                          "cur_cd": {
+                            "type": "string"
+                          },
+                          "iem_cd": {
+                            "type": "string"
+                          },
+                          "iem_nm": {
+                            "type": "string"
+                          },
+                          "int_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "opi_cus_fnm": {
+                            "type": "string"
+                          },
+                          "ral_trd_dt": {
+                            "type": "string"
+                          },
+                          "rgs_dt": {
+                            "type": "string"
+                          },
+                          "rks3": {
+                            "type": "string"
+                          },
+                          "rks4": {
+                            "type": "string"
+                          },
+                          "rvb_odu_fee": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "sps_cd_krl_anm": {
+                            "type": "string"
+                          },
+                          "tax_sum": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_af_bnc_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_af_dca": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_dt": {
+                            "type": "string"
+                          },
+                          "trd_orn_fee": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_uit_pr": {
+                            "format": "double",
+                            "type": "number"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/gbstock/inquiry/v1/balance": {
+      "post": {
+        "operationId": "gbstockInquiryBalance",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "cts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {
+                      "act_no": {
+                        "type": "string"
+                      },
+                      "cur_cd": {
+                        "type": "string"
+                      },
+                      "fc_sec_trd_nat_cd": {
+                        "type": "string"
+                      },
+                      "qut_iqr_dit_cd": {
+                        "type": "string"
+                      },
+                      "xns_dit_cd": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act_no",
+                      "cur_cd",
+                      "fc_sec_trd_nat_cd",
+                      "qut_iqr_dit_cd"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "properties": {
+                        "abk_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "eal_amt_sum": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "eal_pls_sum_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "fc_abk_amt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_aet_amt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_dca": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_eal_amt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_eal_pls_amt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_ny_stl_xcl_amt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "krw_dca": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "krw_ny_stl_xcl_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "krw_pft_rt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "pft_rt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "ptps_ttn_amt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "ptps_ttn_amt1": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "tot_aet_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "Output_1": {
+                      "items": {
+                        "properties": {
+                          "byn_cns_qty": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "cfd_lon_cd_nm": {
+                            "type": "string"
+                          },
+                          "cns_bse_bnc_qty": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "cur_cd": {
+                            "type": "string"
+                          },
+                          "eal_pft_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "eal_pft_rt1": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "end_pr": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "fc_abk_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_avg_phs_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_cns_bse_phs_xps": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_eal_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_eal_pls_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_fee": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_mkt_dit_cd": {
+                            "type": "string"
+                          },
+                          "fc_phs_uit_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_pls_qtr_phs_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sec_end_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sec_trd_nat_cd": {
+                            "type": "string"
+                          },
+                          "fc_sec_trd_nat_nm": {
+                            "type": "string"
+                          },
+                          "fc_sll_pft_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sll_pls_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_stk_lws_sby_fee": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_tax_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "iem_cd": {
+                            "type": "string"
+                          },
+                          "iem_nm": {
+                            "type": "string"
+                          },
+                          "krw_abk_amt1": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_avg_phs_pr": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_cns_bse_phs_xps": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_eal_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_eal_pls_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_fee": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_pls_qtr_phs_pr": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_sll_pft_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "krw_sll_pls_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_tax_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "lon_dt": {
+                            "type": "string"
+                          },
+                          "phs_uit_pr": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "phs_xcg_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "sby_fee_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "sll_cns_qty": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_pbl_qty1": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "tdt_sby_bse_xcg_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "xrn_dt": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/gbstock/inquiry/v1/dailyTransaction": {
+      "post": {
+        "operationId": "gbstockInquiryDailyTransaction",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "cts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {
+                      "act_no": {
+                        "type": "string"
+                      },
+                      "act_trd_cfc_cd": {
+                        "type": "string"
+                      },
+                      "iem_cd": {
+                        "type": "string"
+                      },
+                      "iem_mlf_cd": {
+                        "type": "string"
+                      },
+                      "iqr_end_dt": {
+                        "type": "string"
+                      },
+                      "iqr_sta_dt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act_no",
+                      "act_trd_cfc_cd",
+                      "iem_mlf_cd",
+                      "iqr_end_dt",
+                      "iqr_sta_dt"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "items": {
+                        "properties": {
+                          "abd_sdr_xps_fc_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "act_trd_tp_nm": {
+                            "type": "string"
+                          },
+                          "aly_xcg_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "cur_cd_nm": {
+                            "type": "string"
+                          },
+                          "dmt_fee": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "fc_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_icm_tax": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_rsd_tax": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sas_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_tax_sum": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_trd_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_trd_dit_cd": {
+                            "type": "string"
+                          },
+                          "fc_tsl_txa": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "icm_tax": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "iem_cd": {
+                            "type": "string"
+                          },
+                          "iem_krl_nm": {
+                            "type": "string"
+                          },
+                          "krw_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "krw_sas_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "krw_trd_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "ose_fee": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "oss_iem_cd": {
+                            "type": "string"
+                          },
+                          "oss_iem_nm": {
+                            "type": "string"
+                          },
+                          "oss_stm_tax": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "ral_trd_dt": {
+                            "type": "string"
+                          },
+                          "rsd_tax": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "sps_cd_nm": {
+                            "type": "string"
+                          },
+                          "tax_sum": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "trd_af_bnc_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_af_dca": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "trd_af_fc_dca": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_af_fc_mgg_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_af_krw_mgg_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "trd_bf_bnc_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_bf_dca": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "trd_bf_fc_dca": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_dt": {
+                            "type": "string"
+                          },
+                          "trd_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_sno": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "trd_uit_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "tsl_cmu_txa": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "tsl_mgg_amt": {
+                            "format": "double",
+                            "type": "number"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "Output_1": {
+                      "properties": {
+                        "amt_sum": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "drn_tal": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "fee_sum_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "rpm_tal": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "tax_sum_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/gbstock/inquiry/v1/periodPnl": {
+      "post": {
+        "operationId": "gbstockInquiryPeriodPnl",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "cts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {
+                      "act_no": {
+                        "type": "string"
+                      },
+                      "end_orr_dt": {
+                        "type": "string"
+                      },
+                      "fc_sec_trd_nat_cd": {
+                        "type": "string"
+                      },
+                      "iem_cd": {
+                        "type": "string"
+                      },
+                      "iqr_dit": {
+                        "type": "string"
+                      },
+                      "sta_orr_dt": {
+                        "type": "string"
+                      },
+                      "trd_cur_cd": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act_no",
+                      "end_orr_dt",
+                      "iqr_dit",
+                      "sta_orr_dt"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "properties": {
+                        "byn_qty_sum": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "fc_byn_amt_sum": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_rzt_pft_rt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_rzt_pls_sum": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_sby_pft_rt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_sby_pls_sum": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_sdr_xps_sum": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "fc_sll_amt_sum": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "sll_qty_sum": {
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "Output_1": {
+                      "items": {
+                        "properties": {
+                          "byn_qty": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "byn_uit_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_byn_amt1": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_rzt_pft_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_rzt_pls": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sby_pft_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sby_pls": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sdr_xps": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "fc_sec_trd_nat_cd": {
+                            "type": "string"
+                          },
+                          "fc_sec_trd_nat_nm": {
+                            "type": "string"
+                          },
+                          "fc_sll_amt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "orr_dt": {
+                            "type": "string"
+                          },
+                          "sll_qty": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_uit_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "trd_cur_cd": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/krstock/inquiry/v1/balance": {
+      "post": {
+        "operationId": "krstockInquiryBalance",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "cts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {
+                      "act_no": {
+                        "type": "string"
+                      },
+                      "aet_bse": {
+                        "type": "string"
+                      },
+                      "aly_qut_cd": {
+                        "type": "string"
+                      },
+                      "bnc_bse_cd": {
+                        "type": "string"
+                      },
+                      "ltg_aot_dit_cd": {
+                        "type": "string"
+                      },
+                      "qut_dit_cd": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act_no",
+                      "aet_bse",
+                      "aly_qut_cd",
+                      "bnc_bse_cd",
+                      "ltg_aot_dit_cd",
+                      "qut_dit_cd"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "properties": {
+                        "act_atv_tp_dtl_cd": {
+                          "type": "string"
+                        },
+                        "cfd_pdt_tp_nm": {
+                          "type": "string"
+                        },
+                        "csh_wtm": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "dca": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "drn_pbl_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "ect_lga": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "int_ny_pmt_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "lon_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "mgg_rt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "nas_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "nxt2_dd_dca": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "nxt_dd_dca": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "ny_rdp_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "orr_pbl_amt2": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "orr_pbl_amt3": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "orr_pbl_amt4": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "pft_rt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "rba": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "sba_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "sba_wtm": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "sll_edn_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "slo_mgg_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "tot_aet_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "tot_byn_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "tot_eal_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "tot_eal_pls": {
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "Output_1": {
+                      "items": {
+                        "properties": {
+                          "eal_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "eal_pls_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "iem_cd": {
+                            "type": "string"
+                          },
+                          "iem_nm": {
+                            "type": "string"
+                          },
+                          "itg_bnc_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "lon_bnc_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "lon_byn_dt": {
+                            "type": "string"
+                          },
+                          "now_pr": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "ny_stl_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "pft_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "phs_pr": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "rsdl_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "sll_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_pls_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "tp_cd_nm": {
+                            "type": "string"
+                          },
+                          "wtm_rt": {
+                            "type": "string"
+                          },
+                          "xrn_dt": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/krstock/inquiry/v1/tradingPnl": {
+      "post": {
+        "operationId": "krstockInquiryTradingPnl",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "cts",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {
+                      "act_no": {
+                        "type": "string"
+                      },
+                      "iqr_end_dt": {
+                        "type": "string"
+                      },
+                      "iqr_sta_dt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "act_no",
+                      "iqr_end_dt",
+                      "iqr_sta_dt"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "properties": {
+                        "byn_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "byn_cnt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "byn_fee": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "byn_qty": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "pft_rt": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "pls_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "sll_abk_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "sll_amt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "sll_cnt": {
+                          "format": "int64",
+                          "type": "integer"
+                        },
+                        "sll_qty": {
+                          "format": "double",
+                          "type": "number"
+                        },
+                        "sll_tax_sum": {
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "Output_1": {
+                      "items": {
+                        "properties": {
+                          "byn_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "byn_cnt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "byn_fee": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "byn_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "byn_uit_pr": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "iem_cd": {
+                            "type": "string"
+                          },
+                          "iem_nm": {
+                            "type": "string"
+                          },
+                          "pft_rt": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "pls_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_abk_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_amt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_cnt": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_qty": {
+                            "format": "double",
+                            "type": "number"
+                          },
+                          "sll_tax_sum": {
+                            "format": "int64",
+                            "type": "integer"
+                          },
+                          "sll_uit_pr": {
+                            "format": "double",
+                            "type": "number"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/n2/acctinfo": {
+      "post": {
+        "operationId": "commonAccountList",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "Input_0": {
+                    "properties": {},
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "Output_0": {
+                      "items": {
+                        "properties": {
+                          "acct_no": {
+                            "type": "string"
+                          },
+                          "acct_type": {
+                            "type": "string"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "cust_no": {
+                      "type": "string"
+                    },
+                    "rsp_cd": {
+                      "type": "string"
+                    },
+                    "rsp_msg": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/oauth2/token": {
+      "post": {
+        "operationId": "commonAuthIssueToken",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "appkey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "appsecretkey",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "grant_type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    },
+                    "expires_in": {
+                      "type": "integer"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "token_type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "access_token"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    }
+  },
+  "x-missing-operations": []
+}

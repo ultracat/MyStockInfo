@@ -42,3 +42,10 @@ jobs:
       # 백엔드 자동 테스트(가짜 서버, 실키 없음) + 프론트엔드 순수 함수 테스트.
       - name: 테스트
         run: npm test
+
+      # 증권사 명세 타입(*.gen.ts)이 저장된 스냅샷(backend/spec/snapshots)과 맞는지 — 손으로 고쳤거나 다시 만들지 않았으면 실패.
+      # 네트워크를 쓰지 않는다. 최신 공식 명세와의 비교는 spec-watch.yml(주 1회).
+      - name: 명세 타입 생성물 확인
+        run: |
+          npm run spec:types
+          git diff --exit-code -- 'backend/src/brokers/*/*.gen.ts'

@@ -1,0 +1,1538 @@
+{
+  "getAccounts": {
+    "brokerageAccount": {
+      "result": [
+        {
+          "accountNo": "12345678901",
+          "accountSeq": 1,
+          "accountType": "BROKERAGE"
+        }
+      ]
+    },
+    "emptyAccounts": {
+      "result": []
+    }
+  },
+  "getBuyingPower": {
+    "krw": {
+      "result": {
+        "cashBuyingPower": "5000000",
+        "currency": "KRW"
+      }
+    },
+    "usd": {
+      "result": {
+        "cashBuyingPower": "3500.5",
+        "currency": "USD"
+      }
+    }
+  },
+  "getCandles": {
+    "dailyCandles": {
+      "result": {
+        "candles": [
+          {
+            "closePrice": "72000",
+            "currency": "KRW",
+            "highPrice": "72300",
+            "lowPrice": "71500",
+            "openPrice": "71600",
+            "timestamp": "2026-03-25T00:00:00+09:00",
+            "volume": "3521000"
+          },
+          {
+            "closePrice": "71600",
+            "currency": "KRW",
+            "highPrice": "71800",
+            "lowPrice": "71000",
+            "openPrice": "71200",
+            "timestamp": "2026-03-24T00:00:00+09:00",
+            "volume": "2984000"
+          }
+        ],
+        "nextBefore": "2026-03-24T00:00:00+09:00"
+      }
+    },
+    "lastPage": {
+      "result": {
+        "candles": [
+          {
+            "closePrice": "71000",
+            "currency": "KRW",
+            "highPrice": "71200",
+            "lowPrice": "70500",
+            "openPrice": "70800",
+            "timestamp": "2026-03-20T00:00:00+09:00",
+            "volume": "2112000"
+          }
+        ],
+        "nextBefore": null
+      }
+    },
+    "minuteCandles": {
+      "result": {
+        "candles": [
+          {
+            "closePrice": "72050",
+            "currency": "KRW",
+            "highPrice": "72100",
+            "lowPrice": "71950",
+            "openPrice": "72000",
+            "timestamp": "2026-03-25T09:32:00+09:00",
+            "volume": "15200"
+          },
+          {
+            "closePrice": "72000",
+            "currency": "KRW",
+            "highPrice": "72050",
+            "lowPrice": "71900",
+            "openPrice": "71950",
+            "timestamp": "2026-03-25T09:31:00+09:00",
+            "volume": "18400"
+          }
+        ],
+        "nextBefore": "2026-03-25T09:31:00+09:00"
+      }
+    }
+  },
+  "getExchangeRate": {
+    "usdToKrwDown": {
+      "result": {
+        "baseCurrency": "USD",
+        "basisPoint": "-19.6",
+        "midRate": "1375",
+        "quoteCurrency": "KRW",
+        "rate": "1372.3",
+        "rateChangeType": "DOWN",
+        "validFrom": "2026-03-25T09:30:00+09:00",
+        "validUntil": "2026-03-25T09:31:00+09:00"
+      }
+    },
+    "usdToKrwUp": {
+      "result": {
+        "baseCurrency": "USD",
+        "basisPoint": "40",
+        "midRate": "1375",
+        "quoteCurrency": "KRW",
+        "rate": "1380.5",
+        "rateChangeType": "UP",
+        "validFrom": "2026-03-25T09:30:00+09:00",
+        "validUntil": "2026-03-25T09:31:00+09:00"
+      }
+    }
+  },
+  "getHoldings": {
+    "emptyHoldings": {
+      "result": {
+        "dailyProfitLoss": {
+          "amount": {
+            "krw": "0",
+            "usd": null
+          },
+          "rate": "0"
+        },
+        "items": [],
+        "marketValue": {
+          "amount": {
+            "krw": "0",
+            "usd": null
+          },
+          "amountAfterCost": {
+            "krw": "0",
+            "usd": null
+          }
+        },
+        "profitLoss": {
+          "amount": {
+            "krw": "0",
+            "usd": null
+          },
+          "amountAfterCost": {
+            "krw": "0",
+            "usd": null
+          },
+          "rate": "0",
+          "rateAfterCost": "0"
+        },
+        "totalPurchaseAmount": {
+          "krw": "0",
+          "usd": null
+        }
+      }
+    },
+    "filteredBySymbol": {
+      "result": {
+        "dailyProfitLoss": {
+          "amount": {
+            "krw": "100000",
+            "usd": null
+          },
+          "rate": "0.0141"
+        },
+        "items": [
+          {
+            "averagePurchasePrice": "65000",
+            "cost": {
+              "commission": "14400",
+              "tax": "135600"
+            },
+            "currency": "KRW",
+            "dailyProfitLoss": {
+              "amount": "100000",
+              "rate": "0.0141"
+            },
+            "lastPrice": "72000",
+            "marketCountry": "KR",
+            "marketValue": {
+              "amount": "7200000",
+              "amountAfterCost": "7050000",
+              "purchaseAmount": "6500000"
+            },
+            "name": "삼성전자",
+            "profitLoss": {
+              "amount": "700000",
+              "amountAfterCost": "550000",
+              "rate": "0.1077",
+              "rateAfterCost": "0.0846"
+            },
+            "quantity": "100",
+            "symbol": "005930"
+          }
+        ],
+        "marketValue": {
+          "amount": {
+            "krw": "7200000",
+            "usd": null
+          },
+          "amountAfterCost": {
+            "krw": "7050000",
+            "usd": null
+          }
+        },
+        "profitLoss": {
+          "amount": {
+            "krw": "700000",
+            "usd": null
+          },
+          "amountAfterCost": {
+            "krw": "550000",
+            "usd": null
+          },
+          "rate": "0.1077",
+          "rateAfterCost": "0.0846"
+        },
+        "totalPurchaseAmount": {
+          "krw": "6500000",
+          "usd": null
+        }
+      }
+    },
+    "filteredBySymbolNotFound": {
+      "result": {
+        "dailyProfitLoss": {
+          "amount": {
+            "krw": "0",
+            "usd": null
+          },
+          "rate": "0"
+        },
+        "items": [],
+        "marketValue": {
+          "amount": {
+            "krw": "0",
+            "usd": null
+          },
+          "amountAfterCost": {
+            "krw": "0",
+            "usd": null
+          }
+        },
+        "profitLoss": {
+          "amount": {
+            "krw": "0",
+            "usd": null
+          },
+          "amountAfterCost": {
+            "krw": "0",
+            "usd": null
+          },
+          "rate": "0",
+          "rateAfterCost": "0"
+        },
+        "totalPurchaseAmount": {
+          "krw": "0",
+          "usd": null
+        }
+      }
+    },
+    "filteredByUsSymbol": {
+      "result": {
+        "dailyProfitLoss": {
+          "amount": {
+            "krw": "0",
+            "usd": "20.00"
+          },
+          "rate": "0.0119"
+        },
+        "items": [
+          {
+            "averagePurchasePrice": "150.00",
+            "cost": {
+              "commission": "2.15",
+              "tax": null
+            },
+            "currency": "USD",
+            "dailyProfitLoss": {
+              "amount": "20.00",
+              "rate": "0.012"
+            },
+            "lastPrice": "170.00",
+            "marketCountry": "US",
+            "marketValue": {
+              "amount": "1700.00",
+              "amountAfterCost": "1650.00",
+              "purchaseAmount": "1500.00"
+            },
+            "name": "Apple Inc.",
+            "profitLoss": {
+              "amount": "200.00",
+              "amountAfterCost": "150.00",
+              "rate": "0.1333",
+              "rateAfterCost": "0.10"
+            },
+            "quantity": "10",
+            "symbol": "AAPL"
+          }
+        ],
+        "marketValue": {
+          "amount": {
+            "krw": "0",
+            "usd": "1700.00"
+          },
+          "amountAfterCost": {
+            "krw": "0",
+            "usd": "1650.00"
+          }
+        },
+        "profitLoss": {
+          "amount": {
+            "krw": "0",
+            "usd": "200.00"
+          },
+          "amountAfterCost": {
+            "krw": "0",
+            "usd": "150.00"
+          },
+          "rate": "0.1333",
+          "rateAfterCost": "0.1000"
+        },
+        "totalPurchaseAmount": {
+          "krw": "0",
+          "usd": "1500.00"
+        }
+      }
+    },
+    "withHoldings": {
+      "result": {
+        "dailyProfitLoss": {
+          "amount": {
+            "krw": "100000",
+            "usd": "25"
+          },
+          "rate": "0.0141"
+        },
+        "items": [
+          {
+            "averagePurchasePrice": "65000",
+            "cost": {
+              "commission": "14400",
+              "tax": "135600"
+            },
+            "currency": "KRW",
+            "dailyProfitLoss": {
+              "amount": "100000",
+              "rate": "0.0141"
+            },
+            "lastPrice": "72000",
+            "marketCountry": "KR",
+            "marketValue": {
+              "amount": "7200000",
+              "amountAfterCost": "7050000",
+              "purchaseAmount": "6500000"
+            },
+            "name": "삼성전자",
+            "profitLoss": {
+              "amount": "700000",
+              "amountAfterCost": "550000",
+              "rate": "0.1077",
+              "rateAfterCost": "0.0846"
+            },
+            "quantity": "100",
+            "symbol": "005930"
+          },
+          {
+            "averagePurchasePrice": "155.3",
+            "cost": {
+              "commission": "3.57",
+              "tax": "10"
+            },
+            "currency": "USD",
+            "dailyProfitLoss": {
+              "amount": "25",
+              "rate": "0.0142"
+            },
+            "lastPrice": "178.5",
+            "marketCountry": "US",
+            "marketValue": {
+              "amount": "1785",
+              "amountAfterCost": "1771.43",
+              "purchaseAmount": "1553"
+            },
+            "name": "Apple Inc.",
+            "profitLoss": {
+              "amount": "232",
+              "amountAfterCost": "218.43",
+              "rate": "0.1494",
+              "rateAfterCost": "0.1406"
+            },
+            "quantity": "10",
+            "symbol": "AAPL"
+          }
+        ],
+        "marketValue": {
+          "amount": {
+            "krw": "7200000",
+            "usd": "1785"
+          },
+          "amountAfterCost": {
+            "krw": "7050000",
+            "usd": "1771.43"
+          }
+        },
+        "profitLoss": {
+          "amount": {
+            "krw": "700000",
+            "usd": "232"
+          },
+          "amountAfterCost": {
+            "krw": "550000",
+            "usd": "218.43"
+          },
+          "rate": "0.1179",
+          "rateAfterCost": "0.0983"
+        },
+        "totalPurchaseAmount": {
+          "krw": "6500000",
+          "usd": "1553"
+        }
+      }
+    }
+  },
+  "getKrMarketCalendar": {
+    "businessDay": {
+      "result": {
+        "nextBusinessDay": {
+          "date": "2026-03-26",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-03-26T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-03-26T15:40:00+09:00",
+              "startTime": "2026-03-26T15:30:00+09:00"
+            },
+            "preMarket": {
+              "endTime": "2026-03-26T09:00:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-26T08:50:00+09:00",
+              "startTime": "2026-03-26T08:00:00+09:00"
+            },
+            "regularMarket": {
+              "endTime": "2026-03-26T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-26T15:20:00+09:00",
+              "startTime": "2026-03-26T09:00:00+09:00"
+            }
+          }
+        },
+        "previousBusinessDay": {
+          "date": "2026-03-24",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-03-24T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-03-24T15:40:00+09:00",
+              "startTime": "2026-03-24T15:30:00+09:00"
+            },
+            "preMarket": {
+              "endTime": "2026-03-24T09:00:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-24T08:50:00+09:00",
+              "startTime": "2026-03-24T08:00:00+09:00"
+            },
+            "regularMarket": {
+              "endTime": "2026-03-24T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-24T15:20:00+09:00",
+              "startTime": "2026-03-24T09:00:00+09:00"
+            }
+          }
+        },
+        "today": {
+          "date": "2026-03-25",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-03-25T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-03-25T15:40:00+09:00",
+              "startTime": "2026-03-25T15:30:00+09:00"
+            },
+            "preMarket": {
+              "endTime": "2026-03-25T09:00:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-25T08:50:00+09:00",
+              "startTime": "2026-03-25T08:00:00+09:00"
+            },
+            "regularMarket": {
+              "endTime": "2026-03-25T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-25T15:20:00+09:00",
+              "startTime": "2026-03-25T09:00:00+09:00"
+            }
+          }
+        }
+      }
+    },
+    "holidayToday": {
+      "result": {
+        "nextBusinessDay": {
+          "date": "2026-05-06",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-05-06T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-05-06T15:40:00+09:00",
+              "startTime": "2026-05-06T15:30:00+09:00"
+            },
+            "preMarket": {
+              "endTime": "2026-05-06T09:00:00+09:00",
+              "singlePriceAuctionStartTime": "2026-05-06T08:50:00+09:00",
+              "startTime": "2026-05-06T08:00:00+09:00"
+            },
+            "regularMarket": {
+              "endTime": "2026-05-06T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-05-06T15:20:00+09:00",
+              "startTime": "2026-05-06T09:00:00+09:00"
+            }
+          }
+        },
+        "previousBusinessDay": {
+          "date": "2026-05-04",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-05-04T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-05-04T15:40:00+09:00",
+              "startTime": "2026-05-04T15:30:00+09:00"
+            },
+            "preMarket": {
+              "endTime": "2026-05-04T09:00:00+09:00",
+              "singlePriceAuctionStartTime": "2026-05-04T08:50:00+09:00",
+              "startTime": "2026-05-04T08:00:00+09:00"
+            },
+            "regularMarket": {
+              "endTime": "2026-05-04T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-05-04T15:20:00+09:00",
+              "startTime": "2026-05-04T09:00:00+09:00"
+            }
+          }
+        },
+        "today": {
+          "date": "2026-05-05",
+          "integrated": null
+        }
+      }
+    },
+    "nxtPreMarketHoliday": {
+      "result": {
+        "nextBusinessDay": {
+          "date": "2026-03-26",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-03-26T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-03-26T15:40:00+09:00",
+              "startTime": "2026-03-26T15:30:00+09:00"
+            },
+            "preMarket": {
+              "endTime": "2026-03-26T09:00:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-26T08:50:00+09:00",
+              "startTime": "2026-03-26T08:00:00+09:00"
+            },
+            "regularMarket": {
+              "endTime": "2026-03-26T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-26T15:20:00+09:00",
+              "startTime": "2026-03-26T09:00:00+09:00"
+            }
+          }
+        },
+        "previousBusinessDay": {
+          "date": "2026-03-24",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-03-24T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-03-24T15:40:00+09:00",
+              "startTime": "2026-03-24T15:30:00+09:00"
+            },
+            "preMarket": {
+              "endTime": "2026-03-24T09:00:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-24T08:50:00+09:00",
+              "startTime": "2026-03-24T08:00:00+09:00"
+            },
+            "regularMarket": {
+              "endTime": "2026-03-24T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-24T15:20:00+09:00",
+              "startTime": "2026-03-24T09:00:00+09:00"
+            }
+          }
+        },
+        "today": {
+          "date": "2026-03-25",
+          "integrated": {
+            "afterMarket": {
+              "endTime": "2026-03-25T20:00:00+09:00",
+              "singlePriceAuctionEndTime": "2026-03-25T15:40:00+09:00",
+              "startTime": "2026-03-25T15:30:00+09:00"
+            },
+            "preMarket": null,
+            "regularMarket": {
+              "endTime": "2026-03-25T15:30:00+09:00",
+              "singlePriceAuctionStartTime": "2026-03-25T15:20:00+09:00",
+              "startTime": "2026-03-25T09:00:00+09:00"
+            }
+          }
+        }
+      }
+    }
+  },
+  "getMarketIndicatorCandles": {
+    "dailyCandles": {
+      "result": {
+        "candles": [
+          {
+            "closePrice": "2812.45",
+            "highPrice": "2820.15",
+            "lowPrice": "2790.1",
+            "openPrice": "2798.32",
+            "timestamp": "2026-06-11T09:00:00+09:00",
+            "volume": "542000000"
+          },
+          {
+            "closePrice": "2798.1",
+            "highPrice": "2801.22",
+            "lowPrice": "2779.85",
+            "openPrice": "2785.6",
+            "timestamp": "2026-06-10T09:00:00+09:00",
+            "volume": "498000000"
+          }
+        ],
+        "nextBefore": "2026-06-10T09:00:00+09:00"
+      }
+    },
+    "lastPage": {
+      "result": {
+        "candles": [
+          {
+            "closePrice": "2768.9",
+            "highPrice": "2772.3",
+            "lowPrice": "2748.15",
+            "openPrice": "2750.4",
+            "timestamp": "2026-06-05T09:00:00+09:00",
+            "volume": "471000000"
+          }
+        ],
+        "nextBefore": null
+      }
+    }
+  },
+  "getOrders": {
+    "completedWithNextPage": {
+      "result": {
+        "hasNext": true,
+        "nextCursor": "eyJvcmRlcmVkQXQiOiIyMDI2LTAzLTI4VDA5OjMwOjAwKzA5OjAwIiwib3JkZXJJZCI6Ik9SRDIwMjYwMzI4MDAxIn0=",
+        "orders": [
+          {
+            "canceledAt": null,
+            "currency": "KRW",
+            "execution": {
+              "averageFilledPrice": "70000",
+              "commission": "1400",
+              "filledAmount": "700000",
+              "filledAt": "2026-03-28T09:31:15+09:00",
+              "filledQuantity": "10",
+              "settlementDate": "2026-03-30",
+              "tax": "0"
+            },
+            "orderAmount": null,
+            "orderId": "0d5QIHjmtksbsmM-hBRAgP-ExI8iodGm9fAR5txelPfnMM8XQ_swoJdwL5RpGWMo",
+            "orderType": "LIMIT",
+            "orderedAt": "2026-03-28T09:30:00+09:00",
+            "price": "70000",
+            "quantity": "10",
+            "side": "BUY",
+            "status": "FILLED",
+            "symbol": "005930",
+            "timeInForce": "DAY"
+          }
+        ]
+      }
+    },
+    "empty": {
+      "result": {
+        "hasNext": false,
+        "nextCursor": null,
+        "orders": []
+      }
+    },
+    "pendingMixed": {
+      "result": {
+        "hasNext": false,
+        "nextCursor": null,
+        "orders": [
+          {
+            "canceledAt": null,
+            "currency": "KRW",
+            "execution": {
+              "averageFilledPrice": null,
+              "commission": null,
+              "filledAmount": null,
+              "filledAt": null,
+              "filledQuantity": "0",
+              "settlementDate": null,
+              "tax": null
+            },
+            "orderAmount": null,
+            "orderId": "bAGzNvMOOTa5Uy0xVzYNbxDJ3Qpobwau4jDF3hyZZGWbpHm7wha8CFZc7aXVOWAl",
+            "orderType": "LIMIT",
+            "orderedAt": "2026-03-29T09:30:00+09:00",
+            "price": "70000",
+            "quantity": "10",
+            "side": "BUY",
+            "status": "PENDING",
+            "symbol": "005930",
+            "timeInForce": "DAY"
+          },
+          {
+            "canceledAt": null,
+            "currency": "USD",
+            "execution": {
+              "averageFilledPrice": "185.25",
+              "commission": "0.66",
+              "filledAmount": "370.5",
+              "filledAt": "2026-03-29T10:00:05+09:00",
+              "filledQuantity": "2",
+              "settlementDate": null,
+              "tax": "0"
+            },
+            "orderAmount": null,
+            "orderId": "RpP3_wtsiKe9btBvdendaHoBqOIY_Zb_xPkRfYaqCIvf2FXtMDv_mo7VnD7KB-ia",
+            "orderType": "LIMIT",
+            "orderedAt": "2026-03-29T10:00:00+09:00",
+            "price": "185.5",
+            "quantity": "5",
+            "side": "SELL",
+            "status": "PARTIAL_FILLED",
+            "symbol": "AAPL",
+            "timeInForce": "DAY"
+          }
+        ]
+      }
+    }
+  },
+  "getPrices": {
+    "krStock": {
+      "result": [
+        {
+          "currency": "KRW",
+          "lastPrice": "72000",
+          "symbol": "005930",
+          "timestamp": "2026-03-25T09:30:00.123+09:00"
+        }
+      ]
+    },
+    "usStock": {
+      "result": [
+        {
+          "currency": "USD",
+          "lastPrice": "185.70",
+          "symbol": "AAPL",
+          "timestamp": "2026-03-25T22:30:00.456+09:00"
+        }
+      ]
+    }
+  },
+  "getSectorEtfs": {
+    "emptyEtfs": {
+      "result": {
+        "etfs": []
+      }
+    },
+    "krEtfs": {
+      "result": {
+        "etfs": [
+          {
+            "name": "KODEX 반도체",
+            "symbol": "091160"
+          },
+          {
+            "name": "TIGER Fn반도체TOP10",
+            "symbol": "396500"
+          }
+        ]
+      }
+    }
+  },
+  "getSectorStocks": {
+    "emptyStocks": {
+      "result": {
+        "stocks": []
+      }
+    },
+    "krStocks": {
+      "result": {
+        "stocks": [
+          {
+            "currency": "KRW",
+            "marketCapitalization": "388035900000000",
+            "name": "삼성전자",
+            "symbol": "005930",
+            "tradingAmount": "1041436650000",
+            "volume": "18432100"
+          },
+          {
+            "currency": "KRW",
+            "marketCapitalization": "140150000000000",
+            "name": "SK하이닉스",
+            "symbol": "000660",
+            "tradingAmount": "927910250000",
+            "volume": "4821300"
+          }
+        ]
+      }
+    },
+    "usStocks": {
+      "result": {
+        "stocks": [
+          {
+            "currency": "KRW",
+            "marketCapitalization": "4703000000000000",
+            "name": "엔비디아",
+            "symbol": "NVDA",
+            "tradingAmount": "31204500000000",
+            "volume": "182400500"
+          }
+        ]
+      }
+    }
+  },
+  "getStockWarnings": {
+    "noWarnings": {
+      "result": []
+    },
+    "withWarnings": {
+      "result": [
+        {
+          "endDate": "2026-03-27",
+          "exchange": "KRX",
+          "startDate": "2026-03-20",
+          "warningType": "OVERHEATED"
+        },
+        {
+          "endDate": null,
+          "exchange": "KRX",
+          "startDate": "2026-03-26",
+          "warningType": "VI_STATIC"
+        }
+      ]
+    }
+  },
+  "getStocks": {
+    "etf": {
+      "result": [
+        {
+          "currency": "KRW",
+          "delistDate": null,
+          "isCommonShare": true,
+          "isinCode": "KR7069500007",
+          "koreanMarketDetail": {
+            "krxTradingSuspended": false,
+            "liquidationTrading": false,
+            "nxtSupported": false,
+            "nxtTradingSuspended": null
+          },
+          "leverageFactor": "1",
+          "listDate": "2002-10-14",
+          "market": "KOSPI",
+          "name": "KODEX 200",
+          "securityType": "ETF",
+          "sharesOutstanding": "208050000",
+          "status": "ACTIVE",
+          "symbol": "069500"
+        }
+      ]
+    },
+    "krxStock": {
+      "result": [
+        {
+          "currency": "KRW",
+          "delistDate": null,
+          "englishName": "SamsungElec",
+          "isCommonShare": true,
+          "isinCode": "KR7005930003",
+          "koreanMarketDetail": {
+            "krxTradingSuspended": false,
+            "liquidationTrading": false,
+            "nxtSupported": true,
+            "nxtTradingSuspended": false
+          },
+          "leverageFactor": null,
+          "listDate": "1975-06-11",
+          "market": "KOSPI",
+          "name": "삼성전자",
+          "securityType": "STOCK",
+          "sharesOutstanding": "5919637922",
+          "status": "ACTIVE",
+          "symbol": "005930"
+        }
+      ]
+    },
+    "multiple": {
+      "result": [
+        {
+          "currency": "KRW",
+          "delistDate": null,
+          "englishName": "SamsungElec",
+          "isCommonShare": true,
+          "isinCode": "KR7005930003",
+          "koreanMarketDetail": {
+            "krxTradingSuspended": false,
+            "liquidationTrading": false,
+            "nxtSupported": true,
+            "nxtTradingSuspended": false
+          },
+          "leverageFactor": null,
+          "listDate": "1975-06-11",
+          "market": "KOSPI",
+          "name": "삼성전자",
+          "securityType": "STOCK",
+          "sharesOutstanding": "5919637922",
+          "status": "ACTIVE",
+          "symbol": "005930"
+        },
+        {
+          "currency": "USD",
+          "delistDate": null,
+          "englishName": "APPLE INC",
+          "isCommonShare": true,
+          "isinCode": "US0378331005",
+          "koreanMarketDetail": null,
+          "leverageFactor": null,
+          "listDate": "1980-12-12",
+          "market": "NASDAQ",
+          "name": "애플",
+          "securityType": "STOCK",
+          "sharesOutstanding": "14702703000",
+          "status": "ACTIVE",
+          "symbol": "AAPL"
+        }
+      ]
+    },
+    "usStock": {
+      "result": [
+        {
+          "currency": "USD",
+          "delistDate": null,
+          "englishName": "APPLE INC",
+          "isCommonShare": true,
+          "isinCode": "US0378331005",
+          "koreanMarketDetail": null,
+          "leverageFactor": null,
+          "listDate": "1980-12-12",
+          "market": "NASDAQ",
+          "name": "애플",
+          "securityType": "STOCK",
+          "sharesOutstanding": "14702703000",
+          "status": "ACTIVE",
+          "symbol": "AAPL"
+        }
+      ]
+    }
+  },
+  "getTransactions": {
+    "cash": {
+      "result": {
+        "hasNext": false,
+        "nextCursor": null,
+        "transactions": [
+          {
+            "amount": "500000",
+            "assetClass": null,
+            "commission": "0",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "KR",
+            "netAmount": "500000",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-20",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-20T06:30:00+09:00",
+            "transactionType": "WITHDRAWAL"
+          },
+          {
+            "amount": "1000",
+            "assetClass": "BOND",
+            "commission": "0",
+            "currency": "USD",
+            "exchangeRate": "1385.2",
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": "US912810TV08",
+            "marketCountry": "US",
+            "netAmount": "1000",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-16",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-16T06:30:00+09:00",
+            "transactionType": "DEPOSIT"
+          },
+          {
+            "amount": "1000",
+            "assetClass": null,
+            "commission": "0",
+            "currency": "USD",
+            "exchangeRate": "1385.2",
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "US",
+            "netAmount": "1000",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-16",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-16T06:30:00+09:00",
+            "transactionType": "EXCHANGE_IN"
+          },
+          {
+            "amount": "1385200",
+            "assetClass": null,
+            "commission": "0",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "KR",
+            "netAmount": "1385200",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-16",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-16T06:30:00+09:00",
+            "transactionType": "EXCHANGE_OUT"
+          },
+          {
+            "amount": "180",
+            "assetClass": "BOND",
+            "commission": "0",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": "KR103501GA34",
+            "marketCountry": "KR",
+            "netAmount": "180",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-14",
+            "symbol": null,
+            "tax": "180",
+            "transactionTime": "2026-09-14T06:30:00+09:00",
+            "transactionType": "WITHDRAWAL"
+          },
+          {
+            "amount": "0.5",
+            "assetClass": null,
+            "commission": "0",
+            "currency": "USD",
+            "exchangeRate": "1384.5",
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "US",
+            "netAmount": "0.5",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-12",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-12T06:30:00+09:00",
+            "transactionType": "FEE"
+          },
+          {
+            "amount": "4000000",
+            "assetClass": null,
+            "commission": "0",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "KR",
+            "netAmount": "4000000",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-10",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-10T06:30:00+09:00",
+            "transactionType": "DEPOSIT"
+          }
+        ]
+      }
+    },
+    "dividendAndInterest": {
+      "result": {
+        "hasNext": false,
+        "nextCursor": null,
+        "transactions": [
+          {
+            "amount": "3610",
+            "assetClass": "STOCK",
+            "commission": "0",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": "KR7005930003",
+            "marketCountry": "KR",
+            "netAmount": "3054",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-15",
+            "symbol": "005930",
+            "tax": "556",
+            "transactionTime": "2026-09-15T06:30:00+09:00",
+            "transactionType": "DIVIDEND"
+          },
+          {
+            "amount": "1230",
+            "assetClass": null,
+            "commission": "0",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "KR",
+            "netAmount": "1050",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-14",
+            "symbol": null,
+            "tax": "180",
+            "transactionTime": "2026-09-14T06:30:00+09:00",
+            "transactionType": "INTEREST"
+          },
+          {
+            "amount": "12.5",
+            "assetClass": "STOCK",
+            "commission": "0",
+            "currency": "USD",
+            "exchangeRate": "1384.8",
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": "US0378331005",
+            "marketCountry": "US",
+            "netAmount": "12.5",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-13",
+            "symbol": "AAPL",
+            "tax": "0",
+            "transactionTime": "2026-09-13T06:30:00+09:00",
+            "transactionType": "DIVIDEND"
+          },
+          {
+            "amount": "21.25",
+            "assetClass": "BOND",
+            "commission": "0",
+            "currency": "USD",
+            "exchangeRate": "1384.5",
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": "US912810TV08",
+            "marketCountry": "US",
+            "netAmount": "21.25",
+            "quantity": null,
+            "settled": true,
+            "settlementDate": "2026-09-12",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-12T06:30:00+09:00",
+            "transactionType": "INTEREST"
+          }
+        ]
+      }
+    },
+    "empty": {
+      "result": {
+        "hasNext": false,
+        "nextCursor": null,
+        "transactions": []
+      }
+    },
+    "trades": {
+      "result": {
+        "hasNext": true,
+        "nextCursor": "D_Db56Cn9XadbOqBlwMKiiQbyDDRNM8KICIwZjRiXFNQedvrqps-NTYE_5cmoP6L",
+        "transactions": [
+          {
+            "amount": "567.36",
+            "assetClass": "STOCK",
+            "commission": "0.57",
+            "currency": "USD",
+            "exchangeRate": "1386",
+            "filledPrice": "189.12",
+            "isCancellation": false,
+            "isinCode": "US0378331005",
+            "marketCountry": "US",
+            "netAmount": "567.93",
+            "quantity": "3",
+            "settled": true,
+            "settlementDate": "2026-10-01",
+            "symbol": "AAPL",
+            "tax": "0",
+            "transactionTime": "2026-10-01T06:30:00+09:00",
+            "transactionType": "BUY"
+          },
+          {
+            "amount": "710000",
+            "assetClass": "STOCK",
+            "commission": "1420",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": "71000",
+            "isCancellation": false,
+            "isinCode": "KR7005930003",
+            "marketCountry": "KR",
+            "netAmount": "707160",
+            "quantity": "10",
+            "settled": true,
+            "settlementDate": "2026-09-30",
+            "symbol": "005930",
+            "tax": "1420",
+            "transactionTime": "2026-09-30T06:30:00+09:00",
+            "transactionType": "SELL"
+          },
+          {
+            "amount": "270",
+            "assetClass": "OPTION",
+            "commission": "0.27",
+            "currency": "USD",
+            "exchangeRate": "1386",
+            "filledPrice": "1.35",
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "US",
+            "netAmount": "269.73",
+            "quantity": "2",
+            "settled": true,
+            "settlementDate": "2026-09-17",
+            "symbol": "AAPL261218C00150000",
+            "tax": "0",
+            "transactionTime": "2026-09-17T06:30:00+09:00",
+            "transactionType": "SELL"
+          },
+          {
+            "amount": "700000",
+            "assetClass": "STOCK",
+            "commission": "1400",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": "70000",
+            "isCancellation": false,
+            "isinCode": "KR7005930003",
+            "marketCountry": "KR",
+            "netAmount": "701400",
+            "quantity": "10",
+            "settled": true,
+            "settlementDate": "2026-09-15",
+            "symbol": "005930",
+            "tax": "0",
+            "transactionTime": "2026-09-15T06:30:00+09:00",
+            "transactionType": "BUY"
+          },
+          {
+            "amount": "985",
+            "assetClass": "BOND",
+            "commission": "0",
+            "currency": "USD",
+            "exchangeRate": "1382.1",
+            "filledPrice": "985",
+            "isCancellation": false,
+            "isinCode": "US912810TV08",
+            "marketCountry": "US",
+            "netAmount": "985",
+            "quantity": "1",
+            "settled": true,
+            "settlementDate": "2026-09-02",
+            "symbol": null,
+            "tax": "0",
+            "transactionTime": "2026-09-02T06:30:00+09:00",
+            "transactionType": "BUY"
+          }
+        ]
+      }
+    },
+    "transfer": {
+      "result": {
+        "hasNext": false,
+        "nextCursor": null,
+        "transactions": [
+          {
+            "amount": null,
+            "assetClass": "STOCK",
+            "commission": "0",
+            "currency": "KRW",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": "KR7005930003",
+            "marketCountry": "KR",
+            "netAmount": null,
+            "quantity": "10",
+            "settled": true,
+            "settlementDate": "2026-09-18",
+            "symbol": "005930",
+            "tax": "0",
+            "transactionTime": "2026-09-18T10:30:00+09:00",
+            "transactionType": "SECURITIES_TRANSFER_IN"
+          },
+          {
+            "amount": null,
+            "assetClass": "OPTION",
+            "commission": "0",
+            "currency": "USD",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": null,
+            "marketCountry": "US",
+            "netAmount": null,
+            "quantity": "1",
+            "settled": true,
+            "settlementDate": "2026-09-17",
+            "symbol": "AAPL261218C00150000",
+            "tax": "0",
+            "transactionTime": "2026-09-17T06:30:00+09:00",
+            "transactionType": "SECURITIES_TRANSFER_OUT"
+          }
+        ]
+      }
+    },
+    "unsettledAndSettled": {
+      "result": {
+        "hasNext": false,
+        "nextCursor": null,
+        "transactions": [
+          {
+            "amount": "567.36",
+            "assetClass": "STOCK",
+            "commission": "0.57",
+            "currency": "USD",
+            "exchangeRate": null,
+            "filledPrice": null,
+            "isCancellation": false,
+            "isinCode": "US0378331005",
+            "marketCountry": "US",
+            "netAmount": "567.93",
+            "quantity": "3",
+            "settled": false,
+            "settlementDate": "2026-10-02",
+            "symbol": "AAPL",
+            "tax": "0",
+            "transactionTime": null,
+            "transactionType": "BUY"
+          },
+          {
+            "amount": "567.36",
+            "assetClass": "STOCK",
+            "commission": "0.57",
+            "currency": "USD",
+            "exchangeRate": null,
+            "filledPrice": "189.12",
+            "isCancellation": false,
+            "isinCode": "US0378331005",
+            "marketCountry": "US",
+            "netAmount": "567.93",
+            "quantity": "3",
+            "settled": true,
+            "settlementDate": "2026-10-01",
+            "symbol": "AAPL",
+            "tax": "0",
+            "transactionTime": "2026-10-01T06:30:00+09:00",
+            "transactionType": "BUY"
+          }
+        ]
+      }
+    }
+  },
+  "getUsMarketCalendar": {
+    "businessDay": {
+      "result": {
+        "nextBusinessDay": {
+          "afterMarket": {
+            "endTime": "2026-03-27T07:00:00+09:00",
+            "startTime": "2026-03-27T05:00:00+09:00"
+          },
+          "date": "2026-03-26",
+          "dayMarket": {
+            "endTime": "2026-03-26T16:50:00+09:00",
+            "startTime": "2026-03-26T09:00:00+09:00"
+          },
+          "preMarket": {
+            "endTime": "2026-03-26T22:30:00+09:00",
+            "startTime": "2026-03-26T17:00:00+09:00"
+          },
+          "regularMarket": {
+            "endTime": "2026-03-27T05:00:00+09:00",
+            "startTime": "2026-03-26T22:30:00+09:00"
+          }
+        },
+        "previousBusinessDay": {
+          "afterMarket": {
+            "endTime": "2026-03-25T07:00:00+09:00",
+            "startTime": "2026-03-25T05:00:00+09:00"
+          },
+          "date": "2026-03-24",
+          "dayMarket": {
+            "endTime": "2026-03-24T16:50:00+09:00",
+            "startTime": "2026-03-24T09:00:00+09:00"
+          },
+          "preMarket": {
+            "endTime": "2026-03-24T22:30:00+09:00",
+            "startTime": "2026-03-24T17:00:00+09:00"
+          },
+          "regularMarket": {
+            "endTime": "2026-03-25T05:00:00+09:00",
+            "startTime": "2026-03-24T22:30:00+09:00"
+          }
+        },
+        "today": {
+          "afterMarket": {
+            "endTime": "2026-03-26T07:00:00+09:00",
+            "startTime": "2026-03-26T05:00:00+09:00"
+          },
+          "date": "2026-03-25",
+          "dayMarket": {
+            "endTime": "2026-03-25T16:50:00+09:00",
+            "startTime": "2026-03-25T09:00:00+09:00"
+          },
+          "preMarket": {
+            "endTime": "2026-03-25T22:30:00+09:00",
+            "startTime": "2026-03-25T17:00:00+09:00"
+          },
+          "regularMarket": {
+            "endTime": "2026-03-26T05:00:00+09:00",
+            "startTime": "2026-03-25T22:30:00+09:00"
+          }
+        }
+      }
+    },
+    "holidayToday": {
+      "result": {
+        "nextBusinessDay": {
+          "afterMarket": {
+            "endTime": "2026-07-07T07:00:00+09:00",
+            "startTime": "2026-07-07T05:00:00+09:00"
+          },
+          "date": "2026-07-06",
+          "dayMarket": {
+            "endTime": "2026-07-06T16:50:00+09:00",
+            "startTime": "2026-07-06T09:00:00+09:00"
+          },
+          "preMarket": {
+            "endTime": "2026-07-06T22:30:00+09:00",
+            "startTime": "2026-07-06T17:00:00+09:00"
+          },
+          "regularMarket": {
+            "endTime": "2026-07-07T05:00:00+09:00",
+            "startTime": "2026-07-06T22:30:00+09:00"
+          }
+        },
+        "previousBusinessDay": {
+          "afterMarket": {
+            "endTime": "2026-07-03T07:00:00+09:00",
+            "startTime": "2026-07-03T05:00:00+09:00"
+          },
+          "date": "2026-07-02",
+          "dayMarket": {
+            "endTime": "2026-07-02T16:50:00+09:00",
+            "startTime": "2026-07-02T09:00:00+09:00"
+          },
+          "preMarket": {
+            "endTime": "2026-07-02T22:30:00+09:00",
+            "startTime": "2026-07-02T17:00:00+09:00"
+          },
+          "regularMarket": {
+            "endTime": "2026-07-03T05:00:00+09:00",
+            "startTime": "2026-07-02T22:30:00+09:00"
+          }
+        },
+        "today": {
+          "afterMarket": null,
+          "date": "2026-07-03",
+          "dayMarket": null,
+          "preMarket": null,
+          "regularMarket": null
+        }
+      }
+    }
+  },
+  "issueOAuth2Token": {
+    "example": {
+      "access_token": "eyJraWQiOiIyMDI2LTA0LTAxLWtleSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJjXzAxSFhZWiJ9...",
+      "expires_in": 86400,
+      "token_type": "Bearer"
+    }
+  },
+  "listSectors": {
+    "sectors": {
+      "result": {
+        "sectors": [
+          {
+            "depth": 0,
+            "name": "IT 하드웨어",
+            "parentSectorId": null,
+            "sectorId": "10"
+          },
+          {
+            "depth": 1,
+            "name": "스마트폰 부품",
+            "parentSectorId": "10",
+            "sectorId": "42"
+          },
+          {
+            "depth": 1,
+            "name": "반도체",
+            "parentSectorId": "10",
+            "sectorId": "100"
+          },
+          {
+            "depth": 2,
+            "name": "스마트폰 카메라",
+            "parentSectorId": "42",
+            "sectorId": "103"
+          }
+        ]
+      }
+    }
+  }
+}

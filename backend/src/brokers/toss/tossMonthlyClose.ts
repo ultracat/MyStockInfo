@@ -4,22 +4,10 @@ import { withCache } from '../responseCache';
 import { getCachedCloses, setCachedCloses, type CachedSymbolCloses } from '../../db/monthlyCloseCache';
 import type { FetchOpts } from '../types';
 import { toNum, tossFetch } from './tossCore';
+import type { components } from './tossSpec.gen';
 import { isTossConfigured } from './tossAccount';
 
-interface RawTossCandle {
-  timestamp: string;
-  openPrice: string;
-  highPrice: string;
-  lowPrice: string;
-  closePrice: string;
-  volume: string;
-  currency: string;
-}
-
-interface RawTossCandlesResponse {
-  candles: RawTossCandle[];
-  nextBefore: string | null;
-}
+type RawTossCandlesResponse = components['schemas']['CandlePageResponse'];
 
 interface TossCandle {
   timestamp: string;

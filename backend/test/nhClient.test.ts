@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { setCredentialFields } from '../src/credentials';
-import { NhApiError } from '../src/brokers/nh/nhClient';
+import { NhApiError, fetchNhDomesticBalance, fetchNhOverseasBalance, setNhMaxPagesForTest } from '../src/brokers/nh/nhClient';
 import { nhAdapter } from '../src/brokers/nh/nhAdapter';
 import { syncNhDividends } from '../src/brokers/nh/nhDividendSync';
 import { listDividends } from '../src/db/dividends';
@@ -25,7 +25,7 @@ interface Call {
   query: URLSearchParams;
 }
 
-type Reply = { status?: number; body: unknown; headers?: Record<string, string> };
+type Reply = { status?: number; body: unknown; headers?: Record<string, string>; delayMs?: number };
 type Handler = (call: Call, nth: number) => Reply;
 
 let calls: Call[] = [];
@@ -70,6 +70,7 @@ globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
   if (!h) return json({ error: `no handler ${u.pathname}` }, 404);
   const nth = calls.filter((c) => c.path === u.pathname).length;
   const r = h(call, nth);
+  if (r.delayMs) await new Promise((resolve) => setTimeout(resolve, r.delayMs));
   return json(r.body, r.status ?? 200, r.headers);
 }) as typeof fetch;
 process.on('exit', () => (globalThis.fetch = realFetch));
@@ -140,6 +141,7 @@ test('게이트웨이 오류(HTTP 200 아님)는 IGW 코드를 담은 NhApiError
   await assert.rejects(nhAdapter.listAccounts({ forceRefresh: true }), (err: unknown) => {
     assert.ok(err instanceof NhApiError);
     assert.match(err.message, /IGW40031/);
+    assert.match(err.message, /유효하지 않은 AppKey/, '설명 문구도 메시지에 담는다');
     assert.equal(err.status, 400);
     assert.match(err.body, /AppKey/);
     return true;
@@ -300,4 +302,66 @@ test('배당 동기화: 실전 계좌만 조회하고(모의투자는 moapi도 �
       [LIVE, 'AAPL', 'USD', 2.55, 0.45],
     ].sort()
   );
+});
+
+// ── 2026-11-17 공식 SDK(nhplug-sdk) 대조로 맞춘 동작 ─────────────────────────────
+
+test('연속조회: A→B→A처럼 이미 받은 cts로 되돌아와도 끝낸다', async () => {
+  const order = ['A', 'B', 'A', 'B'];
+  handlers['/common/inquiry/v1/totalTransaction'] = (_c, nth) => ({
+    body: { rsp_cd: '00000', Output_0: [] },
+    headers: { cts: order[(nth - 1) % order.length], cts_flag: 'Y' },
+  });
+  await nhAdapter.listAccounts({ forceRefresh: true });
+  await nhAdapter.getTradeHistory!(LIVE, { from: '2026-02-01', to: '2026-02-28' }, { forceRefresh: true });
+  assert.equal(apiCalls('/common/inquiry/v1/totalTransaction').length, 3);
+});
+
+test('연속조회 상한에 닿으면 조용히 끊지 않고 던진다 — 배당 동기화가 잘린 목록으로 기존 기록을 지우지 않게', async () => {
+  setNhMaxPagesForTest(3);
+  try {
+    handlers['/common/inquiry/v1/totalTransaction'] = (_c, nth) => ({
+      body: { rsp_cd: '00000', Output_0: [] },
+      headers: { cts: `C${nth}`, cts_flag: 'Y' },
+    });
+    const before = listDividends().length;
+    const result = await syncNhDividends().catch((e: unknown) => e);
+    assert.ok(result instanceof Error, '동기화가 실패로 끝난다');
+    assert.match((result as Error).message, /3페이지를 넘어/);
+    assert.equal(listDividends().length, before, '배당 기록은 그대로');
+  } finally {
+    setNhMaxPagesForTest(200);
+  }
+});
+
+test('토큰 무효: 401이 아니어도 본문이 "유효하지 않은 token"이면 재발급한다(SDK와 같은 판정)', async () => {
+  handlers['/n2/acctinfo'] = (call, nth) =>
+    nth === 1 ? { status: 400, body: { error_code: 'X', error_description: '유효하지 않은 token 입니다.' } } : defaultHandlers()['/n2/acctinfo'](call, nth);
+  await nhAdapter.listAccounts({ forceRefresh: true });
+  assert.equal(apiCalls('/oauth2/token').length, 2);
+});
+
+test('동시에 401을 받은 두 요청은 토큰을 한 번만 다시 받는다(재발급마다 계좌주에게 보안 알림)', async () => {
+  await nhAdapter.listAccounts({ forceRefresh: true }); // tok-a 발급·저장
+  const first = `Bearer tok-${tokenSeq}`;
+  const stale = (path: string) => (call: Call, nth: number) =>
+    call.headers.authorization === first
+      ? { status: 401, body: { error_code: 'IGW40044', error_description: '기간이 만료된 token 입니다.' }, delayMs: 800 }
+      : defaultHandlers()[path](call, nth);
+  handlers['/krstock/inquiry/v1/balance'] = stale('/krstock/inquiry/v1/balance');
+  handlers['/gbstock/inquiry/v1/balance'] = stale('/gbstock/inquiry/v1/balance');
+  await Promise.all([fetchNhDomesticBalance(LIVE, { forceRefresh: true }), fetchNhOverseasBalance(LIVE, { forceRefresh: true })]);
+  assert.equal(apiCalls('/oauth2/token').length, 2, '처음 1번 + 재발급 1번');
+});
+
+test('계좌 목록: 모르는 계좌구분은 버리되 경고를 남긴다', async () => {
+  const warned: string[] = [];
+  const orig = console.warn;
+  console.warn = (...a: unknown[]) => void warned.push(a.join(' '));
+  try {
+    await nhAdapter.listAccounts({ forceRefresh: true });
+  } finally {
+    console.warn = orig;
+  }
+  assert.ok(warned.some((w) => /알 수 없는 계좌구분.*09/.test(w)));
 });

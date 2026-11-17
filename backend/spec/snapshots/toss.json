@@ -1,0 +1,2420 @@
+{
+  "components": {
+    "schemas": {
+      "Account": {
+        "properties": {
+          "accountNo": {
+            "type": "string"
+          },
+          "accountSeq": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "accountType": {
+            "enum": [
+              "BROKERAGE",
+              "OVERSEAS_DERIVATIVES",
+              "PENSION_SAVINGS",
+              "RESHORING_INVESTMENT"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountNo",
+          "accountSeq",
+          "accountType"
+        ],
+        "type": "object"
+      },
+      "AfterMarketSession": {
+        "properties": {
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "singlePriceAuctionEndTime": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endTime",
+          "startTime"
+        ],
+        "type": "object"
+      },
+      "ApiResponse": {
+        "properties": {
+          "result": {}
+        },
+        "required": [
+          "result"
+        ],
+        "type": "object"
+      },
+      "AssetClass": {
+        "enum": [
+          "STOCK",
+          "BOND",
+          "OPTION"
+        ],
+        "type": "string"
+      },
+      "BuyingPowerResponse": {
+        "properties": {
+          "cashBuyingPower": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          }
+        },
+        "required": [
+          "cashBuyingPower",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "Candle": {
+        "properties": {
+          "closePrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "highPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "lowPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "openPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "volume": {
+            "format": "decimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "closePrice",
+          "currency",
+          "highPrice",
+          "lowPrice",
+          "openPrice",
+          "timestamp",
+          "volume"
+        ],
+        "type": "object"
+      },
+      "CandlePageResponse": {
+        "properties": {
+          "candles": {
+            "items": {
+              "$ref": "#/components/schemas/Candle"
+            },
+            "type": "array"
+          },
+          "nextBefore": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "candles"
+        ],
+        "type": "object"
+      },
+      "Cost": {
+        "properties": {
+          "commission": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "tax": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "commission"
+        ],
+        "type": "object"
+      },
+      "Currency": {
+        "enum": [
+          "KRW",
+          "USD"
+        ],
+        "type": "string"
+      },
+      "DailyProfitLoss": {
+        "properties": {
+          "amount": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "rate": {
+            "format": "decimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "rate"
+        ],
+        "type": "object"
+      },
+      "ExchangeRateResponse": {
+        "properties": {
+          "baseCurrency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "basisPoint": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "midRate": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "quoteCurrency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "rate": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "rateChangeType": {
+            "enum": [
+              "UP",
+              "EQUAL",
+              "DOWN"
+            ],
+            "type": "string"
+          },
+          "validFrom": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseCurrency",
+          "basisPoint",
+          "midRate",
+          "quoteCurrency",
+          "rate",
+          "rateChangeType",
+          "validFrom",
+          "validUntil"
+        ],
+        "type": "object"
+      },
+      "HoldingsItem": {
+        "properties": {
+          "averagePurchasePrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/Cost"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "dailyProfitLoss": {
+            "$ref": "#/components/schemas/DailyProfitLoss"
+          },
+          "lastPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "marketCountry": {
+            "$ref": "#/components/schemas/MarketCountry"
+          },
+          "marketValue": {
+            "$ref": "#/components/schemas/MarketValue"
+          },
+          "name": {
+            "type": "string"
+          },
+          "profitLoss": {
+            "$ref": "#/components/schemas/ProfitLoss"
+          },
+          "quantity": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "averagePurchasePrice",
+          "cost",
+          "currency",
+          "dailyProfitLoss",
+          "lastPrice",
+          "marketCountry",
+          "marketValue",
+          "name",
+          "profitLoss",
+          "quantity",
+          "symbol"
+        ],
+        "type": "object"
+      },
+      "HoldingsOverview": {
+        "properties": {
+          "dailyProfitLoss": {
+            "$ref": "#/components/schemas/OverviewDailyProfitLoss"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/HoldingsItem"
+            },
+            "type": "array"
+          },
+          "marketValue": {
+            "$ref": "#/components/schemas/OverviewMarketValue"
+          },
+          "profitLoss": {
+            "$ref": "#/components/schemas/OverviewProfitLoss"
+          },
+          "totalPurchaseAmount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dailyProfitLoss",
+          "items",
+          "marketValue",
+          "profitLoss",
+          "totalPurchaseAmount"
+        ],
+        "type": "object"
+      },
+      "IntegratedHour": {
+        "properties": {
+          "afterMarket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AfterMarketSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preMarket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PreMarketSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regularMarket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RegularMarketSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "KrMarketCalendarResponse": {
+        "properties": {
+          "nextBusinessDay": {
+            "$ref": "#/components/schemas/KrMarketDay"
+          },
+          "previousBusinessDay": {
+            "$ref": "#/components/schemas/KrMarketDay"
+          },
+          "today": {
+            "$ref": "#/components/schemas/KrMarketDay"
+          }
+        },
+        "required": [
+          "nextBusinessDay",
+          "previousBusinessDay",
+          "today"
+        ],
+        "type": "object"
+      },
+      "KrMarketDay": {
+        "properties": {
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "integrated": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/IntegratedHour"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "type": "object"
+      },
+      "KrMarketDetail": {
+        "properties": {
+          "krxTradingSuspended": {
+            "type": "boolean"
+          },
+          "liquidationTrading": {
+            "type": "boolean"
+          },
+          "nxtSupported": {
+            "type": "boolean"
+          },
+          "nxtTradingSuspended": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "krxTradingSuspended",
+          "liquidationTrading",
+          "nxtSupported"
+        ],
+        "type": "object"
+      },
+      "MarketCountry": {
+        "enum": [
+          "KR",
+          "US"
+        ],
+        "type": "string"
+      },
+      "MarketIndicatorCandle": {
+        "properties": {
+          "closePrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "highPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "lowPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "openPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "volume": {
+            "format": "decimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "closePrice",
+          "highPrice",
+          "lowPrice",
+          "openPrice",
+          "timestamp",
+          "volume"
+        ],
+        "type": "object"
+      },
+      "MarketIndicatorCandlePageResponse": {
+        "properties": {
+          "candles": {
+            "items": {
+              "$ref": "#/components/schemas/MarketIndicatorCandle"
+            },
+            "type": "array"
+          },
+          "nextBefore": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "candles"
+        ],
+        "type": "object"
+      },
+      "MarketValue": {
+        "properties": {
+          "amount": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "amountAfterCost": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "purchaseAmount": {
+            "format": "decimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "amountAfterCost",
+          "purchaseAmount"
+        ],
+        "type": "object"
+      },
+      "OAuth2TokenRequest": {
+        "properties": {
+          "client_id": {
+            "type": "string"
+          },
+          "client_secret": {
+            "format": "password",
+            "type": "string"
+          },
+          "grant_type": {
+            "enum": [
+              "client_credentials"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "client_secret",
+          "grant_type"
+        ],
+        "type": "object"
+      },
+      "OAuth2TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "expires_in": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "token_type": {
+            "enum": [
+              "Bearer"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "expires_in",
+          "token_type"
+        ],
+        "type": "object"
+      },
+      "Order": {
+        "properties": {
+          "canceledAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "execution": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrderExecution"
+              }
+            ],
+            "type": "object"
+          },
+          "orderAmount": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "orderType": {
+            "enum": [
+              "LIMIT",
+              "MARKET"
+            ],
+            "type": "string"
+          },
+          "orderedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "price": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "timeInForce": {
+            "enum": [
+              "DAY",
+              "CLS",
+              "OPG"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "execution",
+          "orderId",
+          "orderType",
+          "orderedAt",
+          "quantity",
+          "side",
+          "status",
+          "symbol",
+          "timeInForce"
+        ],
+        "type": "object"
+      },
+      "OrderExecution": {
+        "properties": {
+          "averageFilledPrice": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "commission": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filledAmount": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filledAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filledQuantity": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "settlementDate": {
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tax": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "averageFilledPrice",
+          "commission",
+          "filledAmount",
+          "filledAt",
+          "filledQuantity",
+          "settlementDate",
+          "tax"
+        ],
+        "type": "object"
+      },
+      "OrderStatus": {
+        "enum": [
+          "PENDING",
+          "PENDING_CANCEL",
+          "PENDING_REPLACE",
+          "PARTIAL_FILLED",
+          "FILLED",
+          "CANCELED",
+          "REJECTED",
+          "CANCEL_REJECTED",
+          "REPLACE_REJECTED",
+          "REPLACED"
+        ],
+        "type": "string"
+      },
+      "OverviewDailyProfitLoss": {
+        "properties": {
+          "amount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              }
+            ]
+          },
+          "rate": {
+            "format": "decimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "rate"
+        ],
+        "type": "object"
+      },
+      "OverviewMarketValue": {
+        "properties": {
+          "amount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              }
+            ]
+          },
+          "amountAfterCost": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              }
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "amountAfterCost"
+        ],
+        "type": "object"
+      },
+      "OverviewProfitLoss": {
+        "properties": {
+          "amount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              }
+            ]
+          },
+          "amountAfterCost": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Price"
+              }
+            ]
+          },
+          "rate": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "rateAfterCost": {
+            "format": "decimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "amountAfterCost",
+          "rate",
+          "rateAfterCost"
+        ],
+        "type": "object"
+      },
+      "PaginatedOrderResponse": {
+        "properties": {
+          "hasNext": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "hasNext",
+          "nextCursor",
+          "orders"
+        ],
+        "type": "object"
+      },
+      "PaginatedTransactionResponse": {
+        "properties": {
+          "hasNext": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transactions": {
+            "items": {
+              "$ref": "#/components/schemas/Transaction"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "hasNext",
+          "nextCursor",
+          "transactions"
+        ],
+        "type": "object"
+      },
+      "PreMarketSession": {
+        "properties": {
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "singlePriceAuctionStartTime": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endTime",
+          "startTime"
+        ],
+        "type": "object"
+      },
+      "Price": {
+        "properties": {
+          "krw": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "usd": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "krw"
+        ],
+        "type": "object"
+      },
+      "PriceResponse": {
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "lastPrice": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "currency",
+          "lastPrice",
+          "symbol"
+        ],
+        "type": "object"
+      },
+      "ProfitLoss": {
+        "properties": {
+          "amount": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "amountAfterCost": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "rate": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "rateAfterCost": {
+            "format": "decimal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "amountAfterCost",
+          "rate",
+          "rateAfterCost"
+        ],
+        "type": "object"
+      },
+      "RegularMarketSession": {
+        "properties": {
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "singlePriceAuctionStartTime": {
+            "oneOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endTime",
+          "startTime"
+        ],
+        "type": "object"
+      },
+      "Sector": {
+        "properties": {
+          "depth": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parentSectorId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sectorId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "depth",
+          "name",
+          "parentSectorId",
+          "sectorId"
+        ],
+        "type": "object"
+      },
+      "SectorEtf": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "symbol"
+        ],
+        "type": "object"
+      },
+      "SectorEtfsResponse": {
+        "properties": {
+          "etfs": {
+            "items": {
+              "$ref": "#/components/schemas/SectorEtf"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "etfs"
+        ],
+        "type": "object"
+      },
+      "SectorStock": {
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "marketCapitalization": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "tradingAmount": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "volume": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "currency",
+          "marketCapitalization",
+          "name",
+          "symbol",
+          "tradingAmount",
+          "volume"
+        ],
+        "type": "object"
+      },
+      "SectorStocksResponse": {
+        "properties": {
+          "stocks": {
+            "items": {
+              "$ref": "#/components/schemas/SectorStock"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "stocks"
+        ],
+        "type": "object"
+      },
+      "SectorsResponse": {
+        "properties": {
+          "sectors": {
+            "items": {
+              "$ref": "#/components/schemas/Sector"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sectors"
+        ],
+        "type": "object"
+      },
+      "StockInfo": {
+        "properties": {
+          "currency": {
+            "$ref": "#/components/schemas/Currency"
+          },
+          "delistDate": {
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "englishName": {
+            "type": "string"
+          },
+          "isCommonShare": {
+            "type": "boolean"
+          },
+          "isinCode": {
+            "type": "string"
+          },
+          "koreanMarketDetail": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/KrMarketDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "leverageFactor": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "listDate": {
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "market": {
+            "enum": [
+              "KOSPI",
+              "KOSDAQ",
+              "NYSE",
+              "NASDAQ",
+              "AMEX",
+              "KR_ETC",
+              "US_ETC"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "securityType": {
+            "enum": [
+              "STOCK",
+              "FOREIGN_STOCK",
+              "DEPOSITARY_RECEIPT",
+              "INFRASTRUCTURE_FUND",
+              "REIT",
+              "ETF",
+              "FOREIGN_ETF",
+              "ETN",
+              "STOCK_WARRANTS"
+            ],
+            "type": "string"
+          },
+          "sharesOutstanding": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "SCHEDULED",
+              "ACTIVE",
+              "DELISTED"
+            ],
+            "type": "string"
+          },
+          "symbol": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "englishName",
+          "isCommonShare",
+          "isinCode",
+          "market",
+          "name",
+          "securityType",
+          "sharesOutstanding",
+          "status",
+          "symbol"
+        ],
+        "type": "object"
+      },
+      "StockWarning": {
+        "properties": {
+          "endDate": {
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exchange": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startDate": {
+            "format": "date",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "warningType": {
+            "enum": [
+              "LIQUIDATION_TRADING",
+              "OVERHEATED",
+              "INVESTMENT_WARNING",
+              "INVESTMENT_RISK",
+              "VI_STATIC_AND_DYNAMIC",
+              "VI_STATIC",
+              "VI_DYNAMIC",
+              "STOCK_WARRANTS"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "warningType"
+        ],
+        "type": "object"
+      },
+      "Transaction": {
+        "properties": {
+          "amount": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "assetClass": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AssetClass"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "commission": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "currency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Currency"
+              }
+            ]
+          },
+          "exchangeRate": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filledPrice": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isCancellation": {
+            "type": "boolean"
+          },
+          "isinCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "marketCountry": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MarketCountry"
+              }
+            ]
+          },
+          "netAmount": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "format": "decimal",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settled": {
+            "type": "boolean"
+          },
+          "settlementDate": {
+            "format": "date",
+            "type": "string"
+          },
+          "symbol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tax": {
+            "format": "decimal",
+            "type": "string"
+          },
+          "transactionTime": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transactionType": {
+            "$ref": "#/components/schemas/TransactionType"
+          }
+        },
+        "required": [
+          "amount",
+          "assetClass",
+          "commission",
+          "currency",
+          "exchangeRate",
+          "filledPrice",
+          "isCancellation",
+          "isinCode",
+          "marketCountry",
+          "netAmount",
+          "quantity",
+          "settled",
+          "settlementDate",
+          "symbol",
+          "tax",
+          "transactionTime",
+          "transactionType"
+        ],
+        "type": "object"
+      },
+      "TransactionType": {
+        "enum": [
+          "BUY",
+          "SELL",
+          "SECURITIES_TRANSFER_IN",
+          "SECURITIES_TRANSFER_OUT",
+          "DEPOSIT",
+          "WITHDRAWAL",
+          "EXCHANGE_IN",
+          "EXCHANGE_OUT",
+          "DIVIDEND",
+          "INTEREST",
+          "FEE"
+        ],
+        "type": "string"
+      },
+      "UsAfterMarketSession": {
+        "properties": {
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endTime",
+          "startTime"
+        ],
+        "type": "object"
+      },
+      "UsDayMarketSession": {
+        "properties": {
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endTime",
+          "startTime"
+        ],
+        "type": "object"
+      },
+      "UsMarketCalendarResponse": {
+        "properties": {
+          "nextBusinessDay": {
+            "$ref": "#/components/schemas/UsMarketDay"
+          },
+          "previousBusinessDay": {
+            "$ref": "#/components/schemas/UsMarketDay"
+          },
+          "today": {
+            "$ref": "#/components/schemas/UsMarketDay"
+          }
+        },
+        "required": [
+          "nextBusinessDay",
+          "previousBusinessDay",
+          "today"
+        ],
+        "type": "object"
+      },
+      "UsMarketDay": {
+        "properties": {
+          "afterMarket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsAfterMarketSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date": {
+            "format": "date",
+            "type": "string"
+          },
+          "dayMarket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsDayMarketSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preMarket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsPreMarketSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regularMarket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/UsRegularMarketSession"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "type": "object"
+      },
+      "UsPreMarketSession": {
+        "properties": {
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endTime",
+          "startTime"
+        ],
+        "type": "object"
+      },
+      "UsRegularMarketSession": {
+        "properties": {
+          "endTime": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "startTime": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endTime",
+          "startTime"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Toss Securities Open API (MyStock 사용분)",
+    "version": "1.2.28"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/accounts": {
+      "get": {
+        "operationId": "getAccounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "items": {
+                            "$ref": "#/components/schemas/Account"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/buying-power": {
+      "get": {
+        "operationId": "getBuyingPower",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tossinvest-Account",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "currency",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Currency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/BuyingPowerResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/candles": {
+      "get": {
+        "operationId": "getCandles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "adjusted",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": true,
+            "schema": {
+              "enum": [
+                "1m",
+                "1d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/CandlePageResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/exchange-rate": {
+      "get": {
+        "operationId": "getExchangeRate",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "baseCurrency",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Currency"
+            }
+          },
+          {
+            "in": "query",
+            "name": "dateTime",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "quoteCurrency",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Currency"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/ExchangeRateResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/holdings": {
+      "get": {
+        "operationId": "getHoldings",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tossinvest-Account",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/HoldingsOverview"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/market-calendar/KR": {
+      "get": {
+        "operationId": "getKrMarketCalendar",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/KrMarketCalendarResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/market-calendar/US": {
+      "get": {
+        "operationId": "getUsMarketCalendar",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/UsMarketCalendarResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/market-indicators/{symbol}/candles": {
+      "get": {
+        "operationId": "getMarketIndicatorCandles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "interval",
+            "required": true,
+            "schema": {
+              "enum": [
+                "1m",
+                "1d"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/MarketIndicatorCandlePageResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/orders": {
+      "get": {
+        "operationId": "getOrders",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tossinvest-Account",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": true,
+            "schema": {
+              "enum": [
+                "OPEN",
+                "CLOSED"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/PaginatedOrderResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/prices": {
+      "get": {
+        "operationId": "getPrices",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbols",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "items": {
+                            "$ref": "#/components/schemas/PriceResponse"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/sectors": {
+      "get": {
+        "operationId": "listSectors",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/SectorsResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/sectors/{sectorId}/etfs": {
+      "get": {
+        "operationId": "getSectorEtfs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sectorId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "marketCountry",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MarketCountry"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/SectorEtfsResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/sectors/{sectorId}/stocks": {
+      "get": {
+        "operationId": "getSectorStocks",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sectorId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "marketCountry",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MarketCountry"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/SectorStocksResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/stocks": {
+      "get": {
+        "operationId": "getStocks",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "symbols",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "items": {
+                            "$ref": "#/components/schemas/StockInfo"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/stocks/{symbol}/warnings": {
+      "get": {
+        "operationId": "getStockWarnings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "items": {
+                            "$ref": "#/components/schemas/StockWarning"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/transactions": {
+      "get": {
+        "operationId": "getTransactions",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Tossinvest-Account",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "transactionTypes",
+            "required": false,
+            "schema": {
+              "items": {
+                "enum": [
+                  "BUY",
+                  "SELL",
+                  "SECURITIES_TRANSFER_IN",
+                  "SECURITIES_TRANSFER_OUT",
+                  "DEPOSIT",
+                  "WITHDRAWAL",
+                  "EXCHANGE_IN",
+                  "EXCHANGE_OUT",
+                  "DIVIDEND",
+                  "INTEREST",
+                  "FEE"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ApiResponse"
+                    },
+                    {
+                      "properties": {
+                        "result": {
+                          "$ref": "#/components/schemas/PaginatedTransactionResponse"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/oauth2/token": {
+      "post": {
+        "operationId": "issueOAuth2Token",
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OAuth2TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OAuth2TokenResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    }
+  },
+  "x-missing-operations": []
+}

@@ -65,8 +65,9 @@ test('planSymbolDividends: 기준일이 지났어도 지급 전이면 예탁원 
     ['estimated', 'ksd-schedule', '2026-11-15', 28],
     ['projected', 'history', '2026-12-15', 29.5],
   ]);
-  // 지급일이 지나면 빠진다
-  assert.equal(planSymbolDividends(rows, '2026-11-17', '2026-11-30').length, 0);
+  // 지급일 당일까지는 남고(입금이 오후 늦게 되기도 함 — 2026-11-17 사용자 요청), 다음 날 빠진다
+  assert.equal(planSymbolDividends(rows, '2026-11-17', '2026-11-30').length, 1);
+  assert.equal(planSymbolDividends(rows, '2026-11-18', '2026-11-30').length, 0);
 });
 
 test('planSymbolDividends: 금액 미정(0) 일정은 중간값으로 추정하고, 다음 추정은 그다음 달 "매달 며칠"로 잇는다', () => {
@@ -127,7 +128,7 @@ test('미국 배당: 권리 금액이 있으면 예상, 발표만 된 건은 최
       ['projected', '2026-11-27', '2026-11-30', 0.0537],
     ]
   );
-  // 11-12 기준·11-13 지급분은 이미 지급돼(오늘 11-16) 빠진다. 지급 전이면 예상(estimated)으로 나온다.
+  // 11-12 기준·11-13 지급분은 이미 지급돼(오늘 11-16 — 지급 다음 날 이후) 빠진다. 지급 전이면 예상(estimated)으로 나온다.
   const before = planSymbolDividends(rows, '2026-11-12', '2026-11-30');
   assert.deepEqual(before[0], { status: 'estimated', source: 'ksd-schedule', recordDate: '2026-11-12', payDate: '2026-11-13', perShare: 0.0537 });
 });
@@ -162,15 +163,19 @@ test('itemsFromSnapshot: 저장된 일정에 지금 보유 수량을 곱한다(�
   assert.equal(more[0].grossAmount, Math.round(p.perShare * 20));
 });
 
-test('itemsFromSnapshot: 저장본에 없는 종목·수량 0은 빼고, 지급일이 지난 확정 건은 오늘 기준으로 거른다', () => {
+test('itemsFromSnapshot: 저장본에 없는 종목·수량 0은 빼고, 확정 건은 지급일 당일까지 남기고 지난 건은 거른다', () => {
   const snap = {
-    confirmed: [confirmedRow('222220', '2026-10-31', '2026-11-16'), confirmedRow('222220', '2026-11-30', '2026-12-20')],
+    confirmed: [
+      confirmedRow('222220', '2026-09-30', '2026-11-15'),
+      confirmedRow('222220', '2026-10-31', '2026-11-16'),
+      confirmedRow('222220', '2026-11-30', '2026-12-20'),
+    ],
     krCalendar: {},
     kr: { '111110': monthly },
     us: {},
   };
   const items = itemsFromSnapshot(snap, [holding('toss', '1', '333330', 5), holding('toss', '1', '111110', 0)], '2026-11-16', '12345678-01');
-  assert.deepEqual(items.map((i) => [i.status, i.payDate]), [['confirmed', '2026-12-20']]);
+  assert.deepEqual(items.map((i) => [i.status, i.payDate]), [['confirmed', '2026-11-16'], ['confirmed', '2026-12-20']]);
 });
 
 test('itemsFromSnapshot: KIS 계좌에 같은 종목·기준월 확정이 있으면 그 계좌엔 예상·추정을 안 만든다', () => {

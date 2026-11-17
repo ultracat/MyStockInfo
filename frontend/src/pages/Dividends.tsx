@@ -3,6 +3,7 @@ import { api } from '../api';
 import { effectiveRate } from '../fx';
 import { loadUsdKrwRates } from '../fxLoader';
 import {
+  excludeReceived,
   brokerDividendSums,
   brokerLines as brokerLinesOf,
   grandTotal as grandTotalOf,
@@ -53,7 +54,13 @@ export default function Dividends() {
     setRecords(await api.listDividends());
   }
 
-  const { upcoming, loadUpcoming } = useUpcomingDividends();
+  const { upcoming: upcomingRaw, loadUpcoming } = useUpcomingDividends();
+  // 이미 받은 배당(같은 증권사·계좌·종목·지급일 기록)은 다가오는 배당 목록·그래프에서 뺀다 — 지급일 당일까지 남는 항목이
+  // 입금(기록) 뒤에도 남아 있지 않게(calc/dividends.ts excludeReceived).
+  const upcoming = useMemo(
+    () => (upcomingRaw.items ? { ...upcomingRaw, items: excludeReceived(upcomingRaw.items, records) } : upcomingRaw),
+    [upcomingRaw, records]
+  );
   const sync = useDividendSync(refresh);
   const invested = useInvestedByBroker();
   const { investedByBroker, investedErrors, investedLoading, avgCostByBroker, tradesByBroker } = invested;

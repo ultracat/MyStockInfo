@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { YearEndTaxCard } from './realized/YearEndTaxCard';
 import { effectiveRate, monthlyRateOr } from '../fx';
 import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
@@ -248,6 +249,25 @@ export default function RealizedGains() {
     return { count: rows.length, krwTotal, usdTotal, convertedKrw, unconvertedCount, brokerRows };
   }, [allDividends, year, broker, dividendTaxType, monthlyRateFor]);
   const dividendRatio = dividendSummary.convertedKrw / FINANCIAL_INCOME_THRESHOLD_KRW;
+
+  // 연말 절세 도우미 — 고른 연도·증권사와 상관없이 **올해** 전체(일반 계좌) 기준.
+  const thisYearOverseasGainKrw = useMemo(
+    () =>
+      sales
+        .filter((s) => s.date.slice(0, 4) === String(CURRENT_YEAR) && s.currency !== 'KRW' && taxTypeFor(s.broker, s.accountId) === 'GENERAL')
+        .reduce((sum, s) => sum + s.gainKrw, 0),
+    [sales, taxTypeFor]
+  );
+  const thisYearDividendKrw = useMemo(() => {
+    let total = 0;
+    for (const d of allDividends) {
+      if (d.paidDate.slice(0, 4) !== String(CURRENT_YEAR) || dividendTaxType(d) !== 'GENERAL') continue;
+      const rate = d.currency === 'USD' ? monthlyRateFor(d.paidDate.slice(0, 7)) : 1;
+      if (rate) total += d.amount * rate;
+    }
+    return total;
+  }, [allDividends, dividendTaxType, monthlyRateFor]);
+  const isGeneralAccount = useCallback((b: string, accountId: string) => taxTypeFor(b as BrokerId, accountId) === 'GENERAL', [taxTypeFor]);
 
   function accountDisplay(b: BrokerId, accountId: string): string {
     return formatAccountOption({ id: accountId }, findAccountLabel(accountLabels, b, accountId));
@@ -536,6 +556,15 @@ export default function RealizedGains() {
           <p style={{ color: 'var(--text-muted)' }}>{year}년 일반계좌 배당 기록이 없습니다.</p>
         )}
       </div>
+
+      <YearEndTaxCard
+        realizedOverseasKrw={thisYearOverseasGainKrw}
+        holdings={holdings}
+        isGeneral={isGeneralAccount}
+        usdRate={effectiveFxRate}
+        dividendIncomeKrw={thisYearDividendKrw}
+        year={CURRENT_YEAR}
+      />
 
       <TaxAccountLimitsCard
         accounts={taxTypes}

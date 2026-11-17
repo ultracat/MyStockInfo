@@ -9,6 +9,7 @@ import type { BrokerId } from '../brokers/types';
  * - 세제 혜택 계좌: ISA 유형(일반/서민형)·가입일, 연도별 납입액(실현손익 화면 "ISA·연금 한도")과 한도 수치
  * - 목표 비중(리밸런싱 화면)
  * - 알림 켜기/끄기와 관심종목 목표가(alerts.ts)
+ * - 은퇴·목표 시뮬레이션 입력(분석 화면), 적립식 계획(매매내역 화면)
  * 계산은 전부 화면(`frontend/src/calc/*`)이 한다 — 여기는 저장·검증만.
  */
 export interface TaxLimits {
@@ -58,6 +59,31 @@ export interface AlertSettings {
   dividendReceived: boolean;
   /** 보유 종목에 새 매수 유의사항 */
   warnings: boolean;
+  /** 금요일 저녁 주간 요약 */
+  weeklySummary: boolean;
+}
+
+/** 은퇴·목표 시뮬레이션 입력(분석 화면) — 화면이 그대로 저장·복원한다. 시작 자산은 비우면 지금 평가금액. */
+export interface SimulationPlan {
+  startKrw: number | null;
+  monthlyKrw: number;
+  annualReturnPct: number;
+  dividendYieldPct: number;
+  reinvest: boolean;
+  contributionGrowthPct: number;
+  inflationPct: number;
+  years: number;
+  targetAssetsKrw: number | null;
+  targetMonthlyDividendKrw: number | null;
+}
+
+/** 적립식 계획 — 이 종목을 매달 얼마씩 산다(매매내역 화면이 실제 매수와 맞춰 본다). */
+export interface SavingsPlan {
+  symbol: string;
+  name: string;
+  monthlyKrw: number;
+  /** 시작한 달(YYYY-MM) — 그 전 달은 비교하지 않는다. */
+  startMonth: string;
 }
 
 export interface WatchTarget {
@@ -75,6 +101,8 @@ export interface PlannerState {
   targets: TargetWeight[];
   alerts: AlertSettings;
   watchTargets: WatchTarget[];
+  simulation: SimulationPlan | null;
+  savingsPlans: SavingsPlan[];
 }
 
 const DEFAULT_STATE: PlannerState = {
@@ -82,8 +110,10 @@ const DEFAULT_STATE: PlannerState = {
   taxLimits: DEFAULT_TAX_LIMITS,
   taxAccounts: [],
   targets: [],
-  alerts: { targetPrice: true, dividendReceived: true, warnings: true },
+  alerts: { targetPrice: true, dividendReceived: true, warnings: true, weeklySummary: true },
   watchTargets: [],
+  simulation: null,
+  savingsPlans: [],
 };
 
 function store() {
@@ -166,6 +196,7 @@ export function updatePlanner(patch: Record<string, unknown>): PlannerState {
       targetPrice: typeof a.targetPrice === 'boolean' ? a.targetPrice : cur.targetPrice,
       dividendReceived: typeof a.dividendReceived === 'boolean' ? a.dividendReceived : cur.dividendReceived,
       warnings: typeof a.warnings === 'boolean' ? a.warnings : cur.warnings,
+      weeklySummary: typeof a.weeklySummary === 'boolean' ? a.weeklySummary : cur.weeklySummary,
     };
   }
   if ('watchTargets' in patch) {
@@ -176,6 +207,42 @@ export function updatePlanner(patch: Record<string, unknown>): PlannerState {
         return { symbol: symbolOf(w.symbol), above: optPrice(w.above), below: optPrice(w.below) };
       })
       .filter((w) => w.above !== null || w.below !== null);
+  }
+  if ('simulation' in patch) {
+    const s = patch.simulation as Record<string, unknown> | null;
+    if (s === null) next.simulation = null;
+    else {
+      if (!s || typeof s !== 'object') throw new PlannerValidationError('시뮬레이션 입력이 올바르지 않습니다.');
+      const pct = (v: unknown, what: string, lo: number, hi: number) => {
+        if (typeof v !== 'number' || !Number.isFinite(v) || v < lo || v > hi) throw new PlannerValidationError(`${what}은(는) ${lo}~${hi} 사이여야 합니다.`);
+        return v;
+      };
+      next.simulation = {
+        startKrw: optMoney(s.startKrw, '시작 자산'),
+        monthlyKrw: money(s.monthlyKrw ?? 0, '월 적립액'),
+        annualReturnPct: pct(s.annualReturnPct, '연 수익률', -50, 50),
+        dividendYieldPct: pct(s.dividendYieldPct, '배당수익률', 0, 30),
+        reinvest: s.reinvest !== false,
+        contributionGrowthPct: pct(s.contributionGrowthPct ?? 0, '적립 증가율', -50, 50),
+        inflationPct: pct(s.inflationPct ?? 0, '물가상승률', -10, 30),
+        years: Math.round(pct(s.years, '기간(년)', 1, 60)),
+        targetAssetsKrw: optMoney(s.targetAssetsKrw, '목표 자산'),
+        targetMonthlyDividendKrw: optMoney(s.targetMonthlyDividendKrw, '목표 월 배당'),
+      };
+    }
+  }
+  if ('savingsPlans' in patch) {
+    if (!Array.isArray(patch.savingsPlans) || patch.savingsPlans.length > 100) throw new PlannerValidationError('적립 계획 목록이 올바르지 않습니다.');
+    const seen = new Set<string>();
+    next.savingsPlans = patch.savingsPlans.map((raw) => {
+      const p = (raw ?? {}) as Record<string, unknown>;
+      const symbol = symbolOf(p.symbol);
+      if (seen.has(symbol)) throw new PlannerValidationError(`${symbol} 계획이 두 번 들어 있습니다.`);
+      seen.add(symbol);
+      const startMonth = String(p.startMonth ?? '');
+      if (!/^\d{4}-\d{2}$/.test(startMonth)) throw new PlannerValidationError('시작 달은 YYYY-MM 형식이어야 합니다.');
+      return { symbol, name: typeof p.name === 'string' ? p.name.slice(0, 100) : symbol, monthlyKrw: money(p.monthlyKrw, '월 적립액'), startMonth };
+    });
   }
   store().update((cur) => ({ ...cur, ...next }));
   return getPlanner();

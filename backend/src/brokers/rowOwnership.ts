@@ -4,6 +4,8 @@ import { isTossConfigured } from './toss/tossClient';
 import { isKisConfigured } from './kis/kisClient';
 import { isNhConfigured } from './nh/nhClient';
 import { isKiwoomConfigured } from './kiwoom/kiwoomClient';
+import { isLsConfigured } from './ls/lsClient';
+import { isDbConfigured } from './db/dbClient';
 import type { BrokerId } from './types';
 
 /** holdings.json/trades.json의 행은 두 종류다 — (1) 실시간 조회(write-through)와
@@ -44,5 +46,8 @@ export function isDividendSyncOwned(row: { broker: BrokerId; currency?: string |
   if (row.broker === 'nh') return isNhConfigured();
   // 키움증권도 위탁종합거래내역 입금에서 원화·달러 배당을 모두 받는다(실키 미검증).
   if (row.broker === 'kiwoom') return isKiwoomConfigured();
+  // LS증권은 계좌 거래내역에서 원화 배당만 확인돼 원화 기록만(KIS와 같음), DB증권은 해외 거래내역까지 받아 원화·달러 모두(실키 미검증).
+  if (row.broker === 'ls') return isLsConfigured() && row.currency !== 'USD';
+  if (row.broker === 'db') return isDbConfigured();
   return false;
 }

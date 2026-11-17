@@ -3,7 +3,7 @@ import path from 'node:path';
 import { JsonStore } from './jsonStore';
 import { isEnvelope, openJson, sealJson, SecureStorageUnavailableError } from './secureStorage';
 
-// 증권사 접속 토큰(kis/kb/nh/kiwoom-token.json)처럼 **비밀이지만 잃어도 다시 받으면 되는** 값을
+// 증권사 접속 토큰(kis/kb/nh/kiwoom/ls/db-token.json)처럼 **비밀이지만 잃어도 다시 받으면 되는** 값을
 // 파일에 둘 때 쓰는 저장소. credentials.json과 같은 봉투(secureStorage.ts의 sealJson)로 OS 키체인
 // 암호화해 쓴다 — 예전엔 평문 JSON이라, 같은 사용자 권한으로 도는 아무 프로그램이 파일만 읽어도
 // 하루짜리 계좌 API 토큰을 가져갈 수 있었다(2026-11-16 보안 검토).

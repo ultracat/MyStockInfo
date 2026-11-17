@@ -1,0 +1,694 @@
+{
+  "recordedAt": "2026-11-17",
+  "trs": {
+    "/api/v1/accounts": {
+      "result": {
+        "fields": {
+          "accountNo": "number",
+          "accountSeq": "number",
+          "accountType": "text"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    },
+    "/api/v1/buying-power": {
+      "result": {
+        "fields": {
+          "cashBuyingPower": "number",
+          "currency": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/api/v1/candles": {
+      "result": {
+        "fields": {
+          "candles": "array",
+          "nextBefore": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.candles": {
+        "fields": {
+          "closePrice": "number",
+          "currency": "text",
+          "highPrice": "number",
+          "lowPrice": "number",
+          "openPrice": "number",
+          "timestamp": "text",
+          "volume": "number"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    },
+    "/api/v1/exchange-rate": {
+      "result": {
+        "fields": {
+          "baseCurrency": "text",
+          "basisPoint": "number",
+          "midRate": "number",
+          "quoteCurrency": "text",
+          "rate": "number",
+          "rateChangeType": "text",
+          "validFrom": "text",
+          "validUntil": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/api/v1/holdings": {
+      "result": {
+        "fields": {
+          "dailyProfitLoss": "object",
+          "items": "array",
+          "marketValue": "object",
+          "profitLoss": "object",
+          "totalPurchaseAmount": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.dailyProfitLoss": {
+        "fields": {
+          "amount": "object",
+          "rate": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.dailyProfitLoss.amount": {
+        "fields": {
+          "krw": "number",
+          "usd": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.items": {
+        "fields": {
+          "averagePurchasePrice": "number",
+          "cost": "object",
+          "currency": "text",
+          "dailyProfitLoss": "object",
+          "lastPrice": "number",
+          "marketCountry": "text",
+          "marketValue": "object",
+          "name": "text",
+          "profitLoss": "object",
+          "quantity": "number",
+          "symbol": "text"
+        },
+        "kind": "array",
+        "seenRows": true
+      },
+      "result.items.cost": {
+        "fields": {
+          "commission": "number",
+          "tax": "empty"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.items.dailyProfitLoss": {
+        "fields": {
+          "amount": "number",
+          "rate": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.items.marketValue": {
+        "fields": {
+          "amount": "number",
+          "amountAfterCost": "number",
+          "purchaseAmount": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.items.profitLoss": {
+        "fields": {
+          "amount": "number",
+          "amountAfterCost": "number",
+          "rate": "number",
+          "rateAfterCost": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.marketValue": {
+        "fields": {
+          "amount": "object",
+          "amountAfterCost": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.marketValue.amount": {
+        "fields": {
+          "krw": "number",
+          "usd": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.marketValue.amountAfterCost": {
+        "fields": {
+          "krw": "number",
+          "usd": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.profitLoss": {
+        "fields": {
+          "amount": "object",
+          "amountAfterCost": "object",
+          "rate": "number",
+          "rateAfterCost": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.profitLoss.amount": {
+        "fields": {
+          "krw": "number",
+          "usd": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.profitLoss.amountAfterCost": {
+        "fields": {
+          "krw": "number",
+          "usd": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.totalPurchaseAmount": {
+        "fields": {
+          "krw": "number",
+          "usd": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/api/v1/market-calendar/KR": {
+      "result": {
+        "fields": {
+          "nextBusinessDay": "object",
+          "previousBusinessDay": "object",
+          "today": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay": {
+        "fields": {
+          "date": "text",
+          "integrated": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.integrated": {
+        "fields": {
+          "afterMarket": "object",
+          "preMarket": "object",
+          "regularMarket": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.integrated.afterMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionEndTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.integrated.preMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionStartTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.integrated.regularMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionStartTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay": {
+        "fields": {
+          "date": "text",
+          "integrated": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.integrated": {
+        "fields": {
+          "afterMarket": "object",
+          "preMarket": "object",
+          "regularMarket": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.integrated.afterMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionEndTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.integrated.preMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionStartTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.integrated.regularMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionStartTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today": {
+        "fields": {
+          "date": "text",
+          "integrated": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.integrated": {
+        "fields": {
+          "afterMarket": "object",
+          "preMarket": "object",
+          "regularMarket": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.integrated.afterMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionEndTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.integrated.preMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionStartTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.integrated.regularMarket": {
+        "fields": {
+          "endTime": "text",
+          "singlePriceAuctionStartTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/api/v1/market-calendar/US": {
+      "result": {
+        "fields": {
+          "nextBusinessDay": "object",
+          "previousBusinessDay": "object",
+          "today": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay": {
+        "fields": {
+          "afterMarket": "object",
+          "date": "text",
+          "dayMarket": "object",
+          "preMarket": "object",
+          "regularMarket": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.afterMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.dayMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.preMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.nextBusinessDay.regularMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay": {
+        "fields": {
+          "afterMarket": "object",
+          "date": "text",
+          "dayMarket": "object",
+          "preMarket": "object",
+          "regularMarket": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.afterMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.dayMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.preMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.previousBusinessDay.regularMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today": {
+        "fields": {
+          "afterMarket": "object",
+          "date": "text",
+          "dayMarket": "object",
+          "preMarket": "object",
+          "regularMarket": "object"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.afterMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.dayMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.preMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.today.regularMarket": {
+        "fields": {
+          "endTime": "text",
+          "startTime": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/api/v1/market-indicators/{symbol}/candles": {
+      "result": {
+        "fields": {
+          "candles": "array",
+          "nextBefore": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.candles": {
+        "fields": {
+          "closePrice": "number",
+          "highPrice": "number",
+          "lowPrice": "number",
+          "openPrice": "number",
+          "timestamp": "text",
+          "volume": "number"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    },
+    "/api/v1/orders": {
+      "result": {
+        "fields": {
+          "hasNext": "text",
+          "nextCursor": "empty",
+          "orders": "array"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.orders": {
+        "fields": {
+          "canceledAt": "text",
+          "currency": "text",
+          "execution": "object",
+          "orderAmount": "number",
+          "orderId": "text",
+          "orderType": "text",
+          "orderedAt": "text",
+          "price": "number",
+          "quantity": "number",
+          "side": "text",
+          "status": "text",
+          "symbol": "text",
+          "timeInForce": "text"
+        },
+        "kind": "array",
+        "seenRows": true
+      },
+      "result.orders.execution": {
+        "fields": {
+          "averageFilledPrice": "number",
+          "commission": "number",
+          "filledAmount": "number",
+          "filledAt": "text",
+          "filledQuantity": "number",
+          "settlementDate": "empty",
+          "tax": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/api/v1/prices": {
+      "result": {
+        "fields": {
+          "currency": "text",
+          "lastPrice": "number",
+          "symbol": "text",
+          "timestamp": "text"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    },
+    "/api/v1/sectors": {
+      "result": {
+        "fields": {
+          "sectors": "array"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.sectors": {
+        "fields": {
+          "depth": "number",
+          "name": "text",
+          "parentSectorId": "number",
+          "sectorId": "number"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    },
+    "/api/v1/sectors/{sectorId}/etfs": {
+      "result": {
+        "fields": {
+          "etfs": "array"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.etfs": {
+        "fields": {
+          "name": "text",
+          "symbol": "text"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    },
+    "/api/v1/sectors/{sectorId}/stocks": {
+      "result": {
+        "fields": {
+          "stocks": "array"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.stocks": {
+        "fields": {
+          "currency": "text",
+          "marketCapitalization": "number",
+          "name": "text",
+          "symbol": "number",
+          "tradingAmount": "number",
+          "volume": "number"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    },
+    "/api/v1/stocks": {
+      "result": {
+        "fields": {
+          "currency": "text",
+          "delistDate": "empty",
+          "englishName": "text",
+          "isCommonShare": "text",
+          "isinCode": "text",
+          "koreanMarketDetail": "object",
+          "leverageFactor": "empty",
+          "listDate": "text",
+          "market": "text",
+          "name": "text",
+          "securityType": "text",
+          "sharesOutstanding": "number",
+          "status": "text",
+          "symbol": "text"
+        },
+        "kind": "array",
+        "seenRows": true
+      },
+      "result.koreanMarketDetail": {
+        "fields": {
+          "krxTradingSuspended": "text",
+          "liquidationTrading": "text",
+          "nxtSupported": "text",
+          "nxtTradingSuspended": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/api/v1/stocks/{symbol}/warnings": {
+      "result": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      }
+    },
+    "/api/v1/transactions": {
+      "result": {
+        "fields": {
+          "hasNext": "text",
+          "nextCursor": "text",
+          "transactions": "array"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "result.transactions": {
+        "fields": {
+          "amount": "number",
+          "assetClass": "text",
+          "commission": "number",
+          "currency": "text",
+          "exchangeRate": "number",
+          "filledPrice": "empty",
+          "isCancellation": "text",
+          "isinCode": "text",
+          "marketCountry": "text",
+          "netAmount": "number",
+          "quantity": "number",
+          "settled": "text",
+          "settlementDate": "text",
+          "symbol": "text",
+          "tax": "number",
+          "transactionTime": "text",
+          "transactionType": "text"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    }
+  }
+}

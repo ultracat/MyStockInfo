@@ -118,6 +118,21 @@ export function ApiKeyCard({
           ⚠ 이 연동은 아직 실제 키움 계좌로 확인하지 못했습니다 — 값이 키움 앱과 다르면 알려 주세요.
         </p>
       )}
+      {broker === 'ls' && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          LS증권 OPEN API(openapi.ls-sec.co.kr)에서 발급받은 앱키/시크릿키를 입력하세요. 홈페이지에서 xingAPI 사용등록을 먼저 한 뒤
+          OPEN API를 신청합니다. LS증권은 앱키가 신청한 계좌 하나에 묶여 있어, 그 계좌를 API로 찾아 보여줍니다(계좌번호 입력 불필요).
+          배당은 원화만 자동으로 가져오고, 미국 주식 배당은 직접 입력합니다. ⚠ 이 연동은 아직 실제 LS증권 계좌로 확인하지 못했습니다 —
+          값이 LS증권 앱과 다르면 알려 주세요.
+        </p>
+      )}
+      {broker === 'db' && (
+        <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+          DB증권 Open API(openapi.dbsec.co.kr)에서 발급받은 앱키/시크릿을 입력하세요. DB증권은 계좌마다 앱키를 따로 받고(최대 3계좌), API가
+          계좌번호를 알려주지 않아 <strong>그 키를 받은 계좌번호를 직접 적어 주세요</strong>(화면 표시용, DB증권으로 보내지 않음). 앱키는 1년마다
+          다시 받아야 합니다. ⚠ 이 연동은 아직 실제 DB증권 계좌로 확인하지 못했습니다 — 값이 DB증권 앱과 다르면 알려 주세요.
+        </p>
+      )}
       {broker === 'kb' && (
         <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
           KB증권 Open API 포털(developer.kbsec.com)에서 발급받은 appKey/appSecret을 입력하세요. KB Open

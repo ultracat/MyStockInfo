@@ -43,7 +43,7 @@ export function useDividendSync(refresh: () => Promise<void>) {
       .listBrokers()
       .then((brokers) => {
         const owned = new Set(
-          brokers.filter((b) => (b.id === 'toss' || b.id === 'kis' || b.id === 'nh' || b.id === 'kiwoom') && b.configured).map((b) => b.id)
+          brokers.filter((b) => (b.id === 'toss' || b.id === 'kis' || b.id === 'nh' || b.id === 'kiwoom' || b.id === 'ls' || b.id === 'db') && b.configured).map((b) => b.id)
         );
         if (cancelled || owned.size === 0) return;
         setSyncOwnedBrokers(owned);

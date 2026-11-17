@@ -13,6 +13,8 @@
 | **한국투자증권(KIS)** | Open API — 국내·미국 주식 보유 종목·매매내역 실시간 조회, **국내 배당 자동 동기화** |
 | **NH투자증권(나무)** | Open API — 여러 계좌(모의투자 포함) 국내·미국 주식 보유 종목·매매내역 실시간 조회, **배당 자동 동기화** (실데이터 검증 전) |
 | **키움증권** | REST API — 앱키에 묶인 계좌 하나의 국내·미국 주식 보유 종목·매매내역 실시간 조회, **배당 자동 동기화** (⚠ **실제 키로 연동 확인 전**) |
+| **LS증권** | REST API — 앱키에 묶인 계좌 하나의 국내·미국 주식 보유 종목·매매내역 실시간 조회, 국내 배당 자동 동기화 (⚠ **실제 키로 연동 확인 전**) |
+| **DB증권** | REST API — 앱키에 묶인 계좌 하나의 국내·미국 주식 보유 종목·매매내역 실시간 조회, 국내·미국 배당 자동 동기화 (⚠ **실제 키로 연동 확인 전**) |
 | **KB증권** | Open API로 연동한 계좌 하나만 보유 종목·매매내역 자동 동기화, 나머지 계좌와 배당은 CSV·직접 입력 |
 | **삼성증권 · 미래에셋증권** | API 연동 없음 — CSV로 보유 종목·매매내역 관리, 배당은 직접 입력 |
 
@@ -52,10 +54,12 @@
 | **한국투자증권** | 계좌 목록 API가 없어 **계좌번호·상품코드를 직접 입력**. 실전투자만, 해외는 미국만. 미국 주식 배당은 직접 기록. |
 | **NH투자증권** | 계좌번호 입력 불필요, 모의투자 계좌도 보임(합계에는 제외). 토큰을 받을 때마다 NH가 보안 알림을 보냅니다. ⚠ 실데이터 검증 전 |
 | **키움증권** | 앱키가 계좌 하나에 묶임, **허용 IP 등록** 필요. ⚠ 실제 키로 연동 확인 전 — 키를 등록하면 `npm run check:kiwoom`부터. |
+| **LS증권** | xingAPI 사용등록 후 OPEN API 신청, 앱키가 계좌 하나에 묶임. ⚠ 실제 키로 연동 확인 전 — `npm run check:ls`부터. |
+| **DB증권** | 계좌마다 앱키(최대 3계좌, 1년마다 재발급), 계좌번호는 직접 입력. ⚠ 실제 키로 연동 확인 전 — `npm run check:db`부터. |
 | **KB증권** | API로 연동한 계좌 하나만 자동 동기화. IRP·연금저축·예전 종합계좌와 배당은 CSV·직접 입력. |
 | **삼성 · 미래에셋** | API 없음 — CSV(또는 Google Sheets)로 관리, 배당은 직접 입력. |
 
-- API로 받는 배당(토스·한국투자·NH·키움)은 직접 고칠 수 없습니다(한국투자증권 달러 배당만 예외).
+- API로 받는 배당(토스·한국투자·NH·키움·LS·DB)은 직접 고칠 수 없습니다(한국투자증권·LS증권 달러 배당만 예외).
 - 환율을 못 받으면 달러 금액을 억지로 합치지 않고 "환율 미적용"으로 표시합니다.
 - **보안**: 키·토큰은 OS 키체인으로 암호화해 내 컴퓨터에만 저장하고, 앱에 미리 넣은 키는 없습니다. 앱 화면은 외부 코드를 받지 않으며(CSP),
   설치본은 실행 파일 변조·원격 디버깅을 막아 둡니다. 자세한 내용은 [매뉴얼 12장](doc/user-manual.md#12-편의-기능과-문제-해결).
@@ -85,14 +89,16 @@ npm run build:backend   # 최초 1회(electron이 backend/dist를 씀)
 npm run dev              # frontend(Vite) + electron
 npm test                 # 자동 테스트(가짜 서버, 키 불필요)
 npm run lint
-npm run check:toss       # 실서버 점검(조회만, 저장된 키 사용) — check:kis / check:nh / check:kiwoom
+npm run check:toss       # 실서버 점검(조회만, 저장된 키 사용) — check:kis / check:nh / check:kb / check:kiwoom / check:ls / check:db
+                         # `-- --record`를 붙이면 실제 응답의 모양(필드 이름만, 값 없음)을 기록
 npm run spec:check       # 증권사 공식 명세가 바뀌었는지(쓰는 엔드포인트의 필드 구조만 비교)
 npm run kis:verify       # 한국투자증권: 공식 예제·실제 응답 기록·코드 대조(kis:record로 응답 모양 기록 — 값은 남기지 않음)
 ```
 
 - 더블클릭 실행: macOS `start-mac.command`, Windows `start-windows.bat`, Linux `./start.sh`.
 - 백엔드를 고치면 `npm run build:backend` 후 Electron 재시작, 프론트엔드는 자동 반영.
-- push·PR마다 GitHub Actions가 빌드 → 린트 → 테스트를 돌리고, 매주 증권사 공식 명세(토스·NH·키움·한국투자증권 예제)를 점검합니다.
+- push·PR마다 GitHub Actions가 빌드 → 린트 → 테스트를 돌리고, 매주 증권사 공식 명세(토스·NH·키움·KB·LS·DB·한국투자증권 예제)를 점검해
+  바뀌었으면 갱신본과 확인 결과를 담은 PR을 자동으로 엽니다.
 - `check:toss`는 앱의 토큰을 끊으므로 **앱을 닫고** 실행하세요. 점검 결과에 계좌번호·금액은 나오지 않습니다.
 - 데이터는 설치본과 dev가 같은 폴더를 씁니다: macOS `~/Library/Application Support/@mystock/electron/data/`,
   Windows `%APPDATA%\@mystock\electron\data\`, Linux `~/.config/@mystock/electron/data/`.
@@ -108,7 +114,7 @@ npm run kis:verify       # 한국투자증권: 공식 예제·실제 응답 기�
 
 ### 다음 단계 (미구현)
 
-- 키움 실키 연동 확인, NH·KIS 해외 실데이터 검증, KIS 모의투자
+- 키움·LS·DB 실키 연동 확인, NH·KIS 해외 실데이터 검증, KIS 모의투자
 - 코드 서명/공증, Intel Mac용 설치 파일
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작
 

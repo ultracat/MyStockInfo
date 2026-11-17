@@ -5,6 +5,7 @@ import { getDataDir } from '../../paths';
 import { SecretJsonStore } from '../../secretJsonStore';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { KiwoomRequests, KiwoomResponses } from './kiwoomSpec.gen';
+import { noteResponse } from '../responseShape';
 import type { FetchOpts } from '../types';
 
 // 키움증권 REST API. 정본: 공식 저장소 github.com/Kiwoom-Securities/Kiwoom-REST-API의 `kiwoom/_data/kiwoom_api_spec.json`
@@ -206,6 +207,7 @@ export async function kiwoomPost<A extends KiwoomApiId>(
           code
         );
       }
+      noteResponse('kiwoom', apiId, json); // 응답 모양 관찰(값 없이) — kiwoom-live.json과 비교·--record 기록
       return {
         body: json,
         contYn: (res.headers.get('cont-yn') ?? '').trim() || null,

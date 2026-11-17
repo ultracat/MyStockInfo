@@ -1,8 +1,15 @@
-# 증권사 공식 명세 주간 점검(2026-11-17) — 토스·NH openapi.json, 키움 kiwoom_api_spec.json, KIS 공식 예제 파일을 받아
-# MyStock이 쓰는 엔드포인트의 구조가 저장된 스냅샷(backend/spec/snapshots)과 같은지 본다. 바뀌었으면 이 잡이 실패하고,
-# GitHub이 저장소 소유자에게 실패 알림 메일을 보낸다. 바뀐 내용은 잡 요약(Summary)에 나온다.
-# 대응: 로컬에서 `npm run spec:check`로 확인 → 클라이언트 수정 → `npm run spec:update` → `npm run build`(타입 오류) → `npm test`.
-# - 의존성 설치가 필요 없다(스크립트는 Node 내장 fetch만 쓴다).
+# 증권사 공식 명세 주간 점검 + 자동 업데이트 PR(2026-11-17) — 토스·NH openapi.json, 키움 kiwoom_api_spec.json, KIS 공식 예제
+# (examples_llm 전체), KB 공개 명세(계좌 TR은 고정 기준 커밋)를 받아, MyStock이 쓰는 엔드포인트의 구조가 저장된 스냅샷
+# (backend/spec/snapshots)·KIS 카탈로그와 같은지 본다(scripts/spec-watch.cjs auto).
+# - 같으면 조용히 끝난다. 명세를 못 받으면 잡이 실패해 소유자에게 메일이 간다.
+# - 바뀌었으면 스냅샷·카탈로그·생성 타입(*Spec.gen.ts)을 다시 만들고, 빌드(타입 검사)·테스트·KIS 검증 결과를 붙여
+#   `bot/spec-update` PR 하나를 열거나 갱신한다. **앱 코드는 고치지 않는다** — 앱이 읽는 필드가 사라졌으면 빌드가 실패한 채로
+#   PR이 열리고 그게 고칠 곳이다. 실제 응답 기록(<증권사>-live.json)은 실제 키가 있어야 해서 갱신하지 않는다.
+# - 저장소 설정 "Allow GitHub Actions to create and approve pull requests"(2026-11-17 켬)가 꺼지면 PR을 못 만든다 → 브랜치만
+#   올리고 이슈 "증권사 명세 업데이트 대기"에 PR 만들기 링크를 남긴다.
+# - GITHUB_TOKEN으로 만든 PR엔 ci.yml이 돌지 않는다(GitHub 정책) — 그래서 이 잡이 같은 빌드·테스트를 직접 돌려 PR에 적는다.
+# - 대응(로컬): PR 브랜치를 받아 빌드 오류를 고치고, 앱이 쓰는 API가 바뀌었으면 `npm run check:<증권사> -- --record`(값 없음)
+#   → `npm run spec:types` → `npm run build`.
 # - ⚠ 공개 저장소의 예약 실행은 60일간 저장소 활동이 없으면 GitHub이 꺼 둔다 — 그땐 Actions 탭에서 다시 켠다.
 # - 외부 액션은 ci.yml과 같은 커밋 해시로 고정.
 name: Spec watch
@@ -15,16 +22,111 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: spec-watch
+  cancel-in-progress: false
+
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
+    permissions:
+      contents: write # bot/spec-update 브랜치 push
+      pull-requests: write
+      issues: write # PR을 못 만들 때 알림 이슈
+    env:
+      BRANCH: bot/spec-update
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          cache: npm
 
-      - name: 공식 명세와 스냅샷 비교
-        run: node scripts/spec-watch.cjs check
+      # 생성 타입은 openapi-typescript(devDependency)가 필요하다 — 바뀐 게 없으면 이 뒤는 전부 건너뛴다.
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 공식 명세와 비교·갱신
+        id: spec
+        run: node scripts/spec-watch.cjs auto "$RUNNER_TEMP/spec-report.md"
+
+      - name: 빌드(타입 검사)
+        id: build
+        if: steps.spec.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: 테스트
+        id: test
+        if: steps.spec.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tail -40 | tee "$RUNNER_TEMP/test.log"
+
+      - name: KIS 검증 묶음
+        id: verify
+        if: steps.spec.outputs.changed == 'true'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run --silent kis:verify -- --offline 2>&1 | tee "$RUNNER_TEMP/verify.log"
+
+      - name: PR 열기(또는 갱신)
+        if: steps.spec.outputs.changed == 'true'
+        env:
+          BUILD: ${{ steps.build.outcome }}
+          TEST: ${{ steps.test.outcome }}
+          VERIFY: ${{ steps.verify.outcome }}
+          KIS_USED_CHANGED: ${{ steps.spec.outputs.kis_used_changed }}
+        run: |
+          mark() { [ "$1" = success ] && echo "✅ 통과" || echo "❌ 실패"; }
+          {
+            echo "증권사 공식 명세가 바뀌어 **자동으로 만든 업데이트**입니다(.github/workflows/spec-watch.yml)."
+            echo "스냅샷·KIS 카탈로그·생성 타입·토스 예시만 바꿨고 앱 코드는 그대로입니다."
+            echo
+            cat "$RUNNER_TEMP/spec-report.md"
+            echo
+            echo "### 자동 확인"
+            echo "- 빌드(타입 검사): $(mark "$BUILD")$([ "$BUILD" = success ] || echo ' — 앱이 읽는 필드나 보내는 파라미터가 바뀐 것. 아래 로그의 파일:줄을 고쳐 이 브랜치에 올린다')"
+            echo "- 테스트: $(mark "$TEST")"
+            echo "- KIS 검증 묶음(오프라인): $(mark "$VERIFY")"
+            if [ "$BUILD" != success ]; then
+              echo; echo '<details><summary>빌드 오류</summary>'; echo; echo '```'; grep -E 'error TS|Error' "$RUNNER_TEMP/build.log" | head -60; echo '```'; echo '</details>'
+            fi
+            echo; echo '<details><summary>kis:verify</summary>'; echo; echo '```'; cat "$RUNNER_TEMP/verify.log"; echo '```'; echo '</details>'
+            echo
+            echo "### 머지 전에"
+            echo "- [ ] 바뀐 증권사의 앱 화면(보유 종목·매매내역·배당·실현손익)을 실제 앱에서 확인"
+            echo "- [ ] 앱이 쓰는 API의 응답 필드가 바뀌었으면 로컬에서 \`npm run check:<증권사> -- --record\`(실제 키, 값은 남기지 않음) → \`npm run spec:types\` → \`npm run build\`"
+            [ "$KIS_USED_CHANGED" = true ] && echo "- [ ] **한국투자증권이 쓰는 TR이 바뀌었습니다** — \`npm run kis:record\` → \`npm run kis:types\` → \`npm run kis:verify\`"
+            echo "- 이 PR엔 ci.yml이 자동으로 돌지 않습니다(GitHub 정책) — 위 자동 확인이 같은 빌드·테스트입니다."
+          } > "$RUNNER_TEMP/body.md"
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$BRANCH"
+          git add backend/spec backend/src/brokers backend/test/fixtures/toss-spec-examples.json
+          git commit -q -m "chore(spec): 증권사 공식 명세 변경 반영 — 스냅샷·카탈로그·생성 타입 자동 갱신"
+          git push -q -f origin "$BRANCH"
+
+          title="chore(spec): 증권사 공식 명세 변경 반영(자동)"
+          pr=$(gh pr list --head "$BRANCH" --state open --json number -q '.[0].number')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+            echo "PR #$pr 갱신" >> "$GITHUB_STEP_SUMMARY"
+          elif gh pr create --base main --head "$BRANCH" --title "$title" --body-file "$RUNNER_TEMP/body.md"; then
+            echo "PR 생성" >> "$GITHUB_STEP_SUMMARY"
+          else
+            link="https://github.com/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1"
+            { echo "PR 만들기: $link"; echo; cat "$RUNNER_TEMP/body.md"; } > "$RUNNER_TEMP/issue.md"
+            ititle="증권사 명세 업데이트 대기"
+            issue=$(gh issue list --state open --search "in:title \"$ititle\"" --json number -q '.[0].number')
+            if [ -n "$issue" ]; then gh issue comment "$issue" --body-file "$RUNNER_TEMP/issue.md"; else gh issue create --title "$ititle" --body-file "$RUNNER_TEMP/issue.md"; fi
+            echo "PR을 만들 수 없어 이슈로 알림: $link" >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -1,10 +1,45 @@
 /* eslint-disable */
 // 실서버 점검 스크립트(scripts/*-live-check.cjs) 공용 — Electron 준비, 결과 기록·요약, 필드·합계 검사.
 // 원칙: 계좌번호·금액·종목은 출력하지 않는다(필드 이름·건수·적요 같은 비개인 정보와 비율만).
+const fs = require('node:fs');
 const path = require('node:path');
 const { execSync } = require('node:child_process');
 
 const DIST = path.join(__dirname, '..', '..', 'backend', 'dist');
+const SNAPSHOTS = path.join(__dirname, '..', '..', 'backend', 'spec', 'snapshots');
+/** `-- --record`: 점검하면서 실제 응답의 모양(블록별 필드 이름·값 형태 — 값 자체는 버림)을 <증권사>-live.json에 남긴다. */
+const RECORD = process.argv.includes('--record');
+
+/**
+ * 응답 모양 기록기 — 점검 중 그 증권사의 성공 응답을 모아(brokers/responseShape.ts) 끝에 save()로 쓴다. 이번에 줄이 없던 블록
+ * (보유 0건 등)은 예전 기록을 그대로 둔다(자료가 있던 때의 필드가 더 정확하다). 기록 뒤엔 `npm run spec:types`로 앱의 비교 목록·타입을 갱신.
+ */
+function shapeRecorder(broker, requireDist, log, todayKst) {
+  const rs = requireDist('brokers/responseShape.js');
+  const shapes = {};
+  const off = rs.observeResponses((b, key, body) => {
+    if (b === broker) shapes[key] = rs.mergeShapes(shapes[key] || {}, rs.describeResponse(body, broker));
+  });
+  return {
+    save() {
+      off();
+      const file = path.join(SNAPSHOTS, `${broker}-live.json`);
+      const prev = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : { trs: {} };
+      const trs = { ...prev.trs };
+      for (const [key, shape] of Object.entries(shapes)) {
+        const merged = { ...(prev.trs[key] || {}) };
+        for (const [block, b] of Object.entries(shape)) if (b.seenRows || !merged[block] || !merged[block].seenRows) merged[block] = b;
+        trs[key] = merged;
+      }
+      const sortKeys = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v);
+      fs.writeFileSync(file, JSON.stringify(sortKeys({ recordedAt: todayKst(), trs }), null, 2) + '\n');
+      const keys = Object.keys(shapes).sort();
+      const empty = keys.filter((k) => !Object.values(shapes[k]).some((b) => b.seenRows));
+      log(keys.length ? 'PASS' : 'WARN', '응답 모양 기록', `${keys.length}개 API → backend/spec/snapshots/${broker}-live.json${empty.length ? ` (줄 없음: ${empty.join(', ')})` : ''}`);
+      log('INFO', '다음', 'npm run spec:types → npm run build(타입·비교 목록 갱신)');
+    },
+  };
+}
 
 function createReporter() {
   const results = [];
@@ -97,7 +132,10 @@ function runLiveCheck(title, run) {
   app.whenReady().then(async () => {
     console.log(`${title}\n`);
     try {
-      await run({ ...reporter, check: makeChecks(reporter.log), DIST, num, tally, todayKst, daysAgo, require: (p) => require(path.join(DIST, p)) });
+      const requireDist = (p) => require(path.join(DIST, p));
+      const ctx = { ...reporter, check: makeChecks(reporter.log), DIST, num, tally, todayKst, daysAgo, require: requireDist, RECORD };
+      ctx.startRecording = (broker) => (RECORD ? shapeRecorder(broker, requireDist, reporter.log, todayKst) : null);
+      await run(ctx);
     } catch (e) {
       reporter.log('FAIL', '점검 중단', e && e.message);
     }
@@ -105,4 +143,4 @@ function runLiveCheck(title, run) {
   });
 }
 
-module.exports = { runLiveCheck, isAppRunning, DIST };
+module.exports = { runLiveCheck, isAppRunning, shapeRecorder, DIST, RECORD };

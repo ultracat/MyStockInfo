@@ -4,14 +4,15 @@ import { loadAllHoldings, type HoldingLine } from '../allHoldings';
 import { computeRealizedSales } from '../calc/realizedGains';
 import { buildReport } from '../calc/report';
 import { monthlyRateOr } from '../fx';
-import { krw, localToday } from '../format';
+import { krw, localToday, formatSignedKrw } from '../format';
 import { BROKER_LABELS } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountTaxTypeEntry, DividendRecord, SnapshotRecord, StoredTrade } from '../types';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
-const signedWon = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${krw.format(Math.abs(Math.round(v)))}원`;
+// 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
+const signedWon = formatSignedKrw;
 
 function recentMonths(today: string, n: number): string[] {
   const out: string[] = [];
@@ -35,6 +36,7 @@ export default function Report() {
   const [holdings, setHoldings] = useState<{ lines: HoldingLine[]; fxRate: number | null } | null>(null);
   const [rates, setRates] = useState<Record<string, { rate: number } | null>>({});
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false); // 받기 전엔 "0원·없음" 대신 불러오는 중 — 그 상태로 PDF가 저장되지 않게
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -46,6 +48,7 @@ export default function Report() {
         setSnapshots(s);
         setTaxTypes(tt);
         setError(null);
+        setLoaded(true);
       })
       .catch((e) => setError((e as Error).message));
     loadAllHoldings()
@@ -70,7 +73,8 @@ export default function Report() {
     return () => {
       alive = false;
     };
-  }, [usdMonths]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [usdMonths.join(',')]); // 내용이 같으면 다시 부르지 않는다
   const fxNow = holdings?.fxRate ?? null;
   const rateFor = useCallback((m: string) => monthlyRateOr(rates, m, fxNow), [rates, fxNow]);
   const taxAdvantaged = useMemo(() => new Set(taxTypes.filter((t) => t.taxType !== 'GENERAL').map((t) => accountLabelKey(t.broker, t.accountId))), [taxTypes]);
@@ -134,13 +138,19 @@ export default function Report() {
             </option>
           ))}
         </select>
-        <button type="button" onClick={() => void savePdf()} disabled={saving}>
+        <button type="button" onClick={() => void savePdf()} disabled={saving || !loaded || !holdings} title={!loaded || !holdings ? '자료를 받는 중입니다' : undefined}>
           {saving ? 'PDF 만드는 중...' : 'PDF로 저장'}
         </button>
       </div>
       {saved && <p className="no-print" style={{ fontSize: 13 }}>{saved}</p>}
       {error && <p className="text-critical">{error}</p>}
 
+      {!loaded && !error && (
+        <div className="card no-print">
+          <p style={{ color: 'var(--text-muted)', margin: 0 }}>불러오는 중...</p>
+        </div>
+      )}
+      {loaded && (<>
       <div className="card">
         <h2 style={{ marginTop: 0 }}>MyStock {kind === 'year' ? '연간' : '월간'} 보고서 — {periodLabel}</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: 0 }}>
@@ -296,6 +306,7 @@ export default function Report() {
           </>
         )}
       </div>
+      </>)}
     </div>
   );
 }

@@ -3,11 +3,12 @@ import { api } from '../../api';
 import CollapseToggle from '../../components/CollapseToggle';
 import { fxEffect, lookThrough } from '../../calc/insights';
 import type { FlatHolding } from '../../calc/overview';
-import { krw } from '../../format';
+import { krw, formatSignedKrw } from '../../format';
 import type { StoredTrade } from '../../types';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
-const signedWon = (v: number) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${krw.format(Math.abs(Math.round(v)))}원`;
+// 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
+const signedWon = formatSignedKrw;
 const signClass = (v: number) => (v > 0 ? 'text-good' : v < 0 ? 'text-critical' : undefined);
 
 /**
@@ -18,6 +19,7 @@ export function FxEffectCard({ holdings, trades, currentFx }: { holdings: FlatHo
   const [collapsed, setCollapsed] = useState(true);
   const [rates, setRates] = useState<Record<string, { rate: number } | null>>({});
   const months = useMemo(() => [...new Set(trades.filter((t) => t.currency === 'USD' && t.side === 'BUY').map((t) => t.executedAt.slice(0, 7)))].sort(), [trades]);
+  const monthsKey = months.join(',');
   useEffect(() => {
     if (collapsed || months.length === 0) return;
     let alive = true;
@@ -28,7 +30,8 @@ export function FxEffectCard({ holdings, trades, currentFx }: { holdings: FlatHo
     return () => {
       alive = false;
     };
-  }, [collapsed, months]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsed, monthsKey]); // 배열 참조가 아니라 내용으로 — 다시 조회돼 새 배열이 와도 같은 달이면 다시 부르지 않는다
   const hasUsd = holdings.some((h) => h.currency === 'USD' && h.quantity > 0);
   const result = useMemo(
     () => fxEffect(holdings, trades, (m) => rates[m]?.rate ?? null, currentFx),
@@ -116,18 +119,22 @@ export function LookThroughCard({ holdings, toKrw }: { holdings: FlatHolding[]; 
   const [collapsed, setCollapsed] = useState(true);
   const [etfs, setEtfs] = useState<Record<string, Array<{ symbol: string; name: string; weight: number }>> | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const domestic = useMemo(() => [...new Set(holdings.filter((h) => h.currency === 'KRW' && /^[0-9A-Z]{6}$/.test(h.symbol)).map((h) => h.symbol))], [holdings]);
+  const domestic = useMemo(() => [...new Set(holdings.filter((h) => h.currency === 'KRW' && /^[0-9A-Z]{6}$/.test(h.symbol)).map((h) => h.symbol))].sort(), [holdings]);
+  const domesticKey = domestic.join(',');
   useEffect(() => {
     if (collapsed || domestic.length === 0) return;
     let alive = true;
-    api
-      .getEtfLookThrough(domestic)
-      .then((r) => alive && (setEtfs(r.etfs), setError(null)))
+    // 백엔드가 한 번에 60종목까지만 받으므로 나눠 부른다(넘으면 뒤쪽 ETF가 말없이 빠졌다)
+    const chunks: string[][] = [];
+    for (let i = 0; i < domestic.length; i += 60) chunks.push(domestic.slice(i, i + 60));
+    Promise.all(chunks.map((c) => api.getEtfLookThrough(c)))
+      .then((rs) => alive && (setEtfs(Object.assign({}, ...rs.map((r) => r.etfs))), setError(null)))
       .catch((e) => alive && setError((e as Error).message));
     return () => {
       alive = false;
     };
-  }, [collapsed, domestic]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collapsed, domesticKey]);
   const result = useMemo(() => {
     if (!etfs) return null;
     const rows: Array<{ symbol: string; name: string; valueKrw: number }> = [];

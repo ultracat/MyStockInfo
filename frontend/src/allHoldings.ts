@@ -23,7 +23,25 @@ export interface HoldingLine {
  * 조회, CSV 전용(KB·삼성·미래에셋)은 로컬 저장소. 계좌 하나가 실패해도 나머지는 보여 준다. 모의투자 계좌는 받지 않는다(옵션 없이 부름).
  * 환율(수동 우선, fxLoader.ts)도 같이 받아 돌려준다 — 호출부가 원화로 합칠 때 쓴다.
  */
-export async function loadAllHoldings(opts: { forceRefresh?: boolean } = {}): Promise<{ lines: HoldingLine[]; fxRate: number | null }> {
+// 리밸런싱·보고서·배당수익률 카드가 각자 부르므로 진행 중인 요청을 같이 쓰고 30초 동안 결과를 재사용한다(새로고침이면 건너뜀) — 2026-11-17 UI 점검.
+let cached: { at: number; value: { lines: HoldingLine[]; fxRate: number | null } } | null = null;
+let pending: Promise<{ lines: HoldingLine[]; fxRate: number | null }> | null = null;
+
+export function loadAllHoldings(opts: { forceRefresh?: boolean } = {}): Promise<{ lines: HoldingLine[]; fxRate: number | null }> {
+  if (!opts.forceRefresh && cached && Date.now() - cached.at < 30_000) return Promise.resolve(cached.value);
+  if (pending && !opts.forceRefresh) return pending;
+  pending = fetchAllHoldings(opts)
+    .then((value) => {
+      cached = { at: Date.now(), value };
+      return value;
+    })
+    .finally(() => {
+      pending = null;
+    });
+  return pending;
+}
+
+async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<{ lines: HoldingLine[]; fxRate: number | null }> {
   const [{ manual, live }, brokers] = await Promise.all([loadUsdKrwRates(opts), api.listBrokers()]);
   const lines: HoldingLine[] = [];
   await Promise.all(

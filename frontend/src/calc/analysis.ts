@@ -31,6 +31,7 @@ export function closesToReturns(list: Array<{ month: string; close: number }>): 
   return out;
 }
 
+const monthIndex = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7));
 const compound = (rs: number[]) => rs.reduce((acc, r) => acc * (1 + r), 1) - 1;
 
 export interface BenchmarkRow {
@@ -59,6 +60,8 @@ export function benchmarkTable(mine: MonthlyReturn[], benches: Record<string, Mo
     const upTo = list.filter((x) => x.month <= lastMonth);
     const slice = upTo.slice(-n);
     if (slice.length < n || slice[slice.length - 1].month !== lastMonth) return null;
+    // 빈 달(전월 평가 0으로 빠진 달)이 끼면 n개 수익률이 n개월보다 긴 기간에 걸친다 — 연속이 아니면 비교하지 않는다
+    for (let i = 1; i < slice.length; i++) if (monthIndex(slice[i].month) - monthIndex(slice[i - 1].month) !== 1) return null;
     return compound(slice.map((x) => x.r));
   };
   const seen = new Set<number>();

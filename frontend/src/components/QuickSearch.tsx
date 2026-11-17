@@ -19,6 +19,17 @@ export function QuickSearch({ open, onClose, onNavigate }: { open: boolean; onCl
   const [cursor, setCursor] = useState(0);
   const [picked, setPicked] = useState<StockIndexEntry | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const returnFocus = useRef<HTMLElement | null>(null);
+
+  // 닫으면 연 자리(버튼·입력칸)로 포커스를 돌려준다(2026-11-17 접근성 점검)
+  useEffect(() => {
+    if (open) returnFocus.current = document.activeElement as HTMLElement | null;
+    else if (returnFocus.current) {
+      returnFocus.current.focus?.();
+      returnFocus.current = null;
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -39,6 +50,17 @@ export function QuickSearch({ open, onClose, onNavigate }: { open: boolean; onCl
 
   if (!open) return null;
   const onKey = (e: React.KeyboardEvent) => {
+    // Tab은 창 안에서만 돈다(뒤의 사이드바로 빠지지 않게)
+    if (e.key === 'Tab' && dialogRef.current) {
+      const f = [...dialogRef.current.querySelectorAll<HTMLElement>('input, button:not([disabled])')];
+      if (f.length) {
+        const i = f.indexOf(document.activeElement as HTMLElement);
+        const next = e.shiftKey ? (i <= 0 ? f.length - 1 : i - 1) : i === f.length - 1 ? 0 : i + 1;
+        e.preventDefault();
+        f[next].focus();
+      }
+      return;
+    }
     if (e.key === 'Escape') {
       e.preventDefault();
       if (picked) setPicked(null);
@@ -60,8 +82,8 @@ export function QuickSearch({ open, onClose, onNavigate }: { open: boolean; onCl
   };
 
   return createPortal(
-    <div className="modal-overlay" onClick={onClose} onKeyDown={onKey} role="dialog" aria-label="종목 검색">
-      <div className="modal-content quick-search" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={onKey}>
+      <div className="modal-content quick-search" ref={dialogRef} role="dialog" aria-modal="true" aria-label="종목 검색" onClick={(e) => e.stopPropagation()}>
         <input
           ref={inputRef}
           value={query}
@@ -71,18 +93,22 @@ export function QuickSearch({ open, onClose, onNavigate }: { open: boolean; onCl
           }}
           placeholder="종목코드·이름 검색 (↑↓ 이동, Enter 선택, Esc 닫기)"
           aria-label="종목 검색어"
+          role="combobox"
+          aria-expanded={!picked && results.length > 0}
+          aria-controls="quick-search-list"
+          aria-activedescendant={!picked && results[cursor] ? `qs-${results[cursor].symbol}` : undefined}
           style={{ width: '100%' }}
         />
         {!picked ? (
-          <ul className="quick-search-list">
+          <ul className="quick-search-list" id="quick-search-list" role="listbox" aria-label="검색 결과">
             {index === null ? (
               <li className="quick-search-empty">불러오는 중...</li>
             ) : results.length === 0 ? (
               <li className="quick-search-empty">{query ? '찾는 종목이 없습니다.' : '보유·관심 종목이 없습니다.'}</li>
             ) : (
               results.map((r, i) => (
-                <li key={r.symbol}>
-                  <button type="button" className={i === cursor ? 'active' : undefined} onMouseEnter={() => setCursor(i)} onClick={() => setPicked(r)}>
+                <li key={r.symbol} id={`qs-${r.symbol}`} role="option" aria-selected={i === cursor}>
+                  <button type="button" tabIndex={-1} className={i === cursor ? 'active' : undefined} onMouseEnter={() => setCursor(i)} onClick={() => setPicked(r)}>
                     <span>
                       {r.name} <span style={{ color: 'var(--text-muted)' }}>{r.symbol}</span>
                     </span>

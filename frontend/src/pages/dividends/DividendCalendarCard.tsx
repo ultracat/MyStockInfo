@@ -10,7 +10,7 @@ const money = (e: Pick<CalendarEntry, 'currency' | 'net'>) => (e.currency === 'U
 
 /**
  * 배당 달력 — 한 달을 칸으로 그려 날짜마다 받은 배당(진한 점)과 다가오는 배당(흐린 점)을 보여 준다. 날짜를 누르면 아래에 그날 내역.
- * 다가오는 배당은 이번 달 지급분까지만 있다(다가오는 배당 카드와 같은 범위) — 지난달은 받은 기록만 보인다.
+ * 다가오는 배당은 앞으로 12개월치(12개월 예상 카드와 같은 일정) — 지난달은 받은 기록만 보인다. 날짜(특히 몇 달 뒤 국내 휴일)는 추정이다.
  */
 export function DividendCalendarCard({ records, upcomingItems }: { records: DividendRecord[]; upcomingItems: UpcomingDividend[] | null }) {
   const today = localToday();
@@ -50,9 +50,9 @@ export function DividendCalendarCard({ records, upcomingItems }: { records: Divi
         <>
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
             <span className="cal-dot cal-dot-received" /> 받은 배당(세후 기록) &nbsp;
-            <span className="cal-dot cal-dot-upcoming" /> 다가오는 배당(세후 추정, 이번 달 지급분까지). 날짜를 누르면 그날 내역이 보입니다.
+            <span className="cal-dot cal-dot-upcoming" /> 다가오는 배당(세후 추정, 앞으로 12개월). 날짜를 누르면 그날 내역이 보입니다.
           </p>
-          <div className="cal-grid" role="grid" aria-label={`${month} 배당 달력`}>
+          <div className="cal-grid" aria-label={`${month} 배당 달력`}>
             {WEEKDAYS.map((w) => (
               <div key={w} className="cal-head">
                 {w}
@@ -70,6 +70,8 @@ export function DividendCalendarCard({ records, upcomingItems }: { records: Divi
                   className={`cal-cell${day === today ? ' cal-today' : ''}${day === selected ? ' cal-selected' : ''}`}
                   onClick={() => setSelected(day === selected ? null : day)}
                   disabled={entries.length === 0}
+                  aria-pressed={day === selected}
+                  aria-label={entries.length ? `${day} 배당 ${entries.length}건 ${dayTotals(entries)}` : `${day} 배당 없음`}
                 >
                   <span className="cal-day">{Number(day.slice(8))}</span>
                   {entries.length > 0 && (

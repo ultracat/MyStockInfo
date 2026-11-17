@@ -15,7 +15,9 @@ function todayDate(): string {
  * 대시보드 데이터 — 전 증권사·전 계좌 보유종목, 배당, 매매내역, 환율, 순자산 기록, 월별 종가, 배당 지급월 평균 환율,
  * 지수 월말 종가. Overview.tsx에서 2026-11-17 뺐다(동작 그대로). 계산은 calc/overview.ts, 화면은 overview/*Cards.tsx.
  */
-export function useOverviewData() {
+/** `captureSnapshot: false` — 분석 화면처럼 순자산 기록(쓰기)·조회가 필요 없는 곳(2026-11-17 UI 점검: 같은 일을 두 번 했다). */
+export function useOverviewData(opts: { captureSnapshot?: boolean } = {}) {
+  const captureSnapshot = opts.captureSnapshot !== false;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [holdings, setHoldings] = useState<FlatHolding[]>([]);
@@ -212,7 +214,7 @@ export function useOverviewData() {
     // 카드가 쓰는 실제 데이터. loadAll()을 안 막도록(화면에 영향 없음) void로
     // 분리한다. 기록이 실패해도 이미 쌓여 있는 이력은 그대로 보여줘야 하므로
     // 목록 조회는 기록 성공/실패와 무관하게 항상 시도한다.
-    void (async () => {
+    if (captureSnapshot) void (async () => {
       try {
         await api.capturePortfolioSnapshot({
           date: todayDate(),

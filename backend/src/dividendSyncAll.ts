@@ -37,7 +37,10 @@ export function onDividendsAdded(fn: (added: DividendRecord[]) => void): () => v
 export function syncAllDividends(): Promise<DividendSyncAllResult> {
   if (running) return running;
   running = (async () => {
-    const before = new Set(listDividends().map((d) => d.id));
+    // "새 배당" = 동기화 전에 없던 (증권사·계좌·종목·지급일·통화). id로 비교하면 세금 정정·계좌 세금 유형 변경처럼 내용만 바뀐 기록도
+    // 새 id를 받아 "입금"으로 알려졌다(2026-11-17 점검). 동기화한 증권사의 기록만 본다(그사이 직접 입력한 다른 증권사 기록 제외).
+    const contentKey = (d: DividendRecord) => `${d.broker}|${d.accountId ?? ''}|${d.symbol}|${d.paidDate}|${d.currency}`;
+    const before = new Set(listDividends().map(contentKey));
     const jobs: Array<{ broker: BrokerId; run: () => Promise<DividendSyncResult> }> = [];
     if (isTossConfigured()) jobs.push({ broker: 'toss', run: syncTossDividends });
     if (isKisConfigured()) jobs.push({ broker: 'kis', run: syncKisDividends });
@@ -52,7 +55,8 @@ export function syncAllDividends(): Promise<DividendSyncAllResult> {
       if (s.status === 'fulfilled') results.push(s.value);
       else errors.push({ broker: jobs[i].broker, error: (s.reason as Error)?.message ?? String(s.reason) });
     });
-    const added = listDividends().filter((d) => !before.has(d.id));
+    const synced = new Set(jobs.map((j) => j.broker));
+    const added = listDividends().filter((d) => synced.has(d.broker) && !before.has(contentKey(d)));
     if (added.length) for (const fn of listeners) fn(added);
     return { results, errors, added };
   })().finally(() => {

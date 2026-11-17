@@ -15,6 +15,7 @@ const { app } = require('electron');
 
 app.setName('@mystock/electron'); // electron/src/main.ts와 같은 이름 — 같은 userData·키체인 항목
 const DIST = path.join(__dirname, '..', 'backend', 'dist');
+const { RECORD, shapeRecorder } = require('./lib/live-check.cjs');
 
 const results = [];
 const log = (status, name, detail = '') => {
@@ -61,6 +62,16 @@ function reconcile(name, total, sum) {
 }
 
 async function run() {
+  // -- --record면 응답 모양(값 없음)을 nh-live.json에(scripts/lib/live-check.cjs shapeRecorder).
+  const recorder = RECORD ? shapeRecorder('nh', (p) => require(path.join(DIST, p)), log, today) : null;
+  try {
+    await runChecks();
+  } finally {
+    if (recorder) recorder.save();
+  }
+}
+
+async function runChecks() {
   const c = require(path.join(DIST, 'brokers/nh/nhClient.js'));
   const m = require(path.join(DIST, 'brokers/nh/nhMappers.js'));
   const { nhAdapter } = require(path.join(DIST, 'brokers/nh/nhAdapter.js'));

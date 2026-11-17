@@ -48,7 +48,7 @@ jobs:
       - name: 명세 타입 생성물 확인
         run: |
           npm run spec:types
-          git diff --exit-code -- 'backend/src/brokers/*/*.gen.ts'
+          git diff --exit-code -- 'backend/src/brokers/*/*.gen.ts' 'backend/src/brokers/*.gen.ts'
 
       # KIS API 검증 묶음(네트워크 없이) — 앱이 부르는 TR이 감시 목록·공식 예제에 다 있는지, 실제 응답 기록과 공식 예제 대조,
       # 생성 타입이 최신인지. 최신 공식 예제와의 비교는 spec-watch.yml(주 1회)의 spec:check가 한다.

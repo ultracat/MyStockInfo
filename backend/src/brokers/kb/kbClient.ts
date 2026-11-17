@@ -3,6 +3,11 @@ import { RateLimiter } from '../rateLimiter';
 import { getDataDir } from '../../paths';
 import { SecretJsonStore } from '../../secretJsonStore';
 import type { HoldingPosition, TradeRecord } from '../types';
+import { noteResponse } from '../responseShape';
+import type { KbRequests, KbResponses } from './kbSpec.gen';
+
+/** 이 앱이 부르는 KB TR — 공식 명세(계좌 TR은 고정 기준 커밋)에서 만든 kbSpec.gen.ts의 키. */
+export type KbTr = keyof KbResponses;
 
 // kbsecurities/kb-openapi(공식 레포, example/python/README.md) 확인 — B2C(개인용)
 // Open API는 운영 서버만 있고 별도 샌드박스/모의투자 서버는 제공되지 않는다.
@@ -164,12 +169,13 @@ async function getToken(forceRefresh = false): Promise<string> {
 // 안 하는 것으로 확인됨).
 const DEFAULT_TR_DATA_HEADER = { ipAddr: '127.0.0.1', macAddr: '00:00:00:00:00:00' };
 
-export async function kbPost<T = Record<string, unknown>>(
-  endpoint: string,
-  dataBody: Record<string, unknown>,
+export async function kbPost<T extends KbTr>(
+  tr: T,
+  dataBody: Partial<KbRequests[T]>,
   dataHeader: { ipAddr: string; macAddr: string } = DEFAULT_TR_DATA_HEADER
-): Promise<KbEnvelope<T>> {
+): Promise<KbEnvelope<KbResponses[T]>> {
   const creds = await requireCredentials();
+  const endpoint = `/api/v1/${tr.toLowerCase()}`;
 
   const doFetch = async (token: string) =>
     fetch(`${BASE_URL}${endpoint}`, {
@@ -199,11 +205,14 @@ export async function kbPost<T = Record<string, unknown>>(
       throw new KbApiError(`KB증권 API 호출 실패 (${endpoint})`, res.status, text);
     }
 
+    let parsed: KbEnvelope<KbResponses[T]>;
     try {
-      return JSON.parse(text) as KbEnvelope<T>;
+      parsed = JSON.parse(text) as KbEnvelope<KbResponses[T]>;
     } catch {
       throw new KbApiError(`KB증권 API 응답이 JSON이 아닙니다 (${endpoint})`, res.status, text);
     }
+    noteResponse('kb', tr, parsed); // 응답 모양 관찰(값 없이) — kb-live.json과 비교·--record 기록
+    return parsed;
   });
 }
 
@@ -214,6 +223,10 @@ function numFromKb(v: unknown): number {
 
 function strFromKb(v: unknown): string {
   return String(v ?? '').trim();
+}
+
+export function marketFromCurrency(currency: string): 'KR' | 'US' | null {
+  return currency === 'KRW' ? 'KR' : currency === 'USD' ? 'US' : null;
 }
 
 // KB증권 Open API는 appKey/appSecret 자체가 특정 계좌 하나에 이미 묶여 있다(실측
@@ -235,7 +248,7 @@ function strFromKb(v: unknown): string {
 // 특히 is_cd가 6자리 단축코드인지 12자리 표준(ISIN)코드인지 확인 불가라 있는
 // 그대로(trim만) symbol에 넣는다. 실제 보유종목이 들어오면 반드시 재검증할 것.
 export async function fetchKbPortfolio(): Promise<HoldingPosition[]> {
-  const res = await kbPost<{ Record1?: Record<string, unknown>[] }>('/api/v1/ssqm2952', {
+  const res = await kbPost('SSQM2952', {
     excg_mktpr_ccd: 'A',
   });
   const rows = res.dataBody?.Record1 ?? [];
@@ -246,7 +259,9 @@ export async function fetchKbPortfolio(): Promise<HoldingPosition[]> {
     return {
       symbol: strFromKb(r.is_cd),
       name: strFromKb(r.is_nm),
-      market: strFromKb(r.mkt_clsf) || null,
+      // 공식 명세(SSQM2952)엔 시장 필드가 없다 — 예전 코드는 명세에 없는 `mkt_clsf`를 읽어 늘 null이었다(2026-11-17 생성 타입이
+      // 짚음). 통화로 정한다(토스·KIS와 같은 KR/US 관례).
+      market: marketFromCurrency(strFromKb(r.crncy_cd)),
       currency: strFromKb(r.crncy_cd) || null,
       quantity: numFromKb(r.hld_q),
       lastPrice: numFromKb(r.now_prc),
@@ -282,7 +297,7 @@ export async function fetchKbPortfolio(): Promise<HoldingPosition[]> {
 // 단계(CSV의 name 컬럼 직접 입력)로 자연스럽게 넘어가게 한다.
 export async function fetchKbStockName(symbol: string): Promise<string | null> {
   try {
-    const res = await kbPost<{ hngl_is_nm?: string }>('/api/v1/siqm4900', { stnd_is_cd: symbol });
+    const res = await kbPost('SIQM4900', { stnd_is_cd: symbol });
     const name = res.dataBody?.hngl_is_nm?.trim();
     return name || null;
   } catch {
@@ -291,7 +306,9 @@ export async function fetchKbStockName(symbol: string): Promise<string | null> {
 }
 
 export async function fetchKbTradeHistory(from: string, to: string): Promise<TradeRecord[]> {
-  const res = await kbPost<{ Record1?: Record<string, unknown>[] }>('/api/v1/swqa2301', {
+  // ⚠ 공식 명세(고정 기준 159480c)엔 연속조회 키 `nxt_key`(입력·출력)가 있다 — 지금은 첫 페이지만 받는다. 연동 계좌가 0건이라 연속조회가
+  //   실제로 어떻게 오는지 확인할 수 없어 그대로 둔다(거래가 생기면 `check:kb`로 nxt_key가 오는지 보고 연속조회를 붙일 것).
+  const res = await kbPost('SWQA2301', {
     inq_clsf: '0',
     inq_clsf5: '1',
     inq_clsf6: '1',

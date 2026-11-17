@@ -39,7 +39,10 @@
     "kis:verify": "node scripts/kis-verify.cjs verify",
     "kis:catalog": "node scripts/kis-verify.cjs catalog",
     "kis:types": "node scripts/kis-verify.cjs types",
-    "kis:record": "npm run build:backend && electron scripts/kis-live-check.cjs --record"
+    "kis:record": "npm run build:backend && electron scripts/kis-live-check.cjs --record",
+    "check:kb": "npm run build:backend && electron scripts/kb-live-check.cjs",
+    "check:ls": "npm run build:backend && electron scripts/ls-live-check.cjs",
+    "check:db": "npm run build:backend && electron scripts/db-live-check.cjs"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",

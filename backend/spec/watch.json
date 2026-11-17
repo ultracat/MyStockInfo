@@ -69,5 +69,29 @@
       "TTTS3035R",
       "TTTS3039R"
     ]
+  },
+  "kb": {
+    "$comment": "KB 공개 명세(samples.generated.json)는 2026-09-14 커밋으로 계좌 TR이 빠졌다 — 그 직전 공개본(pinnedCommit)을 고정 기준으로 쓰고, 지금 공개본에 있으면 그쪽을 쓴다(scripts/spec-watch.cjs buildKb).",
+    "repo": "kbsecurities/kb-openapi",
+    "file": "frontend/src/app/openapi-test/samples.generated.json",
+    "pinnedCommit": "159480c4fcb19e3a257c6d0484fbe7a5287e4434",
+    "trIds": ["SIQM4900", "SSQM2952", "SWQA2301"]
+  },
+  "ls": {
+    "$comment": "LS증권 공식 명세 JSON(포털 'OPEN API 가이드 다운로드', 로그인 불필요). 앱키가 계좌 하나에 묶여 계좌번호는 C계열 응답 OutBlock1.AcntNo에서 읽는다.",
+    "url": "https://openapi.ls-sec.co.kr/api/apis/public/tr-guides.json?download=true",
+    "trIds": ["t0424", "CSPAQ12200", "COSOQ00201", "CDPCQ04700"]
+  },
+  "db": {
+    "$comment": "DB증권 포털이 쓰는 TR별 필드 명세 JSON(로그인 불필요, 공개 API로 문서화된 것은 아님). 응답 예시(resExample)엔 실제 고객 데이터로 보이는 값이 있어 저장하지 않는다 — 구조(propertyCd·Type·Order)만.",
+    "propertyUrl": "https://openapi.dbsec.co.kr/api/apis/guide/tr/property/{trId}",
+    "trs": {
+      "CSPAQ03420": { "trId": "0e8e3ac0-4b6a-465b-9992-cc476fc3e99a", "path": "/api/v1/trading/kr-stock/inquiry/balance", "tps": 2 },
+      "CDPCQ00100": { "trId": "343e4aa9-f26e-47fa-81e1-eb8214c85fa5", "path": "/api/v1/trading/kr-stock/inquiry/acnt-deposit", "tps": 1 },
+      "CDPCQ04700": { "trId": "6a29d475-051a-4bf7-a444-349062f385ee", "path": "/api/v1/trading/kr-stock/inquiry/trading-history", "tps": 2 },
+      "CAZCQ00400": { "trId": "e6a16c1d-a3be-45d3-ab45-b86c8a0799c8", "path": "/api/v1/trading/overseas-stock/inquiry/balance-margin", "tps": 3 },
+      "CAZCQ00200": { "trId": "f6cbfcbb-c0e7-4e2f-84f5-3bdf4b0dd6da", "path": "/api/v1/trading/overseas-stock/inquiry/trading-history", "tps": 2 },
+      "CAZCQ01600": { "trId": "2c5204b1-f986-4d8a-ae29-0a72ee814107", "path": "/api/v1/trading/overseas-stock/inquiry/trade-history", "tps": 2 }
+    }
   }
 }

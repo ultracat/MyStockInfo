@@ -1,0 +1,146 @@
+{
+  "recordedAt": "2026-11-17",
+  "trs": {
+    "SIQM4900": {
+      "dataBody": {
+        "fields": {
+          "dl_crncy_clsf_nm": "text",
+          "dmstc_clsf_nm": "text",
+          "eng_is_nm": "text",
+          "eng_is_nm2": "text",
+          "eng_shrt_nm": "text",
+          "eng_shrt_nm2": "text",
+          "gds_rprst_cd": "number",
+          "hngl_is_nm": "text",
+          "hngl_is_nm2": "text",
+          "hngl_shrt_nm": "text",
+          "hngl_shrt_nm2": "text",
+          "io_rstn_clsf_nm": "text",
+          "io_rstn_end_dt": "number",
+          "io_rstn_strt_dt": "number",
+          "is_dtl_typ_cd": "number",
+          "is_dtl_typ_nm": "text",
+          "is_rgst_clsf_nm": "text",
+          "is_typ_cd": "number",
+          "is_typ_nm": "text",
+          "lnd_clsf_nm": "text",
+          "o_clsf": "text",
+          "o_lngth": "number",
+          "o_msg": "text",
+          "rsk_grd_clsf_cd": "number",
+          "rsk_grd_nm": "text",
+          "shrt_is_cd": "text",
+          "slf_is_cd": "empty",
+          "stnd_is_cd": "text",
+          "symbl_is_cd": "text",
+          "trd_rstn_clsf_nm": "text",
+          "trd_rstn_end_dt": "empty",
+          "trd_rstn_strt_dt": "empty"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "dataHeader": {
+        "fields": {
+          "processCode": "number",
+          "processFlag": "text",
+          "processMessage": "text",
+          "processTime": "number",
+          "resultCode": "number",
+          "resultMessage": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "SSQM2952": {
+      "dataBody": {
+        "fields": {
+          "Record1": "array",
+          "brwg_mrtg_csh_est_amt": "number",
+          "brwg_nd_mrtg_amt": "number",
+          "byng_amt_sum": "number",
+          "cma_pldg_est_amt": "number",
+          "dy_tfnd": "number",
+          "elw_excs_mgn": "number",
+          "etc_lndng_amt": "number",
+          "fcrncy_tfnd_krw_exch_amt": "number",
+          "fncng_amt": "number",
+          "fncng_amt_sum": "number",
+          "gnl_ln_amt": "number",
+          "grid_cnt1": "number",
+          "itst_npymt_amt": "number",
+          "mrtg_rt": "number",
+          "mrtg_shrtg_amt": "number",
+          "ndy_o_amt_psbl_amt": "number",
+          "ndy_tfnd": "number",
+          "nrfnd_fncng_amt": "number",
+          "nt_asts_val_amt": "number",
+          "nt_byng_amt": "number",
+          "nxt2_dy_o_amt_psbl_amt": "number",
+          "nxt2_dy_tfnd": "number",
+          "o_clsf": "text",
+          "o_lngth": "number",
+          "o_msg": "text",
+          "scrts_nt_val_amt": "number",
+          "tl_data_cnt": "number",
+          "val_amt_sum": "number",
+          "val_pl": "number",
+          "val_pl_sum": "number",
+          "val_yld": "number",
+          "val_yld_sum": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "dataBody.Record1": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      },
+      "dataHeader": {
+        "fields": {
+          "processCode": "text",
+          "processFlag": "text",
+          "processMessage": "text",
+          "processTime": "number",
+          "resultCode": "number",
+          "resultMessage": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "SWQA2301": {
+      "dataBody": {
+        "fields": {
+          "Record1": "array",
+          "grid_cnt1": "number",
+          "nxt_key": "empty",
+          "o_clsf": "text",
+          "o_lngth": "number",
+          "o_msg": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "dataBody.Record1": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      },
+      "dataHeader": {
+        "fields": {
+          "processCode": "number",
+          "processFlag": "text",
+          "processMessage": "text",
+          "processTime": "number",
+          "resultCode": "number",
+          "resultMessage": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    }
+  }
+}

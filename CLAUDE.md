@@ -1,7 +1,7 @@
 # MyStock
 
 여러 증권사 Open API를 연동해 보유 종목, 매입가, 손익, 비중, 배당금을 한 화면에서 보는
-Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS, 국내 + 미국 주식)**, **NH투자증권(나무, 모의투자 포함)**, **키움증권(실키 미확인)**이 API로 연동되어 있고,
+Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS, 국내 + 미국 주식)**, **NH투자증권(나무, 모의투자 포함)**, **키움증권·LS증권·DB증권(셋 다 실키 미확인)**이 API로 연동되어 있고,
 **삼성증권/미래에셋증권**은 API 연동 없이 CSV로 보유종목·매매내역을 직접 관리한다
 (어댑터를 만들 계획 없음 — CSV 전용으로 확정된 결정, `backend/CLAUDE.md`의
 `knownBrokers.ts` 참고). **KB증권**은 둘의 중간 형태다 — Open API를 연동했지만
@@ -54,8 +54,9 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - **증권사 공식 명세 감시**: `npm run spec:check`(최신 명세와 스냅샷 비교, CI가 주 1회) / `spec:update`(스냅샷·타입·토스 예시 갱신) /
   `spec:types`. 쓰는 API 목록은 `backend/spec/watch.json`, 생성 타입 `*Spec.gen.ts`는 손으로 고치지 않는다 — `backend/CLAUDE.md` "공식 명세 감시".
   **KIS는 명세가 없어 "KIS API 검증 묶음"**: `kis:verify`(공식 예제·실제 응답 기록·코드 대조) / `kis:record`(실제 키로 응답 모양 기록, 값 없음) /
-  `kis:catalog` / `kis:types`. 앱은 응답 필드가 기록과 달라지면 로그에 경고한다. 공식 예제가 바뀌면 `kis-auto-update.yml`이 매주
-  카탈로그·타입을 갱신하고 빌드·테스트 결과를 붙인 업데이트 PR(`bot/kis-spec-update`)을 연다 — 앱 코드 수정과 머지는 사람이.
+  `kis:catalog` / `kis:types`. **모든 증권사**: 실서버 점검의 `-- --record`가 실제 응답 모양(값 없음)을 `<증권사>-live.json`에 남기고, 앱은 응답
+  필드가 그 기록과 달라지면 로그에 경고한다. 공식 명세가 바뀌면 `spec-watch.yml`이 매주 스냅샷·타입을 갱신하고 빌드·테스트 결과를 붙인
+  업데이트 PR(`bot/spec-update`)을 연다 — 앱 코드 수정과 머지는 사람이. KB는 공개 명세에서 계좌 TR이 빠져 고정 기준 커밋을 쓴다.
 - `npm test`(백엔드 + 프론트엔드 순수 함수 테스트), `npm run lint`(ESLint — 스타일이 아니라 `await` 누락·Promise 조건·React 훅
   규칙만, `eslint.config.mjs`). **푸시·PR마다 `.github/workflows/ci.yml`이 build → lint → test**를 돌린다 — `backend/CLAUDE.md` "자동 테스트".
 - **앱 아이콘/로고의 원본은 `build/icon.svg` 하나다.** 바꾸려면 그 SVG를 고치고
@@ -112,8 +113,8 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   라이선스만 들인다.
 - **실제 계좌번호·금액·보유 종목 같은 개인 데이터를 코드·문서·예시값에 쓰지 않는다** — 예시는
   `123-45-678901`처럼 가짜 값으로(2026-11 공개 준비 때 이력에서 실제 계좌번호를 지웠다).
-- 배당금은 **토스·한국투자·NH·키움증권은 API가 원천**이다 — 배당금 화면 진입 시 그 계좌 배당 기록을 API 내용으로
-  통째로 교체하고(직접 수정·가져오기 불가, **KIS 달러 배당만 예외로 수동**), 다른 증권사는 직접 입력한다. `amount`는
+- 배당금은 **토스·한국투자·NH·키움·LS·DB증권은 API가 원천**이다 — 배당금 화면 진입 시 그 계좌 배당 기록을 API 내용으로
+  통째로 교체하고(직접 수정·가져오기 불가, **KIS·LS 달러 배당만 예외로 수동**), 다른 증권사는 직접 입력한다. `amount`는
   **세후**, `tax`는 원천징수 세금(세전 = 합). `backend/CLAUDE.md`의 "배당 동기화(토스·한국투자증권·NH)" 절.
 - 계좌와 무관한 **API 부가 기능**(장 상태·매수 유의사항·지수·섹터(ETF 포함), 다가오는 배당, KIS 공식 실현손익,
   종목 정보·ETF 구성, 토스·NH·키움 투자원금)과 **KIS 해외주식·NH(실데이터 미검증, 모의투자 합계 제외)·키움(실키 미확인)**은 `backend/CLAUDE.md`의 해당 절.
@@ -122,6 +123,6 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 
 ## 다음 단계 (미구현)
 
-- **키움 실키 연동 확인**(키를 받으면 `check:kiwoom` 먼저), KIS 해외·NH 실데이터 검증(`check:kis`/`check:nh`), KIS 모의투자
+- **키움·LS·DB 실키 연동 확인**(키를 받으면 `check:kiwoom`/`check:ls`/`check:db -- --record` 먼저), KIS 해외·NH 실데이터 검증(`check:kis`/`check:nh`), KIS 모의투자
 - 배포용 빌드 코드 서명/공증 (Mac Apple Developer ID, Windows 코드 서명 인증서 — 현재는 서명 없이 배포)
 - 백엔드 dev 모드 파일 변경 시 Electron 자동 재시작

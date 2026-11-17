@@ -1,0 +1,162 @@
+{
+  "recordedAt": "2026-11-17",
+  "trs": {
+    "/common/inquiry/v1/depositWithdrawal": {
+      "Output_0": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      }
+    },
+    "/common/inquiry/v1/totalTransaction": {
+      "Output_0": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      }
+    },
+    "/gbstock/inquiry/v1/balance": {
+      "Output_0": {
+        "fields": {
+          "abk_amt": "number",
+          "eal_amt_sum": "number",
+          "eal_pls_sum_amt": "number",
+          "fc_abk_amt": "number",
+          "fc_aet_amt": "number",
+          "fc_dca": "number",
+          "fc_eal_amt": "number",
+          "fc_eal_pls_amt": "number",
+          "fc_ny_stl_xcl_amt": "number",
+          "krw_dca": "number",
+          "krw_ny_stl_xcl_amt": "number",
+          "krw_pft_rt": "number",
+          "pft_rt": "number",
+          "ptps_ttn_amt": "number",
+          "ptps_ttn_amt1": "number",
+          "tot_aet_amt": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "Output_1": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      }
+    },
+    "/gbstock/inquiry/v1/dailyTransaction": {
+      "Output_0": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      },
+      "Output_1": {
+        "fields": {
+          "amt_sum": "number",
+          "drn_tal": "number",
+          "fee_sum_amt": "number",
+          "rpm_tal": "number",
+          "tax_sum_amt": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "/gbstock/inquiry/v1/periodPnl": {
+      "Output_0": {
+        "fields": {
+          "byn_qty_sum": "number",
+          "fc_byn_amt_sum": "number",
+          "fc_rzt_pft_rt": "number",
+          "fc_rzt_pls_sum": "number",
+          "fc_sby_pft_rt": "number",
+          "fc_sby_pls_sum": "number",
+          "fc_sdr_xps_sum": "number",
+          "fc_sll_amt_sum": "number",
+          "sll_qty_sum": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "Output_1": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      }
+    },
+    "/krstock/inquiry/v1/balance": {
+      "Output_0": {
+        "fields": {
+          "act_atv_tp_dtl_cd": "number",
+          "cfd_pdt_tp_nm": "number",
+          "csh_wtm": "number",
+          "dca": "number",
+          "drn_pbl_amt": "number",
+          "ect_lga": "number",
+          "int_ny_pmt_amt": "number",
+          "lon_amt": "number",
+          "mgg_rt": "number",
+          "nas_amt": "number",
+          "nxt2_dd_dca": "number",
+          "nxt_dd_dca": "number",
+          "ny_rdp_amt": "number",
+          "orr_pbl_amt1": "number",
+          "orr_pbl_amt2": "number",
+          "orr_pbl_amt3": "number",
+          "orr_pbl_amt4": "number",
+          "pft_rt": "number",
+          "rba": "number",
+          "sba_amt": "number",
+          "sba_wtm": "number",
+          "sll_edn_amt": "number",
+          "slo_mgg_amt": "number",
+          "tot_aet_amt": "number",
+          "tot_byn_amt": "number",
+          "tot_eal_amt": "number",
+          "tot_eal_pls": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "Output_1": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      }
+    },
+    "/krstock/inquiry/v1/tradingPnl": {
+      "Output_0": {
+        "fields": {
+          "byn_amt": "number",
+          "byn_cnt": "number",
+          "byn_fee": "number",
+          "byn_qty": "number",
+          "pft_rt": "number",
+          "pls_amt": "number",
+          "sll_abk_amt": "number",
+          "sll_amt": "number",
+          "sll_cnt": "number",
+          "sll_qty": "number",
+          "sll_tax_sum": "number"
+        },
+        "kind": "object",
+        "seenRows": true
+      },
+      "Output_1": {
+        "fields": {},
+        "kind": "array",
+        "seenRows": false
+      }
+    },
+    "/n2/acctinfo": {
+      "Output_0": {
+        "fields": {
+          "acct_no": "number",
+          "acct_type": "number"
+        },
+        "kind": "array",
+        "seenRows": true
+      }
+    }
+  }
+}

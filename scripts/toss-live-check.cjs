@@ -16,6 +16,7 @@ if (isAppRunning() && !process.argv.includes('--force')) {
 }
 
 runLiveCheck('토스증권 Open API 실서버 점검 (조회 API만, 개인 데이터 미출력)', async (ctx) => {
+  const recorder = ctx.startRecording('toss'); // -- --record면 응답 모양(값 없음)을 toss-live.json에
   const { log, check, tally, todayKst, daysAgo } = ctx;
   const toss = ctx.require('brokers/toss/tossClient.js');
   const { tossAdapter } = ctx.require('brokers/toss/tossAdapter.js');
@@ -101,4 +102,17 @@ runLiveCheck('토스증권 Open API 실서버 점검 (조회 API만, 개인 데�
   if (sectors) log(sectors.length > 0 ? 'PASS' : 'FAIL', '섹터 목록', `${sectors.length}개`);
   const info = await check.step('종목 정보(삼성전자·AAPL — 공개 정보)', () => toss.fetchTossStockInfo(['005930', 'AAPL']));
   if (info) log(info.length === 2 ? 'PASS' : 'WARN', '종목 정보', `${info.length}/2건`);
+  if (recorder) {
+    // 기록 모드 — 점검에 없는 나머지 API를 공개 종목으로(삼성전자·AAPL·코스피) 한 번씩 불러 모양을 남긴다.
+    await check.step('시세 /api/v1/prices', () => toss.fetchTossPrices(['005930', 'AAPL'], { forceRefresh: true }));
+    await check.step('일봉 /api/v1/candles', () => toss.fetchTossMonthlyClosePrices('005930', 3, { forceRefresh: true }));
+    await check.step('매수 유의사항 /api/v1/stocks/{symbol}/warnings', () => toss.fetchTossStockWarnings('005930'));
+    await check.step('지표 일봉 /api/v1/market-indicators/{symbol}/candles', () => toss.fetchTossIndicatorDailyCandles('KOSPI', 1));
+    const sec = (await toss.fetchTossSectors().catch(() => []))[0];
+    if (sec) {
+      await check.step('섹터 종목 /api/v1/sectors/{sectorId}/stocks', () => toss.fetchTossSectorStocks(sec.sectorId, 'KR'));
+      await check.step('섹터 ETF /api/v1/sectors/{sectorId}/etfs', () => toss.fetchTossSectorEtfs(sec.sectorId, 'KR'));
+    }
+    recorder.save();
+  }
 });

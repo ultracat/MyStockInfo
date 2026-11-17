@@ -56,7 +56,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/brokers.ts` — `BROKER_LABELS`/`BROKER_ORDER`/`API_BROKER_IDS`/`CSV_ONLY_BROKER_IDS`.
   브로커 표시 이름/순서의 단일 소스(백엔드 `brokers/knownBrokers.ts`와 짝) —
   Dividends.tsx/Settings.tsx/Dashboard.tsx/Trades.tsx가 전부 여기서 가져다 쓴다.
-  `API_BROKER_IDS`(토스/KIS/NH/키움)에 없는 브로커는 CSV 전용(KB/삼성/미래에셋) — 실시간
+  `API_BROKER_IDS`(토스/KIS/NH/키움/LS/DB)에 없는 브로커는 CSV 전용(KB/삼성/미래에셋) — 실시간
   조회 없이 로컬 저장소로만 동작한다, 아래 "CSV 전용 브로커" 참고. `CSV_ONLY_BROKER_IDS`는
   `API_BROKER_IDS`의 여집합(`BROKER_ORDER.filter`) — Settings.tsx의 계좌 별칭 등록
   대상, Trades.tsx의 매매내역 수동 입력 대상 브로커 선택지가 이걸 쓴다(각 파일에서

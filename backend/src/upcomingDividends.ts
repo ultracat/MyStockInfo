@@ -1,3 +1,4 @@
+import { isTaxDeferredAccount } from './db/accountTaxTypes';
 import {
   fetchKisBusinessDays,
   fetchKisDividendSchedule,
@@ -334,6 +335,8 @@ export function itemsFromSnapshot(
 async function fetchConfirmed(today: string, kisAccountId: string): Promise<UpcomingDividend[] | null> {
   try {
     const rights = await fetchKisPeriodRights(addDays(today, -60), '2099-12-31');
+    // ISA·연금저축·IRP는 세금을 떼지 않는다(kisDividendSync.ts) — API의 계산상 세금을 보여 주지 않는다.
+    const taxDeferred = isTaxDeferredAccount('kis', kisAccountId);
     const out: UpcomingDividend[] = [];
     for (const r of rights) {
       const pay = parseKsdDate(r.cash_dfrm_dt);
@@ -346,7 +349,7 @@ async function fetchConfirmed(today: string, kisAccountId: string): Promise<Upco
         status: 'confirmed', broker: 'kis', accountId: kisAccountId, symbol: (r.shtn_pdno || r.pdno).trim(), name: r.prdt_name.trim(),
         currency: 'KRW', payDate: pay, recordDate: parseKsdDate(r.bass_dt), quantity: hasQty ? qty : 0,
         perShare: hasQty ? gross / qty : null, grossAmount: gross,
-        tax: Number.isFinite(tax) ? tax : null, source: 'kis-account',
+        tax: taxDeferred ? 0 : Number.isFinite(tax) ? tax : null, source: 'kis-account',
       });
     }
     return out;

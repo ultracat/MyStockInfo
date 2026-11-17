@@ -8,6 +8,7 @@ import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes'
 import { classifyLedgerDividends, kstToday, xNum, xStr, ymdDash, type LedgerDividend } from '../xingFamily';
 import type { DbResponses } from './dbSpec.gen';
 import { fetchDbLedger, fetchDbOverseasLedger, getDbAccountId } from './dbClient';
+import { isTaxDeferredAccount } from '../../db/accountTaxTypes';
 
 type Elem<V> = V extends readonly (infer E)[] ? E : V;
 type OverseasLedgerRow = Elem<NonNullable<DbResponses['CAZCQ01600']['Out']>>;
@@ -49,7 +50,7 @@ async function runSync(): Promise<DividendSyncResult> {
     fetchDbOverseasLedger(SYNC_FROM, today, { forceRefresh: true }),
   ]);
   const byKind: Record<DividendSyncKind, number> = { dividend: 0, etfDistribution: 0, taxRefund: 0 };
-  const inputs: NewDividendInput[] = [...classifyLedgerDividends(domestic), ...classifyDbOverseasDividends(overseas)].map((c) => {
+  const inputs: NewDividendInput[] = [...classifyLedgerDividends(domestic, { taxDeferred: isTaxDeferredAccount('db', accountId) }), ...classifyDbOverseasDividends(overseas)].map((c) => {
     byKind[c.kind]++;
     return { broker: 'db', accountId, symbol: c.symbol, name: c.name, currency: c.currency, amount: c.amount, tax: c.tax, paidDate: c.paidDate, memo: null };
   });

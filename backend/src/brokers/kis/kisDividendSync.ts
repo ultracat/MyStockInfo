@@ -1,6 +1,7 @@
 import { fetchKisPeriodRights, getKisAccountId, type KisPeriodRight } from './kisClient';
 import { replaceSyncedDividends, type NewDividendInput } from '../../db/dividends';
 import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes';
+import { isTaxDeferredAccount } from '../../db/accountTaxTypes';
 
 // 한국투자증권 배당 동기화 — 기간별계좌권리현황조회(`CTRGA011R`)로 계좌의 국내 배당·ETF 분배금을 받아
 // **API 우선으로 로컬에 덮어쓴다**(토스와 같은 원칙, tossDividendSync.ts 참고). 해외 배당을 계좌 기준으로
@@ -9,6 +10,9 @@ import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes'
 // 2026-11-09 사용자 기록과 대조한 결과(입력 실수 몇 건 말고 정확히 일치):
 // - `last_alct_amt`는 **세전**, `tax_amt`가 원천징수 세금 → 저장 금액(세후) = 세전 − 세금.
 //   (사용자는 KIS 배당을 세전으로 적어 왔다 — 세금이 있는 기록이 전부 세전과 일치.)
+// - ⚠ **ISA·연금저축·IRP 계좌는 세금을 떼지 않는다**(계좌 세금 유형, db/accountTaxTypes.ts) — API는 그런 계좌에도 계산상 `tax_amt`를
+//   주지만 실제 입금은 세전 그대로다(2026-11-17 사용자 ISA 계좌로 확인 — 세전 분배금이 그대로 입금, API는 15.4% 세금을 줌). 그 계좌는
+//   금액 = 세전, 세금 = 0. 예전엔 이 구분이 없어 세금이 있는 분배금이 15.4%씩 적게 잡혀 있었다.
 // - 날짜는 `cash_dfrm_dt`(현금지급일). **지급일이 오늘 이후인 건은 지급 예정이라 넣지 않는다.**
 // - `rght_type_cd` 실측값: `03` 주식 배당, `32` ETF 분배금. 다른 권리(유상증자 등)는 배정금액이 0이라 걸러진다.
 
@@ -26,8 +30,13 @@ function ymd(s: string): string {
   return /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : '';
 }
 
-/** 권리 내역 → 배당 후보. `today`(KST, YYYY-MM-DD) 이후 지급 예정 건과 현금 배정이 없는 권리는 뺀다. */
-export function classifyKisRights(rows: KisPeriodRight[], today: string): { candidates: KisDividendCandidate[]; upcoming: number } {
+/** 권리 내역 → 배당 후보. `today`(KST, YYYY-MM-DD) 이후 지급 예정 건과 현금 배정이 없는 권리는 뺀다.
+ *  `taxDeferred`(ISA·연금저축·IRP)면 API의 세금은 계산값일 뿐이라 금액 = 세전, 세금 = 0. */
+export function classifyKisRights(
+  rows: KisPeriodRight[],
+  today: string,
+  opts: { taxDeferred?: boolean } = {}
+): { candidates: KisDividendCandidate[]; upcoming: number } {
   const candidates: KisDividendCandidate[] = [];
   let upcoming = 0;
   for (const r of rows) {
@@ -36,7 +45,7 @@ export function classifyKisRights(rows: KisPeriodRight[], today: string): { cand
     if (!Number.isFinite(gross) || gross <= 0 || !paidDate) continue;
     if (paidDate > today) { upcoming++; continue; }
     const taxRaw = Number(r.tax_amt);
-    const tax = Number.isFinite(taxRaw) && taxRaw > 0 ? taxRaw : 0;
+    const tax = !opts.taxDeferred && Number.isFinite(taxRaw) && taxRaw > 0 ? taxRaw : 0;
     candidates.push({
       symbol: (r.shtn_pdno || r.pdno).trim(),
       name: (r.prdt_name || '').trim(),
@@ -63,7 +72,7 @@ export function syncKisDividends(): Promise<DividendSyncResult> {
 async function runSync(): Promise<DividendSyncResult> {
   const accountId = await getKisAccountId();
   const rows = await fetchKisPeriodRights();
-  const { candidates, upcoming } = classifyKisRights(rows, todayKst());
+  const { candidates, upcoming } = classifyKisRights(rows, todayKst(), { taxDeferred: isTaxDeferredAccount('kis', accountId) });
 
   const inputs: NewDividendInput[] = candidates.map((c) => ({
     broker: 'kis',

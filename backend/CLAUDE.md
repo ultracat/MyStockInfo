@@ -424,7 +424,10 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
 
 한국투자증권(`brokers/kis/kisDividendSync.ts`, 기간별계좌권리현황조회 `CTRGA011R`, `kisClient.ts`의
 `fetchKisPeriodRights`, 2000-01-01부터 한 번에 — 긴 기간도 받아짐(실측), 25건씩 연속조회, 매매내역과 같은 1tps 리미터):
-- `last_alct_amt`(세전) − `tax_amt` = 세후, 날짜는 `cash_dfrm_dt`(현금지급일). **지급일이 오늘 이후면 지급 예정이라 넣지 않는다.**
+- `last_alct_amt`(세전) − `tax_amt` = 세후, 날짜는 `cash_dfrm_dt`(현금지급일). ⚠ **ISA·연금저축·IRP 계좌**(계좌 세금 유형,
+  `db/accountTaxTypes.ts`의 `isTaxDeferredAccount`)는 원천징수가 없어 **세후 = 세전, 세금 0** — API는 그런 계좌에도 계산상 `tax_amt`를 준다
+  (2026-11-17 사용자 ISA 계좌로 확인: 세전 분배금이 그대로 입금, API는 15.4% 세금을 줌 — 고치기 전엔 세금 있는 기록이 15.4%씩 적게 잡혔다).
+  다가오는 배당 확정 건과 LS·DB(`classifyLedgerDividends`)도 같은 규칙. 유형을 바꾸면 다음 동기화(배당 화면 진입)에 반영. **지급일이 오늘 이후면 지급 예정이라 넣지 않는다.**
 - `rght_type_cd` 실측: `03` 주식 배당, `32` ETF 분배금(코드표는 문서에 없음). 현금 배정이 없는 권리는 걸러진다.
 - **국내만** — 해외 배당을 계좌 기준으로 주는 KIS API는 없다(2026-11-09 조사). 계좌는 자격증명의 `CANO-상품코드`.
   그래서 **KIS의 동기화 소유는 원화 기록만**이다(`isDividendSyncOwned({broker, currency})`) — 미국 주식 배당은 사용자가 달러로

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { SavingsPlanCard } from './trades/SavingsPlanCard';
 import type { StoredTrade, TradeRecord } from '../types';
 import TradesChart from '../components/TradesChart';
 import { toDisplayTrades, tradeBuckets, tradeTotals, type DisplayTrade, type ViewMode } from '../calc/trades';
@@ -205,6 +206,7 @@ export default function Trades() {
         )}
       </div>
 
+      <SavingsPlanCard allTrades={allTrades} fxRate={effectiveFxRate} />
       <TradeAddCard onAdded={data.refreshAfterAdd} />
       <TradeListCard
         sortedTrades={sortedTrades}

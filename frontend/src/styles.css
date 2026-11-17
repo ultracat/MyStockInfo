@@ -680,3 +680,77 @@ button.ghost:disabled {
     overflow: visible !important;
   }
 }
+
+/* 적립식 계획(SavingsPlanCard) — 달마다 작은 칸. 달성/부족/누락은 계획 지키기의 좋고 나쁨이라 상태 색을 쓴다. */
+.savings-months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.savings-month {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 52px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.savings-met {
+  border-color: var(--good);
+  color: var(--good);
+}
+.savings-partial {
+  border-color: var(--series-4);
+}
+.savings-missed {
+  border-color: var(--critical);
+  color: var(--critical);
+}
+.savings-current {
+  border-style: dashed;
+}
+
+/* 빠른 종목 검색(QuickSearch, ⌘K) — 공용 .modal-overlay/.modal-content 위에 목록 모양만. */
+.quick-search {
+  max-width: 560px;
+  align-self: flex-start;
+  margin-top: 10vh;
+}
+.quick-search-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.quick-search-list button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.quick-search-list button.active {
+  background: var(--surface-2);
+}
+.quick-search-empty {
+  padding: 8px;
+  color: var(--text-muted);
+}
+.quick-search-tags span {
+  font-size: 11px;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 5px;
+  margin-left: 4px;
+}

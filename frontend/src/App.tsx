@@ -8,11 +8,13 @@ import Trades from './pages/Trades';
 import RealizedGains from './pages/RealizedGains';
 import Rebalance from './pages/Rebalance';
 import Report from './pages/Report';
+import Analysis from './pages/Analysis';
 import Watchlist from './pages/Watchlist';
 import StockLinks from './pages/StockLinks';
 import Settings from './pages/Settings';
 import About from './pages/About';
 import { PageActivity } from './pageActivity';
+import { QuickSearch } from './components/QuickSearch';
 import { PageErrorBoundary } from './components/PageErrorBoundary';
 import { api } from './api';
 
@@ -24,6 +26,7 @@ const PAGES = {
   dividends: Dividends,
   trades: Trades,
   realizedGains: RealizedGains,
+  analysis: Analysis,
   rebalance: Rebalance,
   report: Report,
   watchlist: Watchlist,
@@ -39,6 +42,7 @@ type Page =
   | 'dividends'
   | 'trades'
   | 'realizedGains'
+  | 'analysis'
   | 'rebalance'
   | 'report'
   | 'watchlist'
@@ -58,6 +62,23 @@ const ICON_PROPS = {
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
 };
+
+function SearchIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M21 21l-4.3-4.3" />
+    </svg>
+  );
+}
+
+function ActivityIcon() {
+  return (
+    <svg {...ICON_PROPS}>
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  );
+}
 
 function PrinterIcon() {
   return (
@@ -268,6 +289,7 @@ const NAV_ITEMS: { id: Page; label: string; icon: () => React.ReactElement }[] =
   { id: 'dividends', label: '배당금', icon: PercentIcon },
   { id: 'trades', label: '매매내역', icon: RepeatIcon },
   { id: 'realizedGains', label: '실현손익', icon: FileTextIcon },
+  { id: 'analysis', label: '분석', icon: ActivityIcon },
   { id: 'rebalance', label: '리밸런싱', icon: TargetIcon },
   { id: 'report', label: '보고서', icon: PrinterIcon },
   { id: 'watchlist', label: '관심종목', icon: StarIcon },
@@ -324,6 +346,19 @@ export default function App() {
   // (처음 여는 페이지는 맨 위). 숨긴 페이지가 빠지면서 높이가 바뀌므로 sizer 높이가 다시 재진 뒤(두 프레임 뒤)에 맞춘다.
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const scrollByPage = useRef<Partial<Record<Page, number>>>({});
+  // 빠른 종목 검색(⌘K / Ctrl+K) — 어느 화면에서든. 입력칸에 글자를 치는 중이어도 연다(⌘·Ctrl 조합이라 겹치지 않음).
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setSearchOpen((o) => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   function goTo(next: Page) {
     if (next === page) return;
     scrollByPage.current[page] = viewportRef.current?.scrollTop ?? 0;
@@ -345,6 +380,7 @@ export default function App() {
 
   return (
     <div className="app-shell" style={{ '--z': zoom } as React.CSSProperties}>
+      <QuickSearch open={searchOpen} onClose={() => setSearchOpen(false)} onNavigate={(p) => goTo(p)} />
       <nav className={`sidebar${collapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-header">
           {!collapsed && <h1>MyStock</h1>}
@@ -356,6 +392,10 @@ export default function App() {
             <ChevronIcon direction={collapsed ? 'right' : 'left'} />
           </button>
         </div>
+        <button className="nav-item" onClick={() => setSearchOpen(true)} title={collapsed ? '종목 검색 (⌘K)' : '어느 화면에서든 ⌘K(Ctrl+K)'}>
+          <SearchIcon />
+          {!collapsed && <span>종목 검색 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>⌘K</span></span>}
+        </button>
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           return (

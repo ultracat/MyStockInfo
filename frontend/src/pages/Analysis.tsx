@@ -26,7 +26,7 @@ import { SimulationCard } from './analysis/SimulationCard';
  * 월말 종가와 계좌 세금 유형만 따로 받는다.
  */
 export default function Analysis() {
-  const data = useOverviewData({ captureSnapshot: false });
+  const data = useOverviewData();
   const { holdings, trades, dividends, toKrw, dividendFxRateFor } = data;
   const { planner, update } = usePlanner();
   const [usBench, setUsBench] = useState<Record<string, MonthlyReturn[]>>({});

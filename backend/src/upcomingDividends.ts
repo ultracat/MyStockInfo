@@ -55,7 +55,8 @@ export interface UpcomingDividend {
   perShare: number | null;
   /** 세전 금액. */
   grossAmount: number;
-  /** 확정 건만 — 원천징수 세금. */
+  /** 원천징수 세금 — 확정 건은 API 값, **ISA·연금저축·IRP 계좌의 원화 건은 확정·예상·추정 모두 0**(원천징수 없음 — 화면 그래프가 15.4%를
+   *  빼지 않게), 그 밖의 예상·추정은 null(화면이 국내 15.4%·미국 15%로 가정). */
   tax: number | null;
   /** kis-overseas = ICE 일정 + 해외 기간별권리의 주당 금액(미국). */
   source: 'kis-account' | 'ksd-schedule' | 'kis-overseas' | 'history';
@@ -294,17 +295,23 @@ function monthEndOf(today: string): string {
 }
 
 /**
- * 저장된 일정 + 지금 보유 수량 → 화면 줄(순수 함수). 확정은 지급일 > 오늘만, 예상·추정은 `planSymbolDividends`를
+ * 저장된 일정 + 지금 보유 수량 → 화면 줄(순수 함수). `taxDeferred`(계좌가 ISA·연금이면 true)가 있으면 그 계좌의 원화 건은 세금 0 —
+ * 계좌 세금 유형을 바꾸면 저장본을 다시 받지 않아도 바로 반영된다. 확정은 지급일 당일까지, 예상·추정은 `planSymbolDividends`를
  * 오늘 기준으로 다시 돌린다(이번 달 지급분까지). KIS 계좌에 확정 건이 있는 종목·기준월은 그 계좌엔 예상·추정을 안 만든다.
  */
 export function itemsFromSnapshot(
   snap: Pick<UpcomingSnapshot, 'confirmed' | 'krCalendar' | 'kr' | 'us'>,
   holdings: HoldingRow[],
   today: string,
-  kisAccountId: string
+  kisAccountId: string,
+  taxDeferred: (broker: string, accountId: string) => boolean = () => false
 ): UpcomingDividend[] {
   const monthEnd = monthEndOf(today);
-  const items: UpcomingDividend[] = snap.confirmed.filter((c) => c.payDate !== null && c.payDate >= today); // 지급일 당일까지
+  const deferred = (broker: string, accountId: string | null, currency: string) =>
+    currency === 'KRW' && accountId !== null && taxDeferred(broker, accountId);
+  const items: UpcomingDividend[] = snap.confirmed
+    .filter((c) => c.payDate !== null && c.payDate >= today) // 지급일 당일까지
+    .map((c) => (deferred(c.broker, c.accountId, c.currency) ? { ...c, tax: 0 } : c));
   const confirmedKeys = new Set(items.map((c) => `${c.symbol}:${(c.recordDate ?? c.payDate!).slice(0, 7)}`));
 
   const krPlans = new Map<string, PlannedDividend[]>();
@@ -324,7 +331,8 @@ export function itemsFromSnapshot(
         status: p.status, broker: h.broker, accountId: h.accountId, symbol: h.symbol, name: h.name, currency: usd ? 'USD' : 'KRW',
         payDate: p.payDate, recordDate: p.recordDate, quantity: h.quantity, perShare: p.perShare,
         grossAmount: usd ? Math.round(p.perShare * h.quantity * 100) / 100 : Math.round(p.perShare * h.quantity),
-        tax: null, source: usd ? (p.source === 'ksd-schedule' ? 'kis-overseas' : p.source) : p.source,
+        tax: deferred(h.broker, h.accountId, usd ? 'USD' : 'KRW') ? 0 : null,
+        source: usd ? (p.source === 'ksd-schedule' ? 'kis-overseas' : p.source) : p.source,
       });
     }
   }
@@ -506,7 +514,7 @@ export async function getUpcomingDividends(opts: { refresh?: boolean } = {}): Pr
   }
 
   return {
-    items: snap ? itemsFromSnapshot(snap, holdings, today, kisAccountId) : [],
+    items: snap ? itemsFromSnapshot(snap, holdings, today, kisAccountId, (b, a) => isTaxDeferredAccount(b as BrokerId, a)) : [],
     available: true,
     builtAt: snap?.builtAt ?? null,
     refreshing: rebuildJob !== null,

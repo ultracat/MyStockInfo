@@ -185,6 +185,21 @@ test('itemsFromSnapshot: KIS 계좌에 같은 종목·기준월 확정이 있으
   assert.deepEqual(items.map((i) => [i.status, i.broker]).sort(), [['confirmed', 'kis'], ['projected', 'toss']]);
 });
 
+test('itemsFromSnapshot: ISA·연금 계좌(세금 이연)의 원화 건은 확정·예상·추정 모두 세금 0, 다른 계좌·달러는 그대로', () => {
+  const [p] = planSymbolDividends(monthly, '2026-11-16', '2026-11-30');
+  const snap = { confirmed: [{ ...confirmedRow('222220', '2026-11-30', '2026-12-20'), tax: 154 }], krCalendar: {}, kr: { '111110': monthly }, us: {} };
+  const deferred = (broker: string, accountId: string) => broker === 'kis' ? accountId === '12345678-01' : accountId === 'isa';
+  const items = itemsFromSnapshot(snap, [holding('toss', 'isa', '111110', 10), holding('toss', '1', '111110', 4)], '2026-11-16', '12345678-01', deferred);
+  assert.ok(p);
+  assert.deepEqual(items.map((i) => [i.status, i.accountId, i.tax]).sort(), [
+    ['confirmed', '12345678-01', 0],
+    [p.status, '1', null],
+    [p.status, 'isa', 0],
+  ].sort());
+  // 함수를 안 주면 예전 그대로(확정은 API 세금, 예상·추정은 null)
+  assert.deepEqual(itemsFromSnapshot(snap, [holding('toss', 'isa', '111110', 10)], '2026-11-16', '12345678-01').map((i) => i.tax).sort(), [154, null].sort());
+});
+
 test('itemsFromSnapshot: 미국 종목은 달러·센트 반올림, 출처는 kis-overseas/history', () => {
   const rows = overseasScheduleRows(
     [ice('20261105', '20261106'), ice('20261112', '20261113'), ice('20261119', '20261120')],

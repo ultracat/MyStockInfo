@@ -3,6 +3,7 @@
 import { getCredentialFields } from '../../credentials';
 import { withRateLimitRetry } from '../rateLimiter';
 import { getTossRateLimiter, type TossRateLimitGroup } from './rateLimitGroups';
+import type { components } from './tossSpec.gen';
 
 const BASE_URL = 'https://openapi.tossinvest.com';
 
@@ -21,85 +22,20 @@ const BASE_URL = 'https://openapi.tossinvest.com';
 // (Dashboard.tsx, `convertedValues.reduce((sum, v) => sum + v)`) silently
 // produce garbage while every other column looked fine.
 
-interface TossTokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number; // seconds
-}
-
+// 원형 타입은 공식 명세에서 생성한 tossSpec.gen.ts를 그대로 쓴다(2026-11-17 — 예전엔 손으로 옮겨 적었다).
+// 명세가 바뀌면 `npm run spec:check`가 알리고, `spec:update` 뒤 `npm run build`가 어긋난 곳을 타입 오류로 짚는다.
+// ⚠ 명세상 생략될 수 있는 필드(`usd?`, `price?`, `tax?`)가 있다 — `=== null`이 아니라 `== null`로 본다.
+type Schemas = components['schemas'];
+type TossTokenResponse = Schemas['OAuth2TokenResponse'];
 export interface TossAccountsResponse {
-  result: Array<{
-    accountNo: string;
-    accountSeq: number; // a real JSON number per the schema, unlike the fields below
-    accountType: string;
-  }>;
+  result: Schemas['Account'][];
 }
-
-interface RawTossPrice {
-  krw: string;
-  usd: string | null;
-}
-
-export interface RawTossHoldingsOverviewResponse {
-  totalPurchaseAmount: RawTossPrice;
-  marketValue: { amount: RawTossPrice; amountAfterCost: RawTossPrice };
-  profitLoss: { amount: RawTossPrice; amountAfterCost: RawTossPrice; rate: string; rateAfterCost: string };
-  dailyProfitLoss?: unknown;
-  items: RawTossHoldingsItem[];
-}
-
-interface RawTossHoldingsItem {
-  symbol: string;
-  name: string;
-  marketCountry: string;
-  currency: string;
-  quantity: string;
-  lastPrice: string;
-  averagePurchasePrice: string;
-  marketValue: { purchaseAmount: string; amount: string; amountAfterCost: string };
-  profitLoss: { amount: string; amountAfterCost: string; rate: string; rateAfterCost: string };
-  dailyProfitLoss?: unknown;
-  cost: { commission: string; tax: string | null };
-}
-
-interface RawTossOrderExecution {
-  filledQuantity: string;
-  averageFilledPrice: string | null;
-  filledAmount: string | null;
-  commission: string | null;
-  tax: string | null;
-  filledAt: string | null;
-  settlementDate: string | null;
-}
-
-interface RawTossOrder {
-  orderId: string;
-  symbol: string;
-  side: 'BUY' | 'SELL';
-  status: string;
-  price: string | null;
-  quantity: string;
-  currency: string;
-  orderedAt: string;
-  execution: RawTossOrderExecution;
-}
-
-export interface RawTossOrdersResponse {
-  orders: RawTossOrder[];
-  nextCursor: string | null;
-  hasNext: boolean;
-}
-
-export interface RawTossExchangeRateResponse {
-  baseCurrency: string;
-  quoteCurrency: string;
-  rate: string;
-  midRate: string | null;
-  basisPoint?: string | null;
-  rateChangeType?: string | null;
-  validFrom?: string | null;
-  validUntil?: string | null;
-}
+type RawTossPrice = Schemas['Price'];
+export type RawTossHoldingsOverviewResponse = Schemas['HoldingsOverview'];
+type RawTossHoldingsItem = Schemas['HoldingsItem'];
+type RawTossOrder = Schemas['Order'];
+export type RawTossOrdersResponse = Schemas['PaginatedOrderResponse'];
+export type RawTossExchangeRateResponse = Schemas['ExchangeRateResponse'];
 
 /** Parsed (real-number) shapes — what this module returns to callers. */
 interface TossPrice {
@@ -167,7 +103,7 @@ export function toNum(value: string): number {
 }
 
 export function parsePrice(p: RawTossPrice): TossPrice {
-  return { krw: toNum(p.krw), usd: p.usd === null ? null : toNum(p.usd) };
+  return { krw: toNum(p.krw), usd: p.usd == null ? null : toNum(p.usd) };
 }
 
 export function parseHoldingsItem(item: RawTossHoldingsItem): TossHoldingsItem {
@@ -193,7 +129,7 @@ export function parseHoldingsItem(item: RawTossHoldingsItem): TossHoldingsItem {
     dailyProfitLoss: item.dailyProfitLoss,
     cost: {
       commission: toNum(item.cost.commission),
-      tax: item.cost.tax === null || item.cost.tax === undefined ? null : toNum(item.cost.tax),
+      tax: item.cost.tax == null ? null : toNum(item.cost.tax),
     },
   };
 }
@@ -203,7 +139,7 @@ export function parseOrder(o: RawTossOrder): TossOrder {
     orderId: o.orderId,
     symbol: o.symbol,
     side: o.side,
-    price: o.price === null ? null : toNum(o.price),
+    price: o.price == null ? null : toNum(o.price),
     quantity: toNum(o.quantity),
     currency: o.currency,
     orderedAt: o.orderedAt,

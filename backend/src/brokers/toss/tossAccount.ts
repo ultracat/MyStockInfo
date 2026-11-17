@@ -3,6 +3,7 @@ import { shapeForLog } from '../../logRedact';
 import { hasCredential } from '../../credentials';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
+import type { components } from './tossSpec.gen';
 import { RawTossHoldingsOverviewResponse, TossAccountsResponse, TossHoldingsOverviewResponse, parseHoldingsItem, parsePrice, toNum, tossFetch } from './tossCore';
 export function isTossConfigured(): boolean {
   // Existence check only — decrypting (getCredentialFields) isn't needed
@@ -73,23 +74,9 @@ export async function fetchTossHoldings(
 /** 거래내역 한 건(`GET /api/v1/transactions`, `TRANSACTION` group, 공식 스펙 v1.2.28
  *  확인 2026-11-09). 금액은 문자열 그대로 둔다 — 쓰는 쪽(tossDividendSync.ts)이 필요한
  *  필드만 숫자로 바꾼다. 거래 고유 ID는 API가 주지 않는다(문서: "주문의 식별자는 제공하지 않습니다"). */
-export interface TossTransaction {
-  transactionType: string;
-  marketCountry: string;
-  currency: string;
-  symbol: string | null;
-  assetClass: string | null;
-  isinCode: string | null;
-  amount: string | null;
-  tax: string;
-  netAmount: string | null;
-  exchangeRate: string | null;
-  /** KST 결제일(YYYY-MM-DD). 배당·입금은 실제로 처리된 날짜 — 토스 앱에 보이는 날짜와 같다. */
-  settlementDate: string;
-  settled: boolean;
-  transactionTime: string | null;
-  isCancellation: boolean;
-}
+/** 거래내역 한 줄 — 공식 명세 그대로(tossSpec.gen.ts). `settlementDate`는 KST 결제일(YYYY-MM-DD) — 배당·입금은 실제로
+ *  처리된 날짜, 토스 앱에 보이는 날짜와 같다. */
+export type TossTransaction = components['schemas']['Transaction'];
 
 /** 거래내역 조회 — `types`(예: `['DIVIDEND','DEPOSIT']`)로 거르고, `from`/`to`(결제일 기준,
  *  inclusive)를 생략하면 전체 기간. 100건씩 커서로 끝까지 받는다. 캐시하지 않는다(동기화 전용). */
@@ -114,8 +101,14 @@ export async function fetchTossTransactions(
       );
     }
     out.push(...(data.transactions as TossTransaction[]));
-    if (!data.hasNext || !data.nextCursor) break;
+    if (!data.hasNext || !data.nextCursor) return out;
+    // 같은 커서가 다시 오면 같은 페이지를 끝없이 받게 된다(NH의 같은 cts와 같은 방어) — 받은 데까지로 끝낸다.
+    if (data.nextCursor === cursor) {
+      console.warn('[toss] 거래내역 커서가 반복돼 연속조회를 멈춥니다');
+      return out;
+    }
     cursor = data.nextCursor;
   }
-  return out;
+  // 상한에서 조용히 끊으면 배당 동기화(전체 교체)가 잘린 목록으로 기존 기록을 지운다 — 던져서 동기화를 멈춘다.
+  throw new Error('토스증권 거래내역이 너무 많아(2만 건 초과) 끝까지 받지 못했습니다.');
 }

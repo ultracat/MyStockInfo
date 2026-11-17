@@ -1,4 +1,4 @@
-import { fetchNhAccounts, fetchNhDepositWithdrawals, fetchNhTotalTransactions } from './nhClient';
+import { fetchNhAccounts, fetchNhDepositWithdrawals, fetchNhTotalTransactions, type NhRow } from './nhClient';
 import { nhNum, nhYmd } from './nhMappers';
 import { withCache } from '../responseCache';
 import { listAccountLabels } from '../../db/accountLabels';
@@ -16,7 +16,7 @@ import type { FetchOpts } from '../types';
 
 const NOT_PRINCIPAL = /배당|분배|이자|환급|세금|세액|수수료|이용료|취소|정정/;
 
-export function nhFlowDirection(row: Record<string, unknown>): 'in' | 'out' | null {
+export function nhFlowDirection(row: NhRow<'/common/inquiry/v1/depositWithdrawal', 'Output_0'>): 'in' | 'out' | null {
   const type = String(row.act_trd_tp_nm ?? '');
   const summary = String(row.sps_cd_krl_anm ?? '');
   if (NOT_PRINCIPAL.test(type) || NOT_PRINCIPAL.test(summary)) return null;
@@ -29,7 +29,10 @@ export function nhFlowDirection(row: Record<string, unknown>): 'in' | 'out' | nu
 }
 
 /** 입출금내역 → 원금 요약. `transferRows`는 종합거래내역 입출고(02) — 입고 건수만 센다. */
-export function summarizeNhCashFlows(rows: Record<string, unknown>[], transferRows: Record<string, unknown>[] = []): CashFlowSummary {
+export function summarizeNhCashFlows(
+  rows: NhRow<'/common/inquiry/v1/depositWithdrawal', 'Output_0'>[],
+  transferRows: NhRow<'/common/inquiry/v1/totalTransaction', 'Output_0'>[] = []
+): CashFlowSummary {
   const years = new Map<string, CashFlowYear>();
   const s: CashFlowSummary = {
     firstDate: null, depositKrw: 0, withdrawalKrw: 0, depositUsd: 0, withdrawalUsd: 0,

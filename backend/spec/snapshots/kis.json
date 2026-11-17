@@ -1,0 +1,304 @@
+{
+  "examples_llm/domestic_stock/chk_holiday/chk_holiday.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/quotations/chk-holiday",
+    "params": [
+      "BASS_DT",
+      "CTX_AREA_FK",
+      "CTX_AREA_NK"
+    ],
+    "sha256": "d645cfb9de40a28c",
+    "trIds": [
+      "CTCA0903R"
+    ],
+    "usedBy": [
+      "CTCA0903R"
+    ]
+  },
+  "examples_llm/domestic_stock/finance_financial_ratio/finance_financial_ratio.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/finance/financial-ratio",
+    "params": [
+      "FID_DIV_CLS_CODE",
+      "fid_cond_mrkt_div_code",
+      "fid_input_iscd"
+    ],
+    "sha256": "a2420c00b2065ea1",
+    "trIds": [
+      "FHKST66430300"
+    ],
+    "usedBy": [
+      "FHKST66430300"
+    ]
+  },
+  "examples_llm/domestic_stock/inquire_balance/inquire_balance.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/trading/inquire-balance",
+    "params": [
+      "ACNT_PRDT_CD",
+      "AFHR_FLPR_YN",
+      "CANO",
+      "CTX_AREA_FK100",
+      "CTX_AREA_NK100",
+      "FNCG_AMT_AUTO_RDPT_YN",
+      "FUND_STTL_ICLD_YN",
+      "INQR_DVSN",
+      "OFL_YN",
+      "PRCS_DVSN",
+      "UNPR_DVSN"
+    ],
+    "sha256": "32f2759f925dfaf9",
+    "trIds": [
+      "TTTC8434R",
+      "VTTC8434R"
+    ],
+    "usedBy": [
+      "TTTC8434R"
+    ]
+  },
+  "examples_llm/domestic_stock/inquire_daily_ccld/inquire_daily_ccld.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/trading/inquire-daily-ccld",
+    "params": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CCLD_DVSN",
+      "CTX_AREA_FK100",
+      "CTX_AREA_NK100",
+      "INQR_DVSN",
+      "INQR_DVSN_1",
+      "INQR_DVSN_3",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "ODNO",
+      "ORD_GNO_BRNO",
+      "PDNO",
+      "SLL_BUY_DVSN_CD"
+    ],
+    "sha256": "9a039eef4f4c61e6",
+    "trIds": [
+      "CTSC9215R",
+      "TTTC0081R",
+      "VTSC9215R",
+      "VTTC0081R"
+    ],
+    "usedBy": [
+      "CTSC9215R",
+      "TTTC0081R"
+    ]
+  },
+  "examples_llm/domestic_stock/inquire_period_trade_profit/inquire_period_trade_profit.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/trading/inquire-period-trade-profit",
+    "params": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CBLC_DVSN",
+      "CTX_AREA_FK100",
+      "CTX_AREA_NK100",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "PDNO",
+      "SORT_DVSN"
+    ],
+    "sha256": "b8b716bcd3f6800a",
+    "trIds": [
+      "TTTC8715R"
+    ],
+    "usedBy": [
+      "TTTC8715R"
+    ]
+  },
+  "examples_llm/domestic_stock/inquire_price/inquire_price.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/quotations/inquire-price",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "sha256": "bf2a715da0d8617b",
+    "trIds": [
+      "FHKST01010100"
+    ],
+    "usedBy": [
+      "FHKST01010100"
+    ]
+  },
+  "examples_llm/domestic_stock/invest_opinion/invest_opinion.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/quotations/invest-opinion",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_COND_SCR_DIV_CODE",
+      "FID_INPUT_DATE_1",
+      "FID_INPUT_DATE_2",
+      "FID_INPUT_ISCD"
+    ],
+    "sha256": "1ed9c4b78f1ed208",
+    "trIds": [
+      "FHKST663300C0"
+    ],
+    "usedBy": [
+      "FHKST663300C0"
+    ]
+  },
+  "examples_llm/domestic_stock/ksdinfo_dividend/ksdinfo_dividend.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/ksdinfo/dividend",
+    "params": [
+      "CTS",
+      "F_DT",
+      "GB1",
+      "HIGH_GB",
+      "SHT_CD",
+      "T_DT"
+    ],
+    "sha256": "e45641acbcd379c7",
+    "trIds": [
+      "HHKDB669102C0"
+    ],
+    "usedBy": [
+      "HHKDB669102C0"
+    ]
+  },
+  "examples_llm/domestic_stock/news_title/news_title.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/quotations/news-title",
+    "params": [
+      "FID_COND_MRKT_CLS_CODE",
+      "FID_INPUT_DATE_1",
+      "FID_INPUT_HOUR_1",
+      "FID_INPUT_ISCD",
+      "FID_INPUT_SRNO",
+      "FID_NEWS_OFER_ENTP_CODE",
+      "FID_RANK_SORT_CLS_CODE",
+      "FID_TITL_CNTT"
+    ],
+    "sha256": "e1d0b5d3f53ff270",
+    "trIds": [
+      "FHKST01011800"
+    ],
+    "usedBy": [
+      "FHKST01011800"
+    ]
+  },
+  "examples_llm/domestic_stock/search_stock_info/search_stock_info.py": {
+    "apiUrl": "/uapi/domestic-stock/v1/quotations/search-stock-info",
+    "params": [
+      "PDNO",
+      "PRDT_TYPE_CD"
+    ],
+    "sha256": "342e0be8577953b1",
+    "trIds": [
+      "CTPF1002R"
+    ],
+    "usedBy": [
+      "CTPF1002R"
+    ]
+  },
+  "examples_llm/etfetn/inquire_component_stock_price/inquire_component_stock_price.py": {
+    "apiUrl": "/uapi/etfetn/v1/quotations/inquire-component-stock-price",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_COND_SCR_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "sha256": "91fc582ca462aed3",
+    "trIds": [
+      "FHKST121600C0"
+    ],
+    "usedBy": [
+      "FHKST121600C0"
+    ]
+  },
+  "examples_llm/etfetn/inquire_price/inquire_price.py": {
+    "apiUrl": "/uapi/etfetn/v1/quotations/inquire-price",
+    "params": [
+      "FID_COND_MRKT_DIV_CODE",
+      "FID_INPUT_ISCD"
+    ],
+    "sha256": "b0e4a42a97e6e435",
+    "trIds": [
+      "FHPST02400000"
+    ],
+    "usedBy": [
+      "FHPST02400000"
+    ]
+  },
+  "examples_llm/overseas_stock/inquire_ccnl/inquire_ccnl.py": {
+    "apiUrl": "/uapi/overseas-stock/v1/trading/inquire-ccnl",
+    "params": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CCLD_NCCS_DVSN",
+      "CTX_AREA_FK200",
+      "CTX_AREA_NK200",
+      "ODNO",
+      "ORD_DT",
+      "ORD_END_DT",
+      "ORD_GNO_BRNO",
+      "ORD_STRT_DT",
+      "OVRS_EXCG_CD",
+      "PDNO",
+      "SLL_BUY_DVSN",
+      "SORT_SQN"
+    ],
+    "sha256": "9187975fe2602940",
+    "trIds": [
+      "TTTS3035R",
+      "VTTS3035R"
+    ],
+    "usedBy": [
+      "TTTS3035R"
+    ]
+  },
+  "examples_llm/overseas_stock/inquire_period_profit/inquire_period_profit.py": {
+    "apiUrl": "/uapi/overseas-stock/v1/trading/inquire-period-profit",
+    "params": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "CRCY_CD",
+      "CTX_AREA_FK200",
+      "CTX_AREA_NK200",
+      "INQR_END_DT",
+      "INQR_STRT_DT",
+      "NATN_CD",
+      "OVRS_EXCG_CD",
+      "PDNO",
+      "WCRC_FRCR_DVSN_CD"
+    ],
+    "sha256": "770bb1239a097238",
+    "trIds": [
+      "TTTS3039R"
+    ],
+    "usedBy": [
+      "TTTS3039R"
+    ]
+  },
+  "examples_llm/overseas_stock/inquire_present_balance/inquire_present_balance.py": {
+    "apiUrl": "/uapi/overseas-stock/v1/trading/inquire-present-balance",
+    "params": [
+      "ACNT_PRDT_CD",
+      "CANO",
+      "INQR_DVSN_CD",
+      "NATN_CD",
+      "TR_MKET_CD",
+      "WCRC_FRCR_DVSN_CD"
+    ],
+    "sha256": "8819050ca1c324af",
+    "trIds": [
+      "CTRP6504R",
+      "VTRP6504R"
+    ],
+    "usedBy": [
+      "CTRP6504R"
+    ]
+  },
+  "examples_llm/overseas_stock/rights_by_ice/rights_by_ice.py": {
+    "apiUrl": "/uapi/overseas-price/v1/quotations/rights-by-ice",
+    "params": [
+      "ED_YMD",
+      "NCOD",
+      "ST_YMD",
+      "SYMB"
+    ],
+    "sha256": "1212001ce95942fd",
+    "trIds": [
+      "HHDFS78330900"
+    ],
+    "usedBy": [
+      "HHDFS78330900"
+    ]
+  }
+}

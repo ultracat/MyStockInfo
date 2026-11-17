@@ -1,3 +1,4 @@
+import type { NhRow } from './nhClient';
 import type { HoldingPosition, TradeRecord } from '../types';
 
 // NH 응답 → 앱 공통 모양. 네트워크·자격증명과 무관한 순수 함수라 테스트(backend/test/nhMappers.test.ts)가 직접 부른다.
@@ -35,7 +36,7 @@ export function nhDomesticSymbol(v: unknown): string {
 
 /** 국내 잔고 `Output_1` 한 줄. 수익률 `pft_rt`는 퍼센트 숫자라 100으로 나눈다(앱 관례: 소수 비율).
  *  매입금액 필드가 따로 없어 평가금액 − 평가손익으로 구한다(증권사가 계산한 두 값의 차라 수수료 처리도 증권사 기준). */
-export function mapNhDomesticPosition(r: Record<string, unknown>): HoldingPosition {
+export function mapNhDomesticPosition(r: NhRow<'/krstock/inquiry/v1/balance', 'Output_1'>): HoldingPosition {
   const quantity = nhNum(r.itg_bnc_qty);
   const marketValue = nhNum(r.eal_amt);
   const profitLossAmount = nhNum(r.eal_pls_amt);
@@ -57,7 +58,7 @@ export function mapNhDomesticPosition(r: Record<string, unknown>): HoldingPositi
 }
 
 /** 해외 잔고 `Output_1` 한 줄(미국·USD). 외화(`fc_*`) 필드만 쓴다 — 원화 환산은 앱이 환율로 따로 한다. */
-export function mapNhOverseasPosition(r: Record<string, unknown>): HoldingPosition {
+export function mapNhOverseasPosition(r: NhRow<'/gbstock/inquiry/v1/balance', 'Output_1'>): HoldingPosition {
   const avg = nhNum(r.fc_avg_phs_pr) || nhNum(r.fc_phs_uit_pr);
   return {
     symbol: str(r.iem_cd).toUpperCase(),
@@ -89,7 +90,7 @@ export function nhTradeSide(summary: unknown): 'BUY' | 'SELL' | null {
 
 /** 국내 매매(종합거래내역 `act_trd_dtl_cd=03`) → 체결 기록. 체결 번호가 없어 id는 (거래일, 종목, 방향, 그날 순번)으로
  *  만든다 — 같은 기간을 다시 받아도 API가 같은 순서(거래일자순)로 주는 한 같은 id가 나온다(매매내역 저장소는 id로 upsert). */
-export function mapNhDomesticTrades(rows: Record<string, unknown>[]): TradeRecord[] {
+export function mapNhDomesticTrades(rows: NhRow<'/common/inquiry/v1/totalTransaction', 'Output_0'>[]): TradeRecord[] {
   const seq = new Map<string, number>();
   const out: TradeRecord[] = [];
   for (const r of rows) {
@@ -124,7 +125,7 @@ export function mapNhDomesticTrades(rows: Record<string, unknown>[]): TradeRecor
 
 /** 해외 매수/매도(일별거래내역 `act_trd_cfc_cd=05/06`) → 체결 기록. 방향은 요청 코드로 정해져 적요를 해석하지 않는다.
  *  미국 달러가 아닌 통화는 뺀다(`isUsdName`). */
-export function mapNhOverseasTrades(rows: Record<string, unknown>[], side: 'BUY' | 'SELL'): TradeRecord[] {
+export function mapNhOverseasTrades(rows: NhRow<'/gbstock/inquiry/v1/dailyTransaction', 'Output_0'>[], side: 'BUY' | 'SELL'): TradeRecord[] {
   const out: TradeRecord[] = [];
   for (const r of rows) {
     const symbol = (str(r.iem_cd) || str(r.oss_iem_cd)).toUpperCase();
@@ -173,7 +174,7 @@ function dividendKind(summary: string): NhDividendCandidate['kind'] | null {
 /** 국내 배당 — 종합거래내역 입출금(`act_trd_dtl_cd=01`) 중 배당·분배 적요. 원화만.
  *  ⚠ 가정: `trd_amt`(거래금액)는 계좌에 실제로 들어온 **세후** 금액, `tax_sum`이 원천징수 세금이다(종합거래내역은
  *  예수금 변동을 적는 화면이라). 실데이터로 세전이 확인되면 여기서 세금을 빼야 한다. */
-export function classifyNhDomesticDividends(rows: Record<string, unknown>[]): NhDividendCandidate[] {
+export function classifyNhDomesticDividends(rows: NhRow<'/common/inquiry/v1/totalTransaction', 'Output_0'>[]): NhDividendCandidate[] {
   const out: NhDividendCandidate[] = [];
   for (const r of rows) {
     const kind = dividendKind(str(r.sps_cd_krl_anm));
@@ -190,7 +191,7 @@ export function classifyNhDomesticDividends(rows: Record<string, unknown>[]): Nh
 
 /** 해외 배당 — 해외 일별거래내역 입금(`act_trd_cfc_cd=01`) 중 배당 적요(`sps_cd_nm`). 달러만.
  *  ⚠ 가정: `fc_trd_amt`가 세후 입금액, `fc_tax_sum`이 외화 세금(현지 원천징수)이다. */
-export function classifyNhOverseasDividends(rows: Record<string, unknown>[]): NhDividendCandidate[] {
+export function classifyNhOverseasDividends(rows: NhRow<'/gbstock/inquiry/v1/dailyTransaction', 'Output_0'>[]): NhDividendCandidate[] {
   const out: NhDividendCandidate[] = [];
   for (const r of rows) {
     const kind = dividendKind(str(r.sps_cd_nm) || str(r.act_trd_tp_nm));

@@ -1,0 +1,30 @@
+# 증권사 공식 명세 주간 점검(2026-11-17) — 토스·NH openapi.json, 키움 kiwoom_api_spec.json, KIS 공식 예제 파일을 받아
+# MyStock이 쓰는 엔드포인트의 구조가 저장된 스냅샷(backend/spec/snapshots)과 같은지 본다. 바뀌었으면 이 잡이 실패하고,
+# GitHub이 저장소 소유자에게 실패 알림 메일을 보낸다. 바뀐 내용은 잡 요약(Summary)에 나온다.
+# 대응: 로컬에서 `npm run spec:check`로 확인 → 클라이언트 수정 → `npm run spec:update` → `npm run build`(타입 오류) → `npm test`.
+# - 의존성 설치가 필요 없다(스크립트는 Node 내장 fetch만 쓴다).
+# - ⚠ 공개 저장소의 예약 실행은 60일간 저장소 활동이 없으면 GitHub이 꺼 둔다 — 그땐 Actions 탭에서 다시 켠다.
+# - 외부 액션은 ci.yml과 같은 커밋 해시로 고정.
+name: Spec watch
+
+on:
+  schedule:
+    - cron: '17 0 * * 1' # 매주 월요일 09:17 KST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: 공식 명세와 스냅샷 비교
+        run: node scripts/spec-watch.cjs check

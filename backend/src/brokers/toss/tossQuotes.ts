@@ -2,6 +2,7 @@
 import { shapeForLog } from '../../logRedact';
 import { DEFAULT_TTL_MS, PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
+import type { components } from './tossSpec.gen';
 import { RawTossExchangeRateResponse, TossExchangeRateResponse, toNum, tossFetch } from './tossCore';
 export async function fetchTossExchangeRate(
   baseCurrency: string,
@@ -46,15 +47,7 @@ export async function fetchTossExchangeRate(
   );
 }
 
-interface RawTossStockInfo {
-  symbol: string;
-  name: string;
-  englishName: string | null;
-  market: string;
-  securityType: string;
-  status: string;
-  currency: string;
-}
+type RawTossStockInfo = components['schemas']['StockInfo'];
 
 /**
  * 종목 기본 정보 조회 (`GET /api/v1/stocks`, `STOCK` group) — not
@@ -86,12 +79,7 @@ export async function fetchTossStockInfo(symbols: string[], opts: FetchOpts = {}
   );
 }
 
-interface RawTossPriceItem {
-  symbol: string;
-  timestamp: string | null;
-  lastPrice: string;
-  currency: string;
-}
+type RawTossPriceItem = components['schemas']['PriceResponse'];
 
 export interface TossPriceItem {
   symbol: string;

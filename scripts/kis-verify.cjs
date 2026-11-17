@@ -234,7 +234,69 @@ async function verify({ offline }) {
   return fails ? 1 : 0;
 }
 
-module.exports = { fetchCatalog, usedApis, generateTypes, serializeCatalog, trIdsInCode };
+// ── 카탈로그 차이(자동 업데이트 PR 본문, scripts/spec-watch.cjs auto) ─────────────────────────────
+const stableKeys = (v) =>
+  Array.isArray(v) ? v.map(stableKeys) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, stableKeys(v[k])])) : v;
+const same = (a, b) => JSON.stringify(stableKeys(a)) === JSON.stringify(stableKeys(b));
+const setDiff = (a = [], b = []) => ({ added: b.filter((x) => !a.includes(x)), removed: a.filter((x) => !b.includes(x)) });
+
+/** 저장본 → 최신 카탈로그 차이(순수 함수 — 테스트가 부른다). */
+function diffCatalogs(oldApis, newApis, usedTrIds) {
+  const oldIdx = indexByTr(oldApis);
+  const newIdx = indexByTr(newApis);
+  const used = [];
+  for (const tr of usedTrIds) {
+    const a = oldApis[oldIdx[tr]];
+    const b = newApis[newIdx[tr]];
+    if (!b) { used.push({ tr, lines: ['공식 예제에서 **사라짐** — 폐지 여부를 KIS 공지에서 확인'] }); continue; }
+    if (!a) { used.push({ tr, lines: ['저장본에 없던 TR(새로 감시)'] }); continue; }
+    const lines = [];
+    if (a.url !== b.url) lines.push(`주소: \`${a.url}\` → \`${b.url}\``);
+    if (a.method !== b.method) lines.push(`메서드: ${a.method} → ${b.method}`);
+    const describe = (label, d) => {
+      const parts = [];
+      if (d.removed.length) parts.push(`빠짐 \`${d.removed.join('`, `')}\``);
+      if (d.added.length) parts.push(`추가 \`${d.added.join('`, `')}\``);
+      if (parts.length) lines.push(`${label}: ${parts.join(' · ')}`);
+    };
+    for (const k of ['trIds', 'params', 'requiredParams', 'blocks']) describe(k, setDiff(a[k], b[k]));
+    describe('응답 필드', setDiff(Object.keys(a.fields), Object.keys(b.fields)));
+    if (lines.length) used.push({ tr, lines });
+  }
+  const keys = new Set([...Object.keys(oldApis), ...Object.keys(newApis)]);
+  const other = { added: [], removed: [], changed: [] };
+  const usedKeys = new Set(usedTrIds.flatMap((t) => [oldIdx[t], newIdx[t]]).filter(Boolean));
+  for (const k of keys) {
+    if (usedKeys.has(k)) continue;
+    if (!oldApis[k]) other.added.push(k);
+    else if (!newApis[k]) other.removed.push(k);
+    else if (!same(oldApis[k], newApis[k])) other.changed.push(k);
+  }
+  return { used, other };
+}
+
+function catalogReport(d, oldCat, newCat) {
+  const out = [];
+  out.push(`공식 예제 \`${oldCat.source.commit.slice(0, 7)}\` → \`${newCat.source.commit.slice(0, 7)}\` ([비교](https://github.com/${newCat.source.repo}/compare/${oldCat.source.commit}...${newCat.source.commit}))`);
+  out.push('');
+  out.push('### 앱이 쓰는 TR');
+  if (!d.used.length) out.push('바뀐 것 없음 — 카탈로그(참고용 목록)만 갱신합니다.');
+  for (const u of d.used) {
+    out.push(`- **${u.tr}**`);
+    for (const l of u.lines) out.push(`  - ${l}`);
+  }
+  out.push('');
+  out.push('### 그 밖의 KIS API(앱이 안 씀)');
+  out.push(`추가 ${d.other.added.length} · 삭제 ${d.other.removed.length} · 변경 ${d.other.changed.length}`);
+  const list = (name, xs) => xs.length && out.push(`- ${name}: ${xs.slice(0, 30).map((x) => `\`${x}\``).join(', ')}${xs.length > 30 ? ` 외 ${xs.length - 30}` : ''}`);
+  list('추가', d.other.added);
+  list('삭제', d.other.removed);
+  list('변경', d.other.changed);
+  return out.join('\n');
+}
+
+
+module.exports = { fetchCatalog, usedApis, generateTypes, serializeCatalog, trIdsInCode, diffCatalogs, catalogReport };
 
 if (require.main === module) {
   const [cmd = 'verify', ...rest] = process.argv.slice(2);

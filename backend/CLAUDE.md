@@ -220,6 +220,13 @@ limit 수치가 공식 문서에 없어 KIS(4tps)보다 보수적인 2tps로 시
   "매도" 한글 텍스트로 판정한다(숫자 코드 `dl_typ_cd`의 정확한 의미를 실측으로 확인
   못 해서 — KB가 이미 사람이 읽을 수 있는 라벨을 내려주는 쪽을 신뢰).
 
+**⚠ 공개 명세에서 계좌 TR이 빠졌다(2026-09-14, 공식 저장소 커밋 "불필요 sample 삭제" — 97 → 31종, 남은 건 "투자정보"뿐).** 그래서 감시·타입은
+그 직전 공개본 `159480c`(2026-07-29)을 고정 기준으로 쓴다(`spec/watch.json` kb, `spec/snapshots/kb.json`, `kb/kbSpec.gen.ts` — `kbPost<TR>`이
+요청·응답을 타입으로). 명세는 한 줄 목록이고 `grid_cnt1` 뒤가 반복 줄(`dataBody.Record1`)이다. 2026-11-17 `check:kb -- --record`: API는 그대로
+응답하고 요약 필드가 고정 기준과 **정확히 같다**(봉투 `o_lngth·o_clsf·o_msg`만 더 있음). 생성 타입이 짚은 것: 보유의 시장을 명세에 없는 `mkt_clsf`로
+읽어 **늘 null**이었다 → 통화로 정한다(`marketFromCurrency`, KRW→KR·USD→US). 거래내역 `SWQA2301`엔 연속조회 키 `nxt_key`(입출력)가 있는데
+첫 페이지만 받는다 — 0건이라 확인 못 해 그대로 두고 `check:kb`가 `nxt_key`가 오면 WARN으로 알린다. 실서버 점검: `npm run check:kb`.
+
 **검증 상태(중요)**: 위 매핑은 공식 TR 스펙과 실제 appKey로의 인증/요청 포맷 검증까지는
 마쳤지만(2026-08-17), **연결된 계좌가 그 시점에 보유종목·매매내역이 전부 0건이라 0이
 아닌 실제 값으로 필드 단위 검증은 못 했다** — 특히 `is_cd`/`stnd_is_cd`(종목코드)가
@@ -596,6 +603,32 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   유형명(`act_trd_tp_nm`)·적요에 배당·분배·이자·환급·세금·수수료·이용료·취소·정정이 들어가면 제외(⚠ 가정), 통화 필드가 없어
   원화로 본다. 타사 입고 건수는 종합거래내역 입출고(`02`)의 "입고" 적요. 토스와 같은 `CashFlowSummary` 모양이라 카드 공용.
 - 쓰지 않은 것: 다가오는 배당 확정분(`rightsScheduled`엔 금액이 없고 비율만), 주문 API 전부.
+
+## LS증권·DB증권 (`brokers/ls/`, `brokers/db/`, 공용 `brokers/xingFamily.ts`, 2026-11-17)
+
+**⚠⚠ 둘 다 실제 키로 한 번도 호출하지 않았다**(개발자에게 계좌가 없음) — 키를 받으면 **`npm run check:ls|check:db -- --record`부터**(가정을
+PASS/WARN으로 판정하고 응답 모양을 `<증권사>-live.json`에 남긴다) → `spec:types` → `build`. 두 회사는 같은 계열 시스템이라(TR 코드
+`CDPCQ04700` 등이 겹치고 토큰·응답 봉투가 같다) 공용 부분을 `xingFamily.ts`에 뒀다: 토큰 파일 캐시(`createXingTokenCache` — form
+`appkey`·`appsecretkey`·`scope=oob`, 응답 `access_token|token`·`expires_in|expire_in`), 숫자(`xNum` — 정수는 JSON 숫자, 소수는 소수 문자열),
+종목코드(`krSymbol` — `A005930`·ISIN `KR7005930003`), 계좌 거래내역 해석(`mapLedgerTrades`·`classifyLedgerDividends` — 적요 "매수/매도/배당",
+⚠ 가정: 배당 세후 = 정산금액 `AdjstAmt`). **수익률은 평가손익 ÷ 매입금액으로 직접 낸다**(DB는 API마다 비율/퍼센트가 다르다).
+- **둘 다 앱키 = 계좌 하나**(계좌 목록 TR 없음). LS는 C계열 응답 `OutBlock1.AcntNo`가 계좌번호를 되돌려 줘서 거기서 읽는다(키움처럼).
+  DB는 계좌번호를 알려주는 응답이 없어 **설정의 `accountNumber`**(KB의 accountId와 같은 로컬 표시용)를 계좌 id로 쓴다.
+- **LS**(`openapi.ls-sec.co.kr:8080`, 전부 POST, 헤더 `tr_cd`·`tr_cont`·`tr_cont_key`, 요청 `<TR>InBlock(1)`, 응답 `<TR>OutBlockN`):
+  보유 `t0424`(본문 `cts_expcode` 연속조회), 예수금·계좌 `CSPAQ12200`, 해외 `COSOQ00201`(OutBlock4 종목·OutBlock3 통화별 외화예수금 — 명세는
+  객체라는데 공식 예시는 배열), 매매·입출금 `CDPCQ04700`(헤더 연속조회, 1년씩). 해외 매매 줄 종목번호가 ISIN이면 해외 잔고의 ISIN→단축코드로.
+  ⚠ 오류코드표가 없어 **`rsp_cd`가 0으로 시작하면 정상**(00000·00001·00136·00133 계속·00200 조회내역 없음)으로 가정. 해외 배당은 이 표에서 확인
+  못 해 **원화 배당만 동기화 소유**(KIS와 같음, 달러는 수동). 포털 "시작하기" 예제(tr_id·GET·CANO)는 명세와 다르다 — 명세·TR 가이드만 따른다.
+- **DB**(`openapi.dbsec.co.kr:8443`, POST, 헤더 `cont_yn`·`cont_key`, 요청 `{"In":{…}}`, 응답 `Out`·`Out1`…): 국내 잔고 `CSPAQ03420`(⚠ 평균단가
+  필드가 없어 매입금액 ÷ 수량), 예수금 `CDPCQ00100`, 해외 `CAZCQ00400`(Out2 종목·Out1 통화별), 국내 매매·입출금 `CDPCQ04700`(최대 12개월 → 1년씩),
+  해외 매매 `CAZCQ00200`(방향 2 매수·1 매도), 해외 배당 `CAZCQ01600`(**"배당금입금(외화)" 세전 + "배당세출금(외화)" 원천세 두 줄**을 같은 날·종목끼리
+  짝지어 세후). 성공 = `rsp_cd 00000`, 2679(조회내역 없음)는 0건, IGW00121/00123 토큰 무효 → 재발급 1회, IGW00201 호출 초과 → 재시도. 토큰 발급은
+  **1분 1건**·유효기간 안 재발급은 같은 토큰(공식). 원화·달러 배당 모두 동기화 소유. ⚠ **포털 응답 예시(resExample)엔 실제 고객 데이터로 보이는 값**이
+  있어 저장소에 두지 않는다 — 명세 감시는 구조만(`db.json`), 테스트는 지어낸 값.
+- 명세 감시: LS `tr-guides.json`(공식 다운로드), DB 포털 TR 필드 명세 JSON(`guide/tr/property/{trId}` — 공개 API로 문서화된 것은 아님) →
+  `snapshots/ls.json`·`db.json` → `ls/lsSpec.gen.ts`·`db/dbSpec.gen.ts`(공용 생성기 `genBlockTypes`). 테스트 `test/lsDbClient.test.ts`(LS는 공식
+  TR 가이드 응답 예시 `fixtures/ls-spec-examples.json` — 계좌번호·계좌명은 가짜로 바꿈).
+- 부가 기능(공식 실현손익 비교·입금 기준 원금 카드)은 아직 없다 — 두 회사 모두 API는 있다(LS `FOCCQ33600`, DB `CSPAQ07800`·`CAZCQ00300`·`FOCCQ10800`).
 
 ## 토스 시장 정보 보조 기능 (`src/marketInsights.ts`, `routes/marketInfo.ts`)
 
@@ -1188,6 +1221,25 @@ KB는 테스트 화면)이라 Electron 메인 프로세스(Node) 안에 넣으�
   `test/tossSpecExamples.test.ts`가 예시 전부를 가짜 서버로 돌려 예외 없이 숫자로 바뀌는지 본다 — 이 테스트가 **같은 커서 반복 시 거래내역
   200페이지를 다 돌던 문제**를 잡았다(지금은 같은 커서면 멈추고, 상한에 닿으면 던진다). NH·KIS 명세엔 응답 예시가 없다.
 
+### 증권사 공통 — 실제 응답 기록·응답 변화 감지·자동 업데이트 PR (2026-11-17, 아래 KIS 묶음을 전 증권사로)
+
+- **실제 응답 기록**: 모든 실서버 점검에 `-- --record`(`npm run check:toss|nh|kb|kiwoom -- --record`, KIS는 `kis:record`) — 성공 응답의
+  **블록별 필드 이름과 값 형태만**(값·계좌번호·금액 없음, `test/responseShape.test.ts`) `spec/snapshots/<증권사>-live.json`에 남긴다
+  (`scripts/lib/live-check.cjs`의 `shapeRecorder`, 줄 없던 블록은 예전 기록 유지). 블록 이름은 본문 경로: `$`(최상위 글자 값)·`output1`·
+  `result.items`·`Output_1`·`dataBody.Record1`. 토스는 토큰이 하나라 **앱을 닫고**, NH는 **저장 토큰이 유효할 때**(재발급 = 계좌주 보안 알림).
+  2026-11-17 기록: KIS 18·토스 16·NH 8·KB 3 API(NH·KB는 연동 계좌 0건이라 요약 블록만). 키움·LS·DB는 키가 없어 없음 — **키를 받으면 `check:<증권사> -- --record`**.
+- **응답 변화 감지**(`brokers/responseShape.ts`): 각 요청 함수(`kisGet`·`tossFetch`·`nhPost`·`kiwoomPost`·`kbPost`)가 성공 응답마다
+  `noteResponse(증권사, API, 본문)` → 기록(`liveFields.gen.ts`, `spec:types`가 생성)에 있던 필드가 **빠지면** 로그 파일에 한 번 경고. 키는 KIS TR·
+  토스 경로 템플릿(`tossPathTemplate`)·NH 경로·키움 api-id·KB TR.
+- **코드 ↔ 감시 목록**: `test/specCoverage.test.ts`가 코드가 부르는 토스 경로·NH 경로·키움 API·KIS TR·KB TR이 전부 감시 목록에 있는지 본다.
+- **자동 업데이트 PR**(`.github/workflows/spec-watch.yml` + `scripts/spec-watch.cjs auto`, 매주 월 09:17 KST): 다섯 증권사 명세와 KIS 카탈로그를
+  비교해 바뀌었으면 스냅샷·카탈로그·생성 타입·토스 예시를 갱신하고 빌드·테스트·`kis:verify --offline` 결과를 붙여 **`bot/spec-update` PR 하나**를
+  열거나 갱신한다(같으면 조용히, 못 받으면 잡 실패 → 메일). **앱 코드는 고치지 않는다** — 읽는 필드가 사라지면 PR의 빌드가 실패한 채로 열리고 그게
+  고칠 곳이다. 실행 중 앱이 필드를 추측해 바꿔 읽는 방식은 금액을 조용히 틀리게 할 수 있어 안 한다. `*-live.json`은 키가 필요해 CI가 못 만든다.
+  저장소 설정 "Allow GitHub Actions to create and approve pull requests"를 2026-11-17에 켰다(기본 토큰은 읽기 그대로) — 꺼지면 브랜치만 올리고
+  이슈 "증권사 명세 업데이트 대기"에 링크를 남긴다. GITHUB_TOKEN이 만든 PR엔 ci.yml이 돌지 않아 이 잡이 빌드·테스트를 직접 돌린다. 봇 커밋 작성자는
+  `github-actions[bot]`(소유자 규칙과 맞추려면 squash 머지).
+
 ### KIS API 검증 묶음 (`scripts/kis-verify.cjs`, `kis/kisResponseShape.ts`, 2026-11-17)
 
 KIS는 OpenAPI 같은 명세가 없다. 포털(apiportal) 화면의 필드 표·엑셀은 브라우저 세션이 있어야 받아져(직접 부르면 `/intro`로 되돌림)
@@ -1204,13 +1256,7 @@ KIS는 OpenAPI 같은 명세가 없다. 포털(apiportal) 화면의 필드 표·
    예전 손 인터페이스(`[key: string]: unknown` — 오타가 안 잡혔다)는 전부 이 별칭이다.
 - `npm run kis:verify`(`-- --offline`은 CI 매 푸시): 앱 코드가 부르는 TR(주석 뺀 코드의 따옴표 문자열) = `watch.json`의 `kis.trIds` ⊂ 카탈로그,
   최신 공식 예제와 비교(쓰는 TR의 주소·파라미터·필드), 실측↔예제 대조, 기록 나이(90일 넘으면 WARN), 생성 타입 최신 여부.
-- **자동 업데이트**(`.github/workflows/kis-auto-update.yml` + `scripts/kis-auto-update.cjs`, 매주 월 09:47 KST): 공식 예제 구조가 바뀌었으면
-  카탈로그·`snapshots/kis.json`·`kisSpec.gen.ts`를 다시 만들고 빌드·테스트·`kis:verify --offline` 결과를 붙여 **`bot/kis-spec-update` PR 하나**를
-  열거나 갱신한다(저장소 커밋만 바뀌면 아무것도 안 함). **앱 코드는 고치지 않는다** — 쓰는 필드가 사라지면 PR의 빌드가 실패한 채로 열리고 그게
-  고칠 곳이다. 실행 중 앱이 필드를 추측해 바꿔 읽는 방식은 금액을 조용히 틀리게 할 수 있어 안 한다. `kis-live.json`은 키가 필요해 CI가 못 만든다
-  (앱이 쓰는 TR이 바뀌었으면 PR 본문이 로컬 `kis:record`를 안내). 저장소 설정 "Allow GitHub Actions to create and approve pull requests"를
-  2026-11-17에 켰다(기본 토큰 권한은 읽기 그대로, 이 잡만 쓰기) — 꺼지면 브랜치만 올리고 이슈 "KIS 공식 예제 업데이트 대기"에 PR 만들기 링크를 남긴다. GITHUB_TOKEN이 만든 PR엔 ci.yml이
-  돌지 않아(GitHub 정책) 이 잡이 같은 빌드·테스트를 직접 돌린다. 봇 커밋 작성자는 `github-actions[bot]`.
+- **자동 업데이트**: 아래 "증권사 공통 — 자동 업데이트 PR"(spec-watch.yml)이 KIS 카탈로그도 같이 갱신한다.
 - **앱 안 감지**: `kisGet`이 성공 응답마다 `noteKisResponse` → 기록(`KIS_LIVE_FIELDS`)에 있던 필드가 **빠졌으면** 로그 파일에 한 번 경고
   (`[kis] 응답 모양이 기록(kis-live.json)과 다릅니다 …`, 필드 이름만). 새 필드만 생긴 건 앱을 깨지 않아 경고하지 않는다.
 - **처음 돌려서 찾은 것(2026-11-17)**:
@@ -1256,8 +1302,9 @@ KIS 달러 배당은 동기화 소유가 아님, 토스 투자원금 분류(`tos
   - 모듈 전역 상태가 테스트 사이에 남는다(메모리 토큰, `responseCache`) — 테스트마다 앱키를 바꾸고(NH·KIS는 키 해시/
     파일로 갈림) `forceRefresh: true`로 부른다. 리미터 간격(초당 1~5건) 때문에 이 세 파일이 전체 시간의 대부분이다.
 - **공식 명세 예시**: 키움(`kiwoomClient.test.ts`)·토스(`tossSpecExamples.test.ts`)는 명세의 응답 예시를 그대로 입력으로 쓴다(위 "공식 명세 감시").
-  KIS 검증 묶음의 순수 부분(응답 모양에 값이 안 남는지, 기록과의 차이 경고, 예제 파일 해석)은 `kisVerification.test.ts`.
-- **실서버 점검(자동 테스트 아님)** — `npm run check:nh` / `check:kis` / `check:toss`(`scripts/*-live-check.cjs`,
+  KIS 검증 묶음의 순수 부분(응답 모양에 값이 안 남는지, 기록과의 차이 경고, 예제 파일 해석)은 `kisVerification.test.ts`, 증권사 공통 응답 모양은
+  `responseShape.test.ts`, 코드가 부르는 API ⊂ 감시 목록은 `specCoverage.test.ts`.
+- **실서버 점검(자동 테스트 아님)** — `npm run check:nh` / `check:kis` / `check:toss` / `check:kb` / `check:kiwoom` / `check:ls` / `check:db`(`scripts/*-live-check.cjs`,
   공용 `scripts/lib/live-check.cjs`). 설정에 저장한 키로 **조회 API만** 불러 기대 필드·숫자 변환·요약 합계와 종목 합
   대조·적요 해석·배당 세전/세후를 PASS/WARN/FAIL/SKIP으로 찍는다. 계좌번호·금액·종목은 출력하지 않는다(건수·필드명·적요만).
   - Electron으로 돈다(자격증명이 safeStorage 암호화) — `app.setName('@mystock/electron')`으로 앱과 같은 userData·키체인.

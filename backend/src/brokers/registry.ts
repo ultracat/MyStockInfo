@@ -3,6 +3,8 @@ import { tossAdapter } from './toss/tossAdapter';
 import { kisAdapter } from './kis/kisAdapter';
 import { nhAdapter } from './nh/nhAdapter';
 import { kiwoomAdapter } from './kiwoom/kiwoomAdapter';
+import { lsAdapter } from './ls/lsAdapter';
+import { dbAdapter } from './db/dbAdapter';
 
 // KB증권/삼성증권/미래에셋증권은 여기 안 들어간다 — API 연동을 안 하기로 했고
 // (사용자 요청), CSV로만 데이터를 관리한다(knownBrokers.ts의 `hasApiIntegration:
@@ -15,6 +17,8 @@ const registry: Partial<Record<BrokerId, BrokerAdapter>> = {
   kis: kisAdapter,
   nh: nhAdapter,
   kiwoom: kiwoomAdapter,
+  ls: lsAdapter,
+  db: dbAdapter,
 };
 
 export function getAdapter(broker: BrokerId): BrokerAdapter {

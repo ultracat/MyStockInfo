@@ -39,6 +39,18 @@ export const CREDENTIAL_FIELDS: Record<BrokerId, CredentialFieldSpec[]> = {
     { key: 'appKey', label: '앱키 (App Key)', secret: false },
     { key: 'appSecret', label: '시크릿키 (Secret Key)', secret: true },
   ],
+  // LS증권 — 앱키가 계좌 하나에 묶이고 C계열 TR 응답이 그 계좌번호를 되돌려 줘서 계좌번호는 받지 않는다(키움과 같음).
+  ls: [
+    { key: 'appKey', label: '앱키 (App Key)', secret: false },
+    { key: 'appSecret', label: '시크릿키 (App Secret Key)', secret: true },
+  ],
+  // DB증권 — 앱키가 계좌 하나에 묶이는데 API가 계좌번호를 알려주지 않는다 → 그 키를 받은 계좌번호를 적는다(DB로 보내지 않는 로컬 표시용,
+  // KB의 accountId와 같은 성격). 비우면 계좌가 'DB' 하나로 보인다.
+  db: [
+    { key: 'appKey', label: '앱키 (App Key)', secret: false },
+    { key: 'appSecret', label: '시크릿키 (App Secret)', secret: true },
+    { key: 'accountNumber', label: '계좌번호 (이 키를 받은 계좌)', secret: false, placeholder: '123-45-678901', kind: 'account' },
+  ],
   kb: [
     { key: 'appKey', label: 'appKey', secret: false },
     { key: 'appSecret', label: 'appSecret', secret: true },

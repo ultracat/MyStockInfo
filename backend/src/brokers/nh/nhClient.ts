@@ -7,6 +7,7 @@ import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
 import { redactText } from '../../logRedact';
 import type { paths } from './nhSpec.gen';
+import { noteResponse } from '../responseShape';
 
 // NH투자증권 나무(Namuh) Open API — "NHPLUG". 정본은 포털의 `llms-full.txt`와 자산군별 `openapi.json`
 // (www.nhplug.com/openapi-docs/{common,krstock,gbstock}/openapi.json, 2026-11-06 개정판 기준)과 공식 SDK
@@ -265,6 +266,7 @@ export async function nhPost<P extends NhPath>(
       } catch {
         throw new NhApiError(`NH투자증권 API 응답 파싱 실패: ${path}`, res.status, text);
       }
+      noteResponse('nh', path, body); // 응답 모양 관찰(값 없이) — nh-live.json과 비교·--record 기록
       const cts = (res.headers.get('cts') ?? '').trim() || null;
       const ctsFlag = (res.headers.get('cts_flag') ?? '').trim() || null;
       return { body, cts, ctsFlag };

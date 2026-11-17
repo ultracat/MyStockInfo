@@ -4,6 +4,7 @@ import { getCredentialFields } from '../../credentials';
 import { withRateLimitRetry } from '../rateLimiter';
 import { getTossRateLimiter, type TossRateLimitGroup } from './rateLimitGroups';
 import type { components } from './tossSpec.gen';
+import { noteResponse } from '../responseShape';
 
 const BASE_URL = 'https://openapi.tossinvest.com';
 
@@ -262,9 +263,23 @@ export async function tossFetch<T>(
     throw new TossApiError(`토스증권 API 호출 실패: ${path}`, res.status, text);
   }
 
+  let parsed: T;
   try {
-    return JSON.parse(text) as T;
+    parsed = JSON.parse(text) as T;
   } catch {
     throw new TossApiError(`토스증권 API 응답 파싱 실패: ${path}`, res.status, text);
   }
+  // 응답 모양 관찰(값 없이) — 실제 응답 기록(toss-live.json)과 필드가 달라졌으면 로그에 한 번 경고, --record면 모양을 모은다.
+  noteResponse('toss', tossPathTemplate(path), parsed);
+  return parsed;
+}
+
+/** 요청 경로 → 기록·비교에 쓰는 이름(쿼리를 떼고 종목·섹터 같은 경로 변수를 `{…}`로). */
+export function tossPathTemplate(path: string): string {
+  const p = path.split('?')[0];
+  return p
+    .replace(/^\/api\/v1\/stocks\/[^/]+\/warnings$/, '/api/v1/stocks/{symbol}/warnings')
+    .replace(/^\/api\/v1\/market-indicators\/[^/]+\/candles$/, '/api/v1/market-indicators/{symbol}/candles')
+    .replace(/^\/api\/v1\/sectors\/[^/]+\/stocks$/, '/api/v1/sectors/{sectorId}/stocks')
+    .replace(/^\/api\/v1\/sectors\/[^/]+\/etfs$/, '/api/v1/sectors/{sectorId}/etfs');
 }

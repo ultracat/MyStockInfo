@@ -10,6 +10,7 @@ const path = require('node:path');
 const { runLiveCheck } = require('./lib/live-check.cjs');
 
 runLiveCheck('키움증권 REST API 실서버 점검 (조회 API만, 개인 데이터 미출력) — 첫 실키 확인용', async (ctx) => {
+  const recorder = ctx.startRecording('kiwoom'); // -- --record면 응답 모양(값 없음)을 kiwoom-live.json에 — 첫 실키 때 꼭
   const { log, check, num, tally, todayKst, daysAgo } = ctx;
   const kw = ctx.require('brokers/kiwoom/kiwoomClient.js');
   const m = ctx.require('brokers/kiwoom/kiwoomMappers.js');
@@ -128,4 +129,5 @@ runLiveCheck('키움증권 REST API 실서버 점검 (조회 API만, 개인 데�
   }
   const usReal = await check.step('미국 실현손익 ust21530(최근 1년, 원화)', () => kw.fetchKiwoomUsRealized(daysAgo(365), to));
   if (usReal) check.rows('미국 실현손익 필드', usReal, ['sell_qty', 'sell_amt', 'buy_amt', 'pl_amt'], ['sell_dt', 'stk_cd']);
+  if (recorder) recorder.save();
 });

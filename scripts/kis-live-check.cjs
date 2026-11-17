@@ -10,18 +10,14 @@
 // backend/spec/snapshots/kis-live.json에 남긴다. KIS 검증 묶음(scripts/kis-verify.cjs)이 이 기록으로 타입(kisSpec.gen.ts)을 만들고,
 // 앱은 평소 조회 때 이 기록과 응답 모양을 비교한다. 이번에 줄이 없던 블록(예: 해외 보유 0건)은 예전 기록을 그대로 둔다.
 // 기록 모드는 점검 항목 외에 앱이 쓰는 나머지 TR(휴장일·종목명·종목 상세·ETF 구성·해외 권리)도 공개 종목으로 한 번씩 부른다.
-const fs = require('node:fs');
-const path = require('node:path');
 const { runLiveCheck } = require('./lib/live-check.cjs');
 
-const RECORD = process.argv.includes('--record');
-const LIVE_FILE = path.join(__dirname, '..', 'backend', 'spec', 'snapshots', 'kis-live.json');
+const { RECORD } = require('./lib/live-check.cjs');
 
 runLiveCheck(`한국투자증권 Open API 실서버 점검 (조회 TR만, 개인 데이터 미출력)${RECORD ? ' + 응답 모양 기록' : ''}`, async (ctx) => {
   const { log, check, num, tally, todayKst, daysAgo } = ctx;
   const kis = ctx.require('brokers/kis/kisClient.js');
-  const shapes = {};
-  if (RECORD) kis.observeKisResponses((tr, body) => (shapes[tr] = kis.mergeKisShapes(shapes[tr] || {}, kis.describeKisResponse(body))));
+  const recorder = ctx.startRecording('kis');
   const { kisAdapter } = ctx.require('brokers/kis/kisAdapter.js');
   const { classifyKisRights } = ctx.require('brokers/kis/kisDividendSync.js');
   const { getDataDir } = ctx.require('paths.js');
@@ -150,18 +146,7 @@ runLiveCheck(`한국투자증권 Open API 실서버 점검 (조회 TR만, 개인
   await check.step('해외 권리종합 HHDFS78330900', () => kis.fetchKisOverseasIceRights('AAPL', daysAgo(120), ahead));
   await check.step('해외 기간별권리 CTRGT011R', () => kis.fetchKisOverseasDividendRights('AAPL', daysAgo(400), todayKst()));
 
-  // 9) 모양 저장 — 값은 없다(필드 이름·형태만). 이번에 줄이 없던 블록은 예전 기록을 둔다(자료가 있던 때의 필드가 더 정확하다).
-  const prev = fs.existsSync(LIVE_FILE) ? JSON.parse(fs.readFileSync(LIVE_FILE, 'utf8')) : { trs: {} };
-  const trs = { ...prev.trs };
-  for (const [tr, shape] of Object.entries(shapes)) {
-    const merged = { ...(prev.trs[tr] || {}) };
-    for (const [block, b] of Object.entries(shape)) if (b.seenRows || !merged[block] || !merged[block].seenRows) merged[block] = b;
-    trs[tr] = merged;
-  }
-  const sortKeys = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v);
-  fs.writeFileSync(LIVE_FILE, JSON.stringify(sortKeys({ recordedAt: todayKst(), trs }), null, 2) + '\n');
-  const recorded = Object.keys(shapes).sort();
-  const empty = recorded.filter((tr) => !Object.values(shapes[tr]).some((b) => b.seenRows));
-  log('PASS', '응답 모양 기록', `${recorded.length}개 TR → ${path.relative(process.cwd(), LIVE_FILE)}${empty.length ? ` (줄 없음: ${empty.join(', ')})` : ''}`);
-  log('INFO', '다음', 'npm run kis:types → npm run build → npm run kis:verify');
+  // 9) 모양 저장(값 없음) — scripts/lib/live-check.cjs shapeRecorder. KIS는 타입도 이 기록으로 만든다(npm run kis:types).
+  recorder.save();
+  log('INFO', 'KIS', 'npm run kis:types → npm run kis:verify');
 });

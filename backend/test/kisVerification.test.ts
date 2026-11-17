@@ -11,7 +11,7 @@ import { KIS_LIVE_FIELDS } from '../src/brokers/kis/kisSpec.gen';
 
 const requireCjs = createRequire(__filename);
 const { parseKisExample } = requireCjs(path.join(__dirname, '..', '..', 'scripts', 'lib', 'kis-catalog.cjs'));
-const { diffCatalogs } = requireCjs(path.join(__dirname, '..', '..', 'scripts', 'kis-auto-update.cjs'));
+const { diffCatalogs } = requireCjs(path.join(__dirname, '..', '..', 'scripts', 'kis-verify.cjs'));
 
 test('응답 모양: 값은 버리고 블록별 필드 이름과 형태만 — 봉투(rt_cd·msg·연속조회 키)는 블록이 아니다', () => {
   const shape = describeKisResponse({

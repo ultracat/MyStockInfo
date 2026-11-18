@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useContainerWidth } from '../useContainerWidth';
 import { krw } from '../format';
 
 export interface MonthlyReturnRow {
@@ -48,6 +49,7 @@ export default function MonthlyReturnChart({ rows }: { rows: MonthlyReturnRow[] 
     vAlign: 'above' | 'below';
     hAlign: 'center' | 'left' | 'right';
   } | null>(null);
+  const [boxRef, boxWidth] = useContainerWidth();
 
   if (rows.length === 0) {
     return <p style={{ color: 'var(--text-muted)' }}>매수 후 보유 중인 종목의 매매내역이 없습니다.</p>;
@@ -64,11 +66,11 @@ export default function MonthlyReturnChart({ rows }: { rows: MonthlyReturnRow[] 
   const plotHeight = topHeight + bottomHeight;
   const totalHeight = plotHeight + AXIS_SPACE;
 
-  const barWidth = Math.max(18, Math.min(48, 480 / rows.length - BAR_GAP));
+  const barWidth = Math.max(18, Math.min(64, boxWidth / rows.length - BAR_GAP)); // 카드 폭에 맞춤(예전 480px 고정, 2026-11-18)
   const width = rows.length * (barWidth + BAR_GAP);
 
   return (
-    <div style={{ position: 'relative', overflowX: 'auto' }}>
+    <div ref={boxRef} style={{ position: 'relative', overflowX: 'auto' }}>
       <svg width={width} height={totalHeight} role="img" aria-label="월별 손익률">
         <line x1={0} x2={width} y1={mid} y2={mid} stroke="var(--baseline)" strokeWidth={1} />
         {rows.map((row, i) => {

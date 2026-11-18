@@ -5,6 +5,7 @@ import type { BrokerFilter } from '../../calc/dividends';
 import { downloadCsv, parseCsv } from '../../csv';
 import { formatImportResult } from '../../importResult';
 import type { BrokerId, DividendCurrency, DividendRecord } from '../../types';
+import ActionMenu from '../../components/ActionMenu';
 
 // export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
 // 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
@@ -180,12 +181,14 @@ export function DividendTransferBar({
   }
 
   return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <ActionMenu label="가져오기·내보내기" align="left">
           <button className="ghost" onClick={onExportCsv} disabled={listFilteredRecords.length === 0}>
             CSV 내보내기 ({listBroker === 'ALL' ? '전체' : BROKER_LABELS[listBroker]})
           </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>가져오기 대상</label>
+          <div className="menu-sep" />
+          <div className="menu-row">
+            <label>CSV 가져오기 대상</label>
             <select value={importBroker} onChange={(e) => setImportBroker(e.target.value as BrokerFilter)}>
               <option value="ALL">전체</option>
               {BROKER_ORDER.map((id) => (
@@ -194,11 +197,12 @@ export function DividendTransferBar({
                 </option>
               ))}
             </select>
-            <button className="ghost" onClick={onImportClick} disabled={importing}>
-              {importing ? '가져오는 중...' : 'CSV 가져오기'}
-            </button>
-            <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
           </div>
+          <button className="ghost" onClick={onImportClick} disabled={importing}>
+            {importing ? '가져오는 중...' : 'CSV 가져오기'}
+          </button>
+          <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={onImportFile} />
+          <div className="menu-sep" />
           <button
             className="ghost"
             onClick={onExportToGoogleSheet}
@@ -215,6 +219,7 @@ export function DividendTransferBar({
           >
             {googleSyncing ? '처리 중...' : 'Google Sheets에서 가져오기'}
           </button>
+          </ActionMenu>
           {importResult && (
             <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{importResult}</span>
           )}

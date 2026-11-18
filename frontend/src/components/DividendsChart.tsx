@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { MonthlySummaryRow } from '../types';
 import { krw, krwCompact, usdFmt as usd } from '../format';
+import { useContainerWidth } from '../useContainerWidth';
 
 const HEIGHT = 180;
 const BAR_GAP = 6;
@@ -46,6 +47,7 @@ export default function DividendsChart({
   // 그래서 위치 계산이 필요 없는 방식으로 바꿨다: 차트 아래 항상 같은 자리에 고정된
   // 영역을 하나 두고, 마우스를 올린 막대의 상세를 거기에 표시한다.
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [boxRef, boxWidth] = useContainerWidth();
 
   // 받은 배당과 예상 배당의 달을 합친 축 — 예상만 있는 달(이번 달에 아직 받은 게 없는 경우 등)도 막대가 생긴다.
   const EMPTY = (month: string): MonthlySummaryRow => ({ month, totalKrw: 0, totalUsd: 0, count: 0 });
@@ -70,7 +72,13 @@ export default function DividendsChart({
   const total = rows.reduce((sum, r) => sum + valueKrw(r), 0);
   const expectedTotal = expectedRows.reduce((sum, r) => sum + valueKrw(r), 0);
   const max = Math.max(...rows.map((r) => valueKrw(r) + valueKrw(expectedFor(r.month))), 1);
-  const barWidth = Math.max(18, Math.min(48, 480 / rows.length - BAR_GAP));
+  // 카드 폭에 맞춘다(예전엔 480px 고정이라 넓은 카드의 절반만 썼다). "전체" 연도처럼 달이 많으면 막대가 가늘어지고, 그땐 막대 위 숫자를
+  // 빼고(겹쳐 읽을 수 없었다 — 아래 상세 칸이 대신 보여 줌) 달 라벨도 몇 개 건너 하나만 둔다(2026-11-18 UX 점검).
+  const barWidth = Math.max(8, Math.min(56, boxWidth / rows.length - BAR_GAP));
+  const showValues = barWidth >= 30;
+  const multiYear = new Set(rows.map((r) => r.month.slice(0, 4))).size > 1;
+  const labelEvery = Math.max(1, Math.ceil((multiYear ? 40 : 24) / (barWidth + BAR_GAP)));
+  const monthLabel = (m: string) => (multiYear ? `${m.slice(2, 4)}.${m.slice(5)}` : m.slice(5));
   const width = rows.length * (barWidth + BAR_GAP);
   const active = hoverIndex !== null ? rows[hoverIndex] : null;
   const activeExpected = active ? expectedFor(active.month) : null;
@@ -108,14 +116,14 @@ export default function DividendsChart({
           {hasStacked && <span style={{ color: 'var(--text-muted)' }}>숫자: 진한 막대 위 = 받은 배당, 맨 위(흐린 글씨) = 예상 포함</span>}
         </div>
       )}
-      <div style={{ overflowX: 'auto' }}>
+      <div ref={boxRef} style={{ overflowX: 'auto' }}>
         <svg
           width={width}
-          height={labelSpace + HEIGHT + AXIS_SPACE}
+          height={(showValues ? labelSpace : 8) + HEIGHT + AXIS_SPACE}
           role="img"
           aria-label="월별 배당금 막대 그래프"
         >
-          <g transform={`translate(0, ${labelSpace})`}>
+          <g transform={`translate(0, ${showValues ? labelSpace : 8})`}>
             {[0.25, 0.5, 0.75, 1].map((f) => (
               <line
                 key={f}
@@ -172,7 +180,7 @@ export default function DividendsChart({
                   {/* 막대 위 숫자 — 받은 배당은 **진한 막대 바로 위**(예상이 얹힌 달은 흐린 막대 안쪽에 겹친다 — 배경색 테두리로
                       읽히게), 예상 포함 합계는 흐린 막대 위에 흐린 글씨. 흐린 막대가 낮아 두 숫자가 겹치면 합계를 한 줄 위로 올린다.
                       받은 배당만 있거나 예상만 있는 달은 한 줄. */}
-                  {(() => {
+                  {showValues && (() => {
                     const cx = x + barWidth / 2;
                     if (!(expectedH > 0 && actualH > 0)) {
                       return (
@@ -211,7 +219,7 @@ export default function DividendsChart({
                     fontSize={11}
                     fill="var(--text-muted)"
                   >
-                    {row.month.slice(5)}
+                    {i % labelEvery === 0 ? monthLabel(row.month) : ''}
                   </text>
                 </g>
               );

@@ -4,6 +4,7 @@ import CollapseToggle from '../../components/CollapseToggle';
 import { dividendYields } from '../../calc/insights';
 import { krw, localToday } from '../../format';
 import type { DividendRecord } from '../../types';
+import Hint from '../../components/Hint';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 const pct = (v: number | null) => (v === null ? '-' : `${v.toFixed(2)}%`);
@@ -43,10 +44,10 @@ export function DividendYieldCard({ records, rateFor }: { records: DividendRecor
       </div>
       {!collapsed && (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <Hint>
             최근 12개월 받은 배당(세전)을 <b>매입금액</b>으로 나눈 값이 YOC(내 원가 기준 수익률), <b>평가금액</b>으로 나눈 값이 지금 시가 기준 수익률입니다.
             증가율은 그 전 12개월 대비입니다(그 사이 수량을 늘렸다면 같이 커집니다). 모든 계좌를 합친 지금 보유 종목만, 달러 배당은 지급 달 평균 환율로 셉니다.
-          </p>
+          </Hint>
           {error ? (
             <p className="text-critical">{error}</p>
           ) : !rows ? (

@@ -38,7 +38,8 @@ export default function PurchaseMarketTile({
         </div>
         {hasUsd && (
           <div style={SMALL_LINE}>
-            {formatKrw(a.krw)} · {usdFmt.format(usd)}
+            {/* 0인 통화는 빼고(달러만 있는 계좌에 "0원 ·"이 붙었다, 2026-11-18) */}
+            {[a.krw !== 0 && formatKrw(a.krw), usd !== 0 && usdFmt.format(usd)].filter(Boolean).join(' · ')}
           </div>
         )}
       </div>
@@ -46,7 +47,7 @@ export default function PurchaseMarketTile({
   }
 
   return (
-    <div className="stat-tile" style={{ flex: 2, minWidth: 320 }}>
+    <div className="stat-tile" style={{ flex: 2, minWidth: 280 }}>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
         {block('총 매입금액', purchase)}
         {block('총 평가금액', market)}

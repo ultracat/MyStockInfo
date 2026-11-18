@@ -4,6 +4,7 @@ import type { PortfolioOverview, TossAccountCashFlows } from '../types';
 import { krw, localToday, usdFmt } from '../format';
 import CollapseToggle from './CollapseToggle';
 import { flowsFromMonthlyNet, xirr } from '../calc/xirr';
+import Hint from './Hint';
 
 // 보유 종목 화면(토스증권·NH투자증권) — 은행에서 넣고 뺀 돈(토스: 거래내역의 입금·출금, 백엔드 tossCashFlows.ts /
 // NH: 입출금내역, nhCashFlows.ts)으로
@@ -116,7 +117,7 @@ export default function PrincipalCard({
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>넣고 뺀 시점을 반영한 연 수익률</div>
             </div>
           </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 0 }}>
+          <Hint>
             은행에서 넣고 뺀 돈만 원금으로 봅니다 — 매도로 확정된 손익, 배당·이자, 세금·수수료가 모두 수익에
             들어갑니다(위 매입금액 기준 손익과 다른 이유). 달러 입출금은 그때 환율, 지금 자산의 달러는 현재 환율로
             환산합니다.
@@ -129,7 +130,7 @@ export default function PrincipalCard({
                 </strong>
               </>
             )}
-          </p>
+          </Hint>
           {!collapsed && (
             <div className="table-scroll" style={{ marginTop: 12 }}>
               <table>

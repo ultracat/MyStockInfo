@@ -5,6 +5,7 @@ import { BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../../brokers';
 import type { AccountTaxType, BrokerId } from '../../types';
 import { errorText, type Notify } from './notify';
 import type { SettingsAccounts } from './useSettingsAccounts';
+import Hint from '../../components/Hint';
 
 /** accountId가 사람이 읽는 계좌번호가 아니라서(토스 Open API의 accountSeq — "1"
  *  같은 값) 표시용 계좌번호를 직접 입력받는 브로커. */
@@ -78,7 +79,7 @@ export function AccountLabelsCard({ accounts, notify }: { accounts: SettingsAcco
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>계좌 별칭 · 세금 유형</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <Hint>
         CSV 전용 브로커(KB증권/삼성증권/미래에셋증권)는 한 증권사 안에 계좌가 여러 개일 수 있습니다
         (예: 종합위탁계좌, 연금저축, IRP). 여기서 계좌번호에 별칭을 붙이면 보유종목/매매내역/배당금
         화면에서 계좌를 구분해 보여줍니다. <strong>세금 유형</strong>에 ISA/연금저축/IRP를
@@ -87,7 +88,7 @@ export function AccountLabelsCard({ accounts, notify }: { accounts: SettingsAcco
         (22%)와 완전히 다른 과세 체계가 적용되기 때문입니다. 토스증권은 Open API가 실제
         계좌번호 대신 내부 ID(예: 1)만 알려주므로, 계좌번호 칸에 실제 계좌번호를 입력하고
         저장하면 모든 화면에서 그 번호로 보여줍니다.
-      </p>
+      </Hint>
       {loading ? (
         <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>
       ) : knownAccounts.length === 0 ? (

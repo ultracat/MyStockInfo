@@ -27,6 +27,16 @@ export const usdCompact =new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 1,
 });
 
+/** 수량 — 소수 수량(해외 소수점 매매)은 6자리까지, 천 단위 쉼표. */
+export const qtyFmt = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 6 });
+
+/** 포지션 통화 그대로의 금액 — 원화는 "1,234.5원", 달러는 "$58.00"(예전엔 "58 USD"로 화면마다 달랐다, 2026-11-18). */
+export function formatMoneyIn(value: number, currency: string | null): string {
+  if (currency === 'USD') return usdFmt.format(value);
+  if (currency && currency !== 'KRW') return `${krw2dp.format(value)} ${currency}`;
+  return `${krw2dp.format(value)}원`;
+}
+
 export function formatKrw(value: number) {
   return `${krw.format(Math.round(value))}원`;
 }

@@ -209,6 +209,7 @@ export function DividendListCard({
             </button>
           )}
           {dividendSyncNotice && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{dividendSyncNotice}</span>}
+          <DividendTransferBar listFilteredRecords={listFilteredRecords} listBroker={listBroker} refresh={refresh} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
             <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
             <select
@@ -227,7 +228,6 @@ export function DividendListCard({
             </select>
           </div>
         </div>
-        <DividendTransferBar listFilteredRecords={listFilteredRecords} listBroker={listBroker} refresh={refresh} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
           {pageCount > 1 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>

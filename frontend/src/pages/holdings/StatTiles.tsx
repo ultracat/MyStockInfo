@@ -57,11 +57,14 @@ export function AmountTile({
   return (
     <div className="stat-tile">
       <div className="label">{label}</div>
-      <div style={SMALL_LINE}>{fmt(krwAmount ?? 0)}</div>
-      <div style={SMALL_LINE}>
-        {sign(usd)}
-        {usdFmt.format(usd)}
-      </div>
+      {/* 0인 통화 줄은 뺀다 — 달러만 있는 계좌에 "+0원" 줄이 붙어 같은 값이 두 번 보였다(2026-11-18). */}
+      {(krwAmount ?? 0) !== 0 && <div style={SMALL_LINE}>{fmt(krwAmount ?? 0)}</div>}
+      {usd !== 0 && (
+        <div style={SMALL_LINE}>
+          {sign(usd)}
+          {usdFmt.format(usd)}
+        </div>
+      )}
       <div className={`value ${tone(totalKrw)}`} style={{ marginTop: 2 }}>
         {fxRate ? fmt(totalKrw) : '환율 미적용'}
       </div>
@@ -119,8 +122,8 @@ export function RateTile({
   return (
     <div className="stat-tile">
       <div className="label">{label}</div>
-      <div style={SMALL_LINE}>{fmt(krwRate)}</div>
-      <div style={SMALL_LINE}>{fmt(usdRate)}</div>
+      {krwRate !== null && <div style={SMALL_LINE}>원화 {fmt(krwRate)}</div>}
+      {usdRate !== null && <div style={SMALL_LINE}>달러 {fmt(usdRate)}</div>}
       <div className={`value ${tone(totalRate)}`} style={{ marginTop: 2 }}>
         {fxRate ? fmt(totalRate) : '환율 미적용'}
       </div>

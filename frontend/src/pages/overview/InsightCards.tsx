@@ -5,6 +5,7 @@ import { fxEffect, lookThrough } from '../../calc/insights';
 import type { FlatHolding } from '../../calc/overview';
 import { krw, formatSignedKrw } from '../../format';
 import type { StoredTrade } from '../../types';
+import Hint from '../../components/Hint';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 // 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
@@ -47,10 +48,10 @@ export function FxEffectCard({ holdings, trades, currentFx }: { holdings: FlatHo
       </div>
       {!collapsed && (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <Hint>
             미국 주식의 원화 손익을 <b>주가 효과</b>(지금가 − 평단가, 지금 환율로 환산)와 <b>환율 효과</b>(달러 원금 × (지금 환율 − 매입 환율))로 나눕니다.
             매입 환율은 매매내역의 매수 달 평균 환율(한국수출입은행)로 이동평균한 값이라, 매매내역이 다 없는 종목은 뺍니다.
-          </p>
+          </Hint>
           {!currentFx ? (
             <p style={{ color: 'var(--text-muted)' }}>지금 환율을 몰라 계산할 수 없습니다.</p>
           ) : result.rows.length === 0 ? (
@@ -153,10 +154,10 @@ export function LookThroughCard({ holdings, toKrw }: { holdings: FlatHolding[]; 
       </div>
       {!collapsed && (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <Hint>
             보유한 국내 ETF를 구성 종목(한국투자증권, 비중 상위 30개)으로 펼쳐 직접 보유한 같은 종목과 합칩니다. 여러 ETF에 겹쳐 담긴 종목이 실제로 얼마인지
             보여 줍니다. 상위 30개 밖·현금 등은 "ETF 기타"로 따로 셉니다. 미국 ETF는 구성 정보를 받지 못해 그대로 한 종목으로 봅니다.
-          </p>
+          </Hint>
           {error ? (
             <p className="text-critical">{error.includes('설정되지') ? '한국투자증권 API 키가 있어야 ETF 구성을 받을 수 있습니다.' : error}</p>
           ) : !result ? (

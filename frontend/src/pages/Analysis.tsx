@@ -97,8 +97,8 @@ export default function Analysis() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1>분석</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <h2 className="page-title" style={{ margin: 0 }}>분석</h2>
         <button type="button" className="ghost" onClick={() => data.handleRefresh()} disabled={data.refreshing}>
           {data.refreshing ? '불러오는 중...' : '새로고침'}
         </button>

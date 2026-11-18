@@ -9,14 +9,22 @@ import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink
 import WarningBadges from '../components/WarningBadges';
 import { useStockWarnings } from '../marketInsights';
 import { WatchTargetEditor } from '../components/WatchTargetEditor';
+import { usePlanner } from '../usePlanner';
 
 function formatPrice(entry: WatchlistEntry): string {
   if (entry.lastPrice === null) return '-';
-  return entry.currency === 'USD' ? usdFmt.format(entry.lastPrice) : `${krw2dp.format(entry.lastPrice)}원`;
+  return priceIn(entry.lastPrice, entry.currency);
+}
+
+function priceIn(v: number, currency: string | null): string {
+  return currency === 'USD' ? usdFmt.format(v) : `${krw2dp.format(v)}원`;
 }
 
 export default function Watchlist() {
   const [entries, setEntries] = useState<WatchlistEntry[]>([]);
+  // 목록에서 목표가를 바로 보이게(예전엔 행을 눌러 상세를 열어야 알았다, 2026-11-18 UX 점검). 고치는 곳은 그대로 상세의 WatchTargetEditor.
+  const { planner } = usePlanner();
+  const targetBySymbol = useMemo(() => new Map((planner?.watchTargets ?? []).map((t) => [t.symbol, t])), [planner]);
   // 관심종목의 매수 유의사항(토스) — 종목명 옆 배지.
   const warningsBySymbol = useStockWarnings(entries.map((e) => e.symbol));
   // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
@@ -145,7 +153,7 @@ export default function Watchlist() {
             <label>종목코드</label>
             <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="예: AAPL, 005930" />
           </div>
-          <button type="submit" disabled={adding || !symbol.trim()}>
+          <button type="submit" className="primary" disabled={adding || !symbol.trim()}>
             {adding ? '추가 중...' : '추가'}
           </button>
         </form>
@@ -169,6 +177,7 @@ export default function Watchlist() {
                   <th>종목</th>
                   <th>시장</th>
                   <th>현재가</th>
+                  <th title="상세에서 정한 목표가 — 이상/이하가 되면 알림(설정 → 알림)">목표가</th>
                   <th></th>
                 </tr>
               </thead>
@@ -189,6 +198,22 @@ export default function Watchlist() {
                     </td>
                     <td>{e.market ?? '-'}</td>
                     <td>{formatPrice(e)}</td>
+                    <td>
+                      {(() => {
+                        const t = targetBySymbol.get(e.symbol);
+                        if (!t || (t.above === null && t.below === null)) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+                        const p = e.lastPrice;
+                        const hit = p !== null && ((t.above !== null && p >= t.above) || (t.below !== null && p <= t.below));
+                        return (
+                          <span style={{ fontWeight: hit ? 700 : undefined }} title={hit ? '지금 가격이 목표에 닿았습니다' : undefined}>
+                            {[t.above !== null && `≥ ${priceIn(t.above, e.currency)}`, t.below !== null && `≤ ${priceIn(t.below, e.currency)}`]
+                              .filter(Boolean)
+                              .join(' · ')}
+                            {hit && ' · 도달'}
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td>
                       <button
                         className="ghost"

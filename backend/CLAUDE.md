@@ -680,7 +680,7 @@ PASS/WARN으로 판정하고 응답 모양을 `<증권사>-live.json`에 남긴�
 `date`면 덮어쓰기(upsert) — 하루에 앱을 몇 번을 열어도 그 날짜 행 하나로 수렴하고,
 지난 날짜는 다시 안 바뀐다. `GET /api/portfolio-snapshots`는 날짜순 정렬 전체 목록.
 
-기존 "매월 보유종목 투자금 대비 수익률"/"월별 총 투자금 · 총 수입금" 두 카드
+기존 "누적 수익률(매월 말, 투자금 대비 — 예전 제목 “매월 보유종목 투자금 대비 수익률”)"/"월별 총 투자금 · 총 수입금" 두 카드
 (`MonthlyReturnChart`/`MonthlyInvestmentChart`, `frontend/CLAUDE.md`의
 `MonthlyInvestmentChart.tsx` 절 참고)는 매매내역에서 수량만 재구성하고 오늘
 평단가/종가를 곱하는 **근사치**라 과거까지 소급해서 보여줄 수 있지만, 이 스냅샷은

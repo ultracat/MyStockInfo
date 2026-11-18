@@ -105,7 +105,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   기록마다 지급월 평균 환율)가 만들고, 배당 기록의 `accountId`가 토스처럼 표시용 계좌번호
   (별칭의 `accountNumber`)로 적혀 있으면 내부 accountId로 되돌려 같은 계좌로 묶는다.
 - `src/components/MonthlyReturnChart.tsx` — 월별 diverging 막대(0% 기준선 위/아래로
-  자람, Overview.tsx의 "매월 보유종목 투자금 대비 수익률" 카드가 씀). 카테고리 색이 아니라
+  자람, Overview.tsx의 "누적 수익률 (매월 말, 투자금 대비)" 카드 — 2026-11-18 전엔 "매월 보유종목 투자금 대비 수익률" — 가 씀). 카테고리 색이 아니라
   `--good`/`--critical`(status 색)을 쓴다 — 이 값 자체가 손익(좋다/나쁘다)을
   뜻해서 color-formula.md의 "series가 곧 good/bad면 status를 입는다" 규칙에 해당.
   **기준선 위/아래 영역 높이가 비대칭이다** — 값이 전부 양수(또는 음수)인 흔한
@@ -160,7 +160,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   state). 새로고침을 연타해도 오래된 응답이 최신 상태를 덮어쓰지 않도록
   `monthlyCloseRequestId`(useRef 카운터)로 마지막 호출만 반영한다.
 - `src/components/NetWorthChart.tsx` — "순자산 추이(기록 시작 이후)" 카드(위 두
-  카드 바로 아래) 전용. `MonthlyInvestmentChart`와 그리는 방식(2-series line,
+  카드 바로 아래) 전용. **2026-11-18부터 0원이 아니라 기록 범위(최저~최고 ±여백)로 그리고 왼쪽 금액 눈금(`Y_AXIS`)·카드 폭 맞춤·날짜 라벨 건너뛰기**(아래 "화면 UX 정리" 절). `MonthlyInvestmentChart`와 그리는 방식(2-series line,
   `--series-1`/`--series-2`)은 똑같지만 입력이 다르다 — 매매내역 재구성 근사치가
   아니라 `backend/CLAUDE.md`의 "일별 자산 스냅샷" 절에서 하루 한 번 실제로 기록해둔
   값을 그대로 그린다. `loadAll()`의 나머지 로직(합계 계산)이 끝난 직후 그 합계를
@@ -185,7 +185,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `closed`면 1분 자동 새로고침 호출을 건너뛴다(수동 새로고침은 그대로). Overview.tsx는 "섹터 비중" 도넛
   (`sectorSlices` — 백엔드 `weights`대로 평가금액을 섹터에 배분, `sector: null`·응답 없는 종목은 회색 "분류 안 됨", 첫 로딩
   수십 초라 별도 상태, `etfPending`이면 30초마다 최대 6번 다시 받아 ETF 분류를 채움)과
-  월별 수익률 카드 아래 "지수와 비교" 표(`indexComparisonRows` — 내 보유종목은 `monthlyAmountRows`로 단순 Dietz 근사:
+  월별 수익률 카드 아래 "그 달 수익률 — 지수와 비교" 표(`indexComparisonRows` — 내 보유종목은 `monthlyAmountRows`로 단순 Dietz 근사:
   (평가 변화 − 투자금 변화) ÷ 전월 평가)를 둔다.
 - `src/components/UpcomingDividends.tsx`(배당금 화면, 월별 카드 아래) / `src/components/OfficialRealizedCompare.tsx`(실현손익
   화면, `broker` kis|nh|kiwoom — 증권사 필터가 전체이거나 그 증권사일 때) — 키가 없으면 비교 카드는 안 그리고(409), 다가오는 배당은
@@ -219,7 +219,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   수동 새로고침 버튼으로 충분하다고 판단).
 - `src/pages/Settings.tsx` — 브로커별 자격증명 폼. **하드코딩이 아니라 백엔드의
   `GET /api/settings/credential-fields`를 읽어 동적 렌더링** — 새 브로커/필드는
-  백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨. "API 키 등록" 폼의 브로커
+  백엔드 `credentialFields.ts`만 고치면 여기는 자동 반영됨. "API 키 등록" 폼은 처음 열 때 **아직 연결 안 된 증권사**를 고른다(`status` prop, 사용자가 한 번 고르면 그대로 — 2026-11-18). 이 폼의 브로커
   선택지는 `API_BROKER_IDS`가 아니라 **자격증명 필드가 실제로 있는 브로커**
   (`fieldSpecs[id]?.length > 0`)로 고른다 — KB증권처럼 CSV 전용이면서 자격증명은
   받는 브로커(아래 `kbSync.ts` 절 참고)가 생기면서 `API_BROKER_IDS`만으로는
@@ -541,7 +541,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   이미 뭘 골라놨든 상관없이 매번 연동 계좌로 강제 덮어쓴다. 사용자가 드롭다운에서
   다른 KB 계좌(IRP 등)를 직접 고르면 그 이후로는 안 건드린다.
 - **Google Sheets 내보내기/가져오기**(Dashboard.tsx/Trades.tsx/Dividends.tsx, 각 화면
-  헤더의 CSV 버튼 옆): `api.exportToGoogleSheet(dataType)`/`importFromGoogleSheet(dataType)`
+  헤더의 "가져오기·내보내기 ▾" 메뉴 안 — `components/ActionMenu.tsx`, 2026-11-18 전엔 CSV 버튼 옆에 나란히): `api.exportToGoogleSheet(dataType)`/`importFromGoogleSheet(dataType)`
   (`dataType`: `'holdings'|'trades'|'dividends'`)를 그대로 부르기만 하면 되고,
   대상 선택 UI가 없다 — CSV와 같은 범위(전체 브로커/계좌)를 그대로 시트 탭
   하나에 매핑한다. **CSV 가져오기와 의미가 다르다** — CSV는 부분 병합/업서트/
@@ -559,7 +559,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   계좌 하나를 골라 파고드는 화면인데, 이 화면만 유일하게 **모든 브로커·모든 계좌를
   합쳐서** 보여준다 — 카드 4개: 1) 전체 계좌 보유종목 비중(도넛, 종목별 평가금액
   상위 5 + 기타), 2) 선택 연도 월별 배당금(막대, `DividendsChart` 재사용), 3) 같은
-  연도 배당금 비중(도넛, 종목별), 4) 매월 보유종목 투자금 대비 수익률(diverging
+  연도 배당금 비중(도넛, 종목별), 4) 누적 수익률(매월 말, 투자금 대비 — 예전 제목 "매월 보유종목 투자금 대비 수익률", diverging
   막대, `MonthlyReturnChart`). 데이터는 마운트 시 한 번만 불러온다(자동 새로고침 없음,
   수동 "새로고침" 버튼만) — 브로커마다 계좌 목록 조회 + 계좌마다 보유종목 조회를
   전부 병렬로 하는 호출량이 다른 화면보다 훨씬 많아서(Dashboard.tsx의 "전체 계좌"
@@ -599,7 +599,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   뺀 뒤 배너로 안내).
 - `src/pages/Dashboard.tsx` — 보유 종목. 브로커 선택 → 계좌/환율 조회 → 포트폴리오
   조회, 3단계 `useEffect` 체인(환율은 모든 증권사 — 한투 미국 주식·CSV 달러 종목도 있어서, 예전엔 토스만). 네 스탯 타일(`AmountTile`/
-  `RateTile`)은 달러 보유분이 있으면(`hasUsdHoldings`) 원화/달러/합계(환산) 3줄,
+  `RateTile`)은 달러 보유분이 있으면(`hasUsdHoldings`) 원화/달러/합계(환산) 3줄(**0인 통화 줄은 뺀다** — 2026-11-18; 환율·토스 예수금 안내는 상자 두 개 대신 타일 아래 한 줄),
   없으면 한 줄만 보여준다 — **굵은 글씨는 항상 합계(환산) 한 줄에만** 쓴다.
   `hasUsd` 판단은 개별 타일 값이 아니라 포트폴리오 전체의 달러 투자금 여부로 넘겨서,
   손익금액이 우연히 0이어도 3줄 구조가 안 깨지게 한다. `RateTile`의 합계 손익률은
@@ -651,7 +651,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   하나라도 있으면 "계좌" 열을 보여준다(개별 계좌 모드에선 이 필드가 없어서 열 자체가
   안 생김 — Trades.tsx의 `isAllMode` 전용 컬럼과 같은 패턴이지만 여긴 별도 상태
   플래그 없이 데이터 유무로 판단).
-  **"배당 포함 손익금액" 열**(손익률 뒤): 손익금액 + **이 계좌의 이 종목**에서 받은
+  **"배당 포함 손익" 열**(손익 뒤 — 2026-11-18부터 표는 "평균가 · 현재가"·"손익(아래 손익률)"을 한 칸씩 합쳐 열 수를 줄였다): 손익금액 + **이 계좌의 이 종목**에서 받은
   배당 합계(`rows` useMemo의 `dividendFor`) — "종목별 수익" 화면과 달리 다른 계좌의
   같은 종목 배당은 섞지 않는다(사용자 명시 요청, 2026-11-04). 배당 기록의 계좌는
   `accountLabels.ts`의 `resolveDividendAccountId`로 내부 accountId로 되돌려 비교한다
@@ -676,7 +676,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   버튼을 숨기고, 직접 입력 폼의 증권사 선택지에서도 뺀다(백엔드도 409로 막는다). **`amount`는 세후, `tax`(선택)는
   원천징수 세금** — 표에 "세금" 열, 추가 폼·인라인 수정에 세금 칸, CSV에 선택 컬럼 `tax`가 있다. `currency`(KRW/USD) 기준 `amount`를 원본 통화
   그대로 저장(backend/CLAUDE.md 참고). `accountId`(선택, `string | null`)로 한 증권사
-  안의 여러 계좌를 구분할 수 있다 — "배당 기록 추가" 폼의 "계좌 (선택)" 입력칸(브로커
+  안의 여러 계좌를 구분할 수 있다 — "배당 기록 추가" 폼(2026-11-18부터 기본 접힘 — "+ 배당 기록 직접 추가")의 "계좌 (선택)" 입력칸(브로커
   종류와 무관하게 항상 노출 — CSV 전용 브로커뿐 아니라 토스/KIS도 계좌가 여러 개일 수
   있으므로), 인라인 수정 행, 목록의 "계좌" 컬럼(라벨이 있으면 라벨, 없으면 accountId
   원문, 둘 다 없으면 `-` — 라벨 조회는 `accountLabels.ts` 참고), CSV
@@ -776,7 +776,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   대상으로 하고, **가져오기**도 대상 선택 없이 CSV 행 자체의 `broker`/`accountId`를
   그대로 쓴다. `TRADES_CSV_HEADER`에 선택 컬럼 `name`이 있다 — 비우면 백엔드가
   자동조회하고, 채우면 그 값을 그대로 쓴다(API 연동이 전혀 없을 때의 유일한 채움
-  경로). **"매매내역 추가"**(수동 입력) 폼은 `CSV_ONLY_BROKER_IDS`만 증권사
+  경로). **"매매내역 추가"**(수동 입력, 2026-11-18부터 기본 접힘 — "+ 매매내역 직접 추가") 폼은 `CSV_ONLY_BROKER_IDS`만 증권사
   선택지로 준다(Dividends.tsx의 배당 기록 추가 폼과 다른 점 — 토스/KIS는 실시간
   API로 실제 체결 내역이 write-through 동기화되므로, 그 위에 수동 입력을 섞으면
   어느 쪽이 진짜 체결 내역인지 알 수 없어진다) — 별도 백엔드 라우트 없이 기존 CSV
@@ -924,6 +924,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `setWindowOpenHandler`가 시스템 브라우저로 넘기고, 링크 클릭은 행 클릭으로 번지지
   않게 막는다(관심종목 표는 행을 누르면 상세가 열려서). 상장폐지 종목(예: 028080 휴맥스홀딩스)은 국내 규칙상 링크가
   만들어지지만 토스에 페이지가 없으니 "링크 없음"으로 저장하면 된다.
+  **표 모양(2026-11-18)**: 링크가 있는 행은 주소를 짧은 글자(`https://www.` 뗌)로 보이고 "수정"(`editing` Set)을 눌러야 입력칸이 된다 —
+  수십 줄이 전부 입력칸이라 빽빽하고 오른쪽 버튼이 잘렸다. "저장"은 고칠 때만 보인다.
 - `src/pages/Watchlist.tsx` — 관심종목(보유하지 않은 종목의 현재가만 추적).
   다른 화면들의 "종목코드 입력 → 디바운스 자동조회" 패턴과 달리, 입력칸은
   그냥 값만 들고 있다가 "추가" 버튼을 눌러야 `api.addWatchlist(symbol)`을
@@ -945,7 +947,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   36개월을 넘으면 한 달 폭을 줄이고 점·매달 라벨 대신 선 + 1월에만 연도 라벨로
   그린다(수백 개월이 수만 px가 되지 않게).
   토스 미연동이거나 그 종목을 못 찾으면 빈 배열이 와서 차트 대신 안내 문구를
-  보여준다.
+  보여준다. 목록의 **"목표가" 열**(2026-11-18)은 `usePlanner()`의 `watchTargets`를 읽기만 한다(고치는 곳은 상세의
+  `WatchTargetEditor`) — 지금 가격이 이상·이하 조건에 닿으면 굵게 "도달"(상태 색 아님).
 
 ## 개발
 

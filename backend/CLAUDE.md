@@ -754,7 +754,10 @@ ISA/연금저축/IRP 계좌를 표시해두는 작은 `JsonStore`(`account-tax-t
 **등락률 `changeRate`**(2026-11-18, 토스 키가 있을 때만 — 없으면 null): 토스 현재가 API엔 전일 종가가 없어서 일봉(`/api/v1/candles`, 4시간 캐시)의
 **가격 시각보다 20시간 넘게 앞선 가장 최근 봉**을 직전 거래일로 본다(`tossMonthlyClose.ts`의 `previousCloseFrom`, 테스트 `krMarketCalendar.test.ts` —
 오늘 봉은 장 시작부터 가격 시각까지 길어야 16~17시간, 어제 봉은 24시간 이상 앞선다; 주말엔 마지막 거래일의 등락). 가격 시각은 `/prices`의 선택 필드
-`timestamp`(없으면 지금). ⚠ 일봉 `timestamp`가 그 거래일 시작 시각이라는 가정 — 실제 응답으로 등락률이 증권사 앱과 다르면 여기부터.
+`timestamp`(없으면 지금). **2026-11-18 실데이터 대조**: 일봉 `timestamp`는 국내 그날 00:00 KST, 미국 그날 00:00 ET(=14:00 KST)이고 `adjusted`
+값과 무관했다. ⚠ **국내 일봉 종가는 NXT 시간외까지 포함한 그날 마지막 가격**이라 KRX 기준가와 다르다(예: 기준가보다 수백 원 차이) → 국내 6자리는
+**KIS 키가 있으면 `inquire-price`의 기준가 `stck_sdpr`**(`fetchKisDomesticBasePrice`, 10분 캐시)를 쓰고, 없을 때만 토스 일봉. 미국은 토스 일봉이
+마지막 정규장 종가와 맞았다 — KIS 해외 `rate`는 "마지막 정규장의 등락"이라 주간거래·프리마켓 시간엔 우리 값(지금 가격 ÷ 마지막 정규장 종가)과 다른 게 정상.
 
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/stockNameResolver.ts`, `src/routes/stockInfo.ts`)
 

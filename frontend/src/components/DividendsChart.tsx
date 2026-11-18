@@ -74,7 +74,7 @@ export default function DividendsChart({
   const max = Math.max(...rows.map((r) => valueKrw(r) + valueKrw(expectedFor(r.month))), 1);
   // 카드 폭에 맞춘다(예전엔 480px 고정이라 넓은 카드의 절반만 썼다). "전체" 연도처럼 달이 많으면 막대가 가늘어지고, 그땐 막대 위 숫자를
   // 빼고(겹쳐 읽을 수 없었다 — 아래 상세 칸이 대신 보여 줌) 달 라벨도 몇 개 건너 하나만 둔다(2026-11-18 UX 점검).
-  const barWidth = Math.max(8, Math.min(56, boxWidth / rows.length - BAR_GAP));
+  const barWidth = Math.max(8, Math.min(72, boxWidth / rows.length - BAR_GAP));
   const showValues = barWidth >= 30;
   const multiYear = new Set(rows.map((r) => r.month.slice(0, 4))).size > 1;
   const labelEvery = Math.max(1, Math.ceil((multiYear ? 40 : 24) / (barWidth + BAR_GAP)));

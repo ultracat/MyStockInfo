@@ -19,6 +19,7 @@ export function DividendProjectionCard({
   rateFor,
   goalKrw,
   onGoalChange,
+  embedded = false,
 }: {
   /** 다가오는 배당 12개월치(받은 것은 이미 뺀 것) — 배당금 화면이 한 번 받아 목록·달력과 같이 쓴다. null = 불러오는 중. */
   items: UpcomingDividend[] | null;
@@ -28,6 +29,8 @@ export function DividendProjectionCard({
   rateFor: (month: string) => number | null;
   goalKrw: number | null;
   onGoalChange: (v: number | null) => Promise<void>;
+  /** "월별 배당금" 카드 안의 "앞으로 12개월" 보기로 그린다 — 카드 틀·제목·접기 없이 내용만(2026-11-18, 두 막대 그래프 카드를 하나로 합침). */
+  embedded?: boolean;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [goalDraft, setGoalDraft] = useState('');
@@ -56,13 +59,7 @@ export function DividendProjectionCard({
     }
   };
 
-  return (
-    <div className="card">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <h3 style={{ margin: 0 }}>앞으로 12개월 예상 배당</h3>
-        <CollapseToggle collapsed={collapsed} onClick={() => setCollapsed((c) => !c)} />
-      </div>
-      {!collapsed && (
+  const body = (
         <>
           <Hint>
             이번 달부터 12개월 동안 받을 배당의 <b>세후 추정</b>입니다. 이번 달은 받은 배당(진한 막대) 위에 남은 예상(흐린 막대)을 얹습니다.
@@ -120,7 +117,15 @@ export function DividendProjectionCard({
             {goalMsg && <span className="text-critical">{goalMsg}</span>}
           </div>
         </>
-      )}
+  );
+  if (embedded) return body;
+  return (
+    <div className="card">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <h3 style={{ margin: 0 }}>앞으로 12개월 예상 배당</h3>
+        <CollapseToggle collapsed={collapsed} onClick={() => setCollapsed((c) => !c)} />
+      </div>
+      {!collapsed && body}
     </div>
   );
 }

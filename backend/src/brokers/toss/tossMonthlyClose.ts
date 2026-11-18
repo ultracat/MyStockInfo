@@ -187,3 +187,34 @@ export async function fetchTossMonthlyClosePrices(
     return cached ? toMonthlyList(new Map(Object.entries(cached.months))) : [];
   }
 }
+
+/**
+ * 직전 거래일 종가 고르기(순수 함수, 테스트 있음) — 관심종목 등락률용(2026-11-18). 토스 현재가 API엔 전일 종가가 없어서 일봉으로 구한다.
+ * 일봉 `timestamp`는 그 거래일의 시작 시각이라, 가격 시각보다 **20시간 넘게 앞선** 봉 중 가장 최근 것을 직전 거래일로 본다 —
+ * 오늘 봉은 장 시작(국내 9시·미국 프리마켓 포함)부터 가격 시각까지 길어야 16~17시간이고, 어제 봉은 24시간 이상 앞선다.
+ * 주말·휴장일엔 가격 시각이 마지막 거래일이라 그 전 거래일이 고른다(그날의 등락). 못 고르면 null.
+ */
+export function previousCloseFrom(
+  candles: Array<{ timestamp: string; closePrice: number }>,
+  priceTime: Date
+): number | null {
+  const limit = priceTime.getTime() - 20 * 60 * 60 * 1000;
+  let best: { t: number; close: number } | null = null;
+  for (const c of candles) {
+    const t = Date.parse(c.timestamp);
+    if (!Number.isFinite(t) || t > limit || !(c.closePrice > 0)) continue;
+    if (!best || t > best.t) best = { t, close: c.closePrice };
+  }
+  return best ? best.close : null;
+}
+
+/** 직전 거래일 종가 — 최신 일봉 한 페이지(4시간 캐시)를 쓴다. 토스 미연동·실패면 null. */
+export async function fetchTossPreviousClose(symbol: string, priceTimeIso: string | null): Promise<number | null> {
+  if (!isTossConfigured()) return null;
+  try {
+    const { candles } = await fetchTossDailyCandlesPage(symbol, undefined);
+    return previousCloseFrom(candles, priceTimeIso ? new Date(priceTimeIso) : new Date());
+  } catch {
+    return null;
+  }
+}

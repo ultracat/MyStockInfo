@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { krw, krwCompact, usdCompact, usdFmt } from '../format';
+import { useContainerWidth } from '../useContainerWidth';
 
 export interface TradeSummaryBucket {
   /** X축에 그대로 찍히는 라벨 — 연간 보기면 "01".."12", 월간 보기면 "1".."31". */
@@ -11,10 +12,11 @@ export interface TradeSummaryBucket {
 }
 
 const PANEL_HEIGHT = 150;
-const GROUP_WIDTH = 48;
 const BAR_GAP = 2; // between 매수/매도 bars within a month group
 const GROUP_GAP = 10; // between month groups
-const BAR_WIDTH = (GROUP_WIDTH - BAR_GAP) / 2;
+// 묶음(한 달 또는 하루) 폭은 카드 폭에 맞춘다(2026-11-18 — 예전 48px 고정이라 카드의 70%만 썼다). 너무 넓거나 좁지 않게 범위를 둔다.
+const MIN_GROUP_WIDTH = 16;
+const MAX_GROUP_WIDTH = 88;
 // 막대가 패널 최댓값에 거의 닿을 만큼 길어져도(y가 8에 가까워져도) 그 위의
 // 금액 라벨이 잘리지 않도록 넉넉히 잡은 여백 — 8px짜리 여백으로 시작했다가
 // 막대가 큰 달에서 라벨(과 호버 툴팁)이 위로 잘려 보이지 않는 문제가 있어서
@@ -43,6 +45,12 @@ interface PanelProps {
  *  offset added back in. Keeping it local sidesteps that entirely. */
 function Panel({ title, rows, buyOf, sellOf, formatCompact, formatFull }: PanelProps) {
   const [hover, setHover] = useState<HoverInfo | null>(null);
+  const [boxRef, boxWidth] = useContainerWidth();
+  const GROUP_WIDTH = Math.max(MIN_GROUP_WIDTH, Math.min(MAX_GROUP_WIDTH, (boxWidth - (rows.length - 1) * GROUP_GAP) / Math.max(rows.length, 1)));
+  const BAR_WIDTH = (GROUP_WIDTH - BAR_GAP) / 2;
+  // 막대가 가늘면(월간 보기 31일) 막대 위 금액을 빼고(겹쳐 읽을 수 없다 — 호버 툴팁으로) 날짜 라벨도 건너뛴다.
+  const showValues = BAR_WIDTH >= 18;
+  const labelEvery = Math.max(1, Math.ceil(22 / (GROUP_WIDTH + GROUP_GAP)));
   const totalBuy = rows.reduce((sum, r) => sum + buyOf(r), 0);
   const totalSell = rows.reduce((sum, r) => sum + sellOf(r), 0);
   const max = Math.max(...rows.map((r) => Math.max(buyOf(r), sellOf(r))), 1);
@@ -58,9 +66,11 @@ function Panel({ title, rows, buyOf, sellOf, formatCompact, formatFull }: PanelP
           onMouseEnter={() => setHover({ x: x + w / 2, y: y + LABEL_SPACE, text: formatFull(value) })}
           onMouseLeave={() => setHover(null)}
         />
-        <text x={x + w / 2} y={y - 4} textAnchor="middle" fontSize={9} fill="var(--text-secondary)">
-          {formatCompact(value)}
-        </text>
+        {showValues && (
+          <text x={x + w / 2} y={y - 4} textAnchor="middle" fontSize={9} fill="var(--text-secondary)">
+            {formatCompact(value)}
+          </text>
+        )}
       </g>
     );
   }
@@ -82,6 +92,7 @@ function Panel({ title, rows, buyOf, sellOf, formatCompact, formatFull }: PanelP
           매도 <strong style={{ color: 'var(--text-primary)' }}>{formatFull(totalSell)}</strong>
         </div>
       </div>
+      <div ref={boxRef} style={{ overflowX: 'auto' }}>
       <svg
         width={width}
         height={LABEL_SPACE + PANEL_HEIGHT + AXIS_SPACE}
@@ -119,13 +130,14 @@ function Panel({ title, rows, buyOf, sellOf, formatCompact, formatFull }: PanelP
                   fontSize={11}
                   fill="var(--text-muted)"
                 >
-                  {row.label}
+                  {i % labelEvery === 0 ? row.label : ''}
                 </text>
               </g>
             );
           })}
         </g>
       </svg>
+      </div>
       {hover && (
         <div className="tooltip" style={{ left: hover.x, top: hover.y }}>
           {hover.text}

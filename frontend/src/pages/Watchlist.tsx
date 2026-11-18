@@ -177,6 +177,7 @@ export default function Watchlist() {
                   <th>종목</th>
                   <th>시장</th>
                   <th>현재가</th>
+                  <th title="직전 거래일 종가 대비(토스증권 키 필요)">등락률</th>
                   <th title="상세에서 정한 목표가 — 이상/이하가 되면 알림(설정 → 알림)">목표가</th>
                   <th></th>
                 </tr>
@@ -198,6 +199,9 @@ export default function Watchlist() {
                     </td>
                     <td>{e.market ?? '-'}</td>
                     <td>{formatPrice(e)}</td>
+                    <td className={e.changeRate == null ? undefined : e.changeRate >= 0 ? 'text-good' : 'text-critical'}>
+                      {e.changeRate == null ? '-' : `${e.changeRate >= 0 ? '+' : ''}${(e.changeRate * 100).toFixed(2)}%`}
+                    </td>
                     <td>
                       {(() => {
                         const t = targetBySymbol.get(e.symbol);

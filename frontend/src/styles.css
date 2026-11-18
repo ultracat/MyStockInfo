@@ -1002,3 +1002,27 @@ a.stock-link:focus-visible {
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+/* 보기 전환(세그먼트) — 월별 배당금 카드의 "받은 배당 / 앞으로 12개월 예상" */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg button {
+  background: transparent;
+  border: none;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.seg button + button {
+  border-left: 1px solid var(--border);
+}
+.seg button.on {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-weight: 600;
+}

@@ -15,6 +15,7 @@ import { getDataDir } from './paths';
 import { todayKst } from './marketInsights';
 import type { BrokerId } from './brokers/types';
 import type { KisOverseasIceRight, KisOverseasPeriodRight } from './brokers/kis/kisClient';
+import { krMarketClosedDays } from './krMarketCalendar';
 
 // 다가오는 배당 — 한국투자증권 API로 만든다(토스는 지급 예정 정보를 주지 않는다). 네 종류:
 // 확정은 앞으로 120일, 예상·추정은 **이번 달 지급분까지만** 보여 준다(사용자 결정 — 줄이 너무 많아서).
@@ -85,7 +86,8 @@ function addMonths(date: string, months: number): string {
   return first.toISOString().slice(0, 10);
 }
 
-/** 날짜 → 영업일 여부(국내휴장일조회 결과). 없는 날짜는 주말만 쉬는 날로 본다. */
+/** 날짜 → 영업일 여부. 없는 날짜는 주말만 쉬는 날로 본다. 국내는 KIS 국내휴장일조회 + 휴장일 표(`krMarketCalendar.ts`), 미국은 NYSE 규칙
+ *  (`usMarketCalendar.ts`)으로 쉬는 날을 채워 넘긴다 — ⚠ 여기서 한 시장의 표로 대신 채우면 다른 시장 날짜에 섞인다(미국 달력은 쉬는 날만 담는다). */
 export type BusinessDays = Record<string, boolean>;
 
 function isBusinessDay(date: string, cal: BusinessDays): boolean {
@@ -320,13 +322,15 @@ export function itemsFromSnapshot(
   const usPlans = new Map<string, PlannedDividend[]>();
   // 미국 휴장일은 규칙으로 계산하므로 추정 끝(`until`, 12개월 예상이면 1년 뒤)까지 넉넉히 만든다
   const usCal = usMarketClosedDays(addDays(today, -420), addDays(until > addDays(today, 150) ? until : today, 30));
+  // 국내: 휴장일 표(설·추석 등, 12개월 예상까지) 위에 KIS 국내휴장일조회 값을 덮는다(받은 날짜는 KIS가 정본, 2026-11-18)
+  const krCal: BusinessDays = { ...krMarketClosedDays(addDays(today, -420), addDays(until > addDays(today, 150) ? until : today, 30)), ...snap.krCalendar };
   for (const h of holdings) {
     if (h.quantity <= 0) continue;
     const usd = h.currency === 'USD';
     const plans = usd ? usPlans : krPlans;
     if (!plans.has(h.symbol)) {
       const rows = (usd ? snap.us : snap.kr)[h.symbol];
-      plans.set(h.symbol, rows ? planSymbolDividends(rows, today, monthEnd, usd ? usCal : snap.krCalendar) : []);
+      plans.set(h.symbol, rows ? planSymbolDividends(rows, today, monthEnd, usd ? usCal : krCal) : []);
     }
     for (const p of plans.get(h.symbol)!) {
       if (!usd && h.broker === 'kis' && h.accountId === kisAccountId && confirmedKeys.has(`${h.symbol}:${p.recordDate.slice(0, 7)}`)) continue;

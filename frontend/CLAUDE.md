@@ -435,9 +435,11 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 ### 2026-11-17 계획·분석·알림·보고서
 - **사용자 설정은 `usePlanner()`**(`src/usePlanner.ts`, 백엔드 `planner.json`) — 월 배당 목표·ISA/연금·목표 비중·알림·목표가. 보낸 필드만 바뀐다.
 - **모든 계좌 보유는 `loadAllHoldings()`**(`src/allHoldings.ts`) — 대시보드 loadAll과 같은 경로(API 증권사 실시간 + CSV 전용 로컬), 환율 같이. 리밸런싱·보고서·배당수익률 카드가 쓴다.
-  (대시보드는 아직 자기 loadAll — 같은 규칙을 고칠 땐 둘 다.)
+  **2026-11-18부터 대시보드·분석(`overviewStore`)도 이 함수 하나를 쓴다** — `AllHoldings`에 수동·실시간 환율과 `failedBrokers`(실패한 증권사 — 대시보드가
+  나머지를 보여 주고 `error`로 알리며 그날 순자산 기록은 건너뜀)를 같이 준다. `skipCache`는 이 모듈의 30초 재사용만 건너뛴다(데이터가 바뀐 뒤 다시 받을 때 —
+  `reloadOverview`가 나이 제한 없이 부르면 켠다). 테스트는 `resetOverviewStore`가 `resetAllHoldingsCache`도 부른다.
 - 새 화면: `pages/Rebalance.tsx`(calc/rebalance.ts — 목표 종목끼리만, 합≠100이면 비례, 매수만 배분), `pages/Report.tsx`(calc/report.ts, "PDF로 저장" → 백엔드 printToPDF).
-- 새 카드: 배당금 `DividendProjectionCard`(12개월, calc/projection.ts)·`DividendCalendarCard`·`DividendYieldCard`(calc/insights.ts), 실현손익
+- 새 카드: 배당금 `DividendProjectionCard`(12개월, calc/projection.ts — 2026-11-18부터 따로 된 카드가 아니라 `DividendSummaryCard`의 "앞으로 12개월 예상" 보기 안에 `embedded`로 그린다, `.seg` 보기 전환)·`DividendCalendarCard`·`DividendYieldCard`(calc/insights.ts), 실현손익
   `realized/TaxAccountLimitsCard`(calc/taxAccounts.ts), 대시보드 `overview/InsightCards`(환율 효과·ETF 겹침, calc/insights.ts), 보유 종목 `PrincipalCard`에 XIRR(calc/xirr.ts),
   설정 `settings/AlertsCard`, 관심종목 상세 `components/WatchTargetEditor`. 접힌 채 시작하는 카드는 펼쳤을 때만 조회한다(ETF 구성·월평균 환율·전체 보유).
 - **인쇄 CSS**(`styles.css` `@media print`): 사이드바·`.no-print`·줌 표시를 숨기고 줌 래퍼(transform)와 스크롤 컨테이너를 풀고 **밝은 색 토큰을 다시 선언**한다
@@ -836,7 +838,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   보이도록) — 지금 보고 있는 화면이 그 브로커/계좌와 같으면 `trades`도 같이
   갱신한다.
 - `src/components/TradesChart.tsx` — 월별 매수(`--series-1`)/매도(`--series-2`) 그룹형
-  막대 그래프. **원화·달러를 환율로 합쳐서 하나의 막대로 그리지 않는다**(단위/스케일이
+  막대 그래프(2026-11-18부터 묶음 폭을 카드 폭에 맞춤 — `useContainerWidth`, 16~88px; 막대가 18px보다 가늘면 막대 위 금액을 빼고 날짜 라벨을 건너뜀). **원화·달러를 환율로 합쳐서 하나의 막대로 그리지 않는다**(단위/스케일이
   달라서 — dataviz 스킬의 "두 측정값은 두 차트로" 원칙) — 달러 거래가 있으면 원화
   패널·달러 패널을 위아래로 따로 그린다. 막대 위 금액 라벨을 항상 표시(compact 표기).
   호버 상태는 각 패널이 자기 SVG 안에서 독립적으로 관리한다(공유하면 패널별 세로
@@ -947,7 +949,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   36개월을 넘으면 한 달 폭을 줄이고 점·매달 라벨 대신 선 + 1월에만 연도 라벨로
   그린다(수백 개월이 수만 px가 되지 않게).
   토스 미연동이거나 그 종목을 못 찾으면 빈 배열이 와서 차트 대신 안내 문구를
-  보여준다. 목록의 **"목표가" 열**(2026-11-18)은 `usePlanner()`의 `watchTargets`를 읽기만 한다(고치는 곳은 상세의
+  보여준다. 목록의 **"등락률" 열**(2026-11-18)은 백엔드가 준 `changeRate`(직전 거래일 종가 대비, 토스 없으면 null → "-"). **"목표가" 열**(2026-11-18)은 `usePlanner()`의 `watchTargets`를 읽기만 한다(고치는 곳은 상세의
   `WatchTargetEditor`) — 지금 가격이 이상·이하 조건에 닿으면 굵게 "도달"(상태 색 아님).
 
 ## 개발

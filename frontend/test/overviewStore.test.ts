@@ -81,3 +81,25 @@ test('실패해도 이전 값을 지우지 않고 error만 채운다', async () 
   assert.ok(s.error);
   assert.equal(s.refreshing, false);
 });
+
+test('증권사 하나가 실패해도 나머지 보유는 보이고 error로 알리며, 그날 순자산은 기록하지 않는다', async () => {
+  const ok = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const path = url.pathname.replace(/^\/api/, '');
+    calls.push(`${init?.method ?? 'GET'} ${path}`);
+    if (path === '/accounts') return Response.json([{ id: 'samsung', configured: true }, { id: 'mirae', configured: true }]);
+    if (path === '/holdings-store' && url.searchParams.get('broker') === 'mirae') return Response.json({ error: 'boom' }, { status: 500 });
+    return ok(input, init);
+  }) as typeof fetch;
+  try {
+    await reloadOverview();
+  } finally {
+    globalThis.fetch = ok;
+  }
+  const s = getOverviewState();
+  assert.equal(s.holdings.length, 1);
+  assert.match(s.error ?? '', /불러오지 못해/);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(count('POST /portfolio-snapshots'), 0);
+});

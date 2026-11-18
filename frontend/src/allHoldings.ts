@@ -19,18 +19,40 @@ export interface HoldingLine {
 }
 
 /**
- * 모든 증권사·계좌의 보유 종목을 모은다 — 대시보드(`overview/useOverviewData.ts`의 loadAll)와 같은 경로: API 증권사는 계좌마다 실시간
+ * 모든 증권사·계좌의 보유 종목을 모은다 — **대시보드·분석(`overview/overviewStore.ts`)·리밸런싱·보고서·배당수익률 카드가 모두 이 한 경로**(2026-11-18 —
+ * 예전엔 대시보드가 같은 규칙을 따로 갖고 있어 고칠 때 두 곳을 맞춰야 했다): API 증권사는 계좌마다 실시간
  * 조회, CSV 전용(KB·삼성·미래에셋)은 로컬 저장소. 계좌 하나가 실패해도 나머지는 보여 준다. 모의투자 계좌는 받지 않는다(옵션 없이 부름).
  * 환율(수동 우선, fxLoader.ts)도 같이 받아 돌려준다 — 호출부가 원화로 합칠 때 쓴다.
  */
 // 리밸런싱·보고서·배당수익률 카드가 각자 부르므로 진행 중인 요청을 같이 쓰고 30초 동안 결과를 재사용한다(새로고침이면 건너뜀) — 2026-11-17 UI 점검.
-let cached: { at: number; value: { lines: HoldingLine[]; fxRate: number | null } } | null = null;
-let pending: Promise<{ lines: HoldingLine[]; fxRate: number | null }> | null = null;
+export interface AllHoldings {
+  lines: HoldingLine[];
+  /** 수동 우선 적용 환율(`effectiveRate`). */
+  fxRate: number | null;
+  /** 설정의 수동 환율·실시간 환율 따로(대시보드가 안내 문구에 씀). */
+  manualFxRate: number | null;
+  liveFxRate: number | null;
+  /** 계좌 목록·보유 조회가 실패한 증권사 — 나머지는 그대로 보여 주고 화면이 알린다. */
+  failedBrokers: BrokerId[];
+}
 
-export function loadAllHoldings(opts: { forceRefresh?: boolean } = {}): Promise<{ lines: HoldingLine[]; fxRate: number | null }> {
-  if (!opts.forceRefresh && cached && Date.now() - cached.at < 30_000) return Promise.resolve(cached.value);
+let cached: { at: number; value: AllHoldings } | null = null;
+let pending: Promise<AllHoldings> | null = null;
+
+/** 테스트용 — 캐시를 비운다. */
+export function resetAllHoldingsCache(): void {
+  cached = null;
+  pending = null;
+}
+
+/**
+ * `forceRefresh`: 백엔드 캐시까지 건너뜀(새로고침 버튼). `skipCache`: 이 모듈의 30초 재사용만 건너뜀 — 데이터가 바뀐 뒤(CSV 가져오기 등)
+ * 다시 받을 때. 진행 중인 받기가 있으면 그건 같이 기다린다(방금 시작한 받기는 바뀐 데이터를 이미 본다).
+ */
+export function loadAllHoldings(opts: { forceRefresh?: boolean; skipCache?: boolean } = {}): Promise<AllHoldings> {
+  if (!opts.forceRefresh && !opts.skipCache && cached && Date.now() - cached.at < 30_000) return Promise.resolve(cached.value);
   if (pending && !opts.forceRefresh) return pending;
-  pending = fetchAllHoldings(opts)
+  pending = fetchAllHoldings({ forceRefresh: opts.forceRefresh })
     .then((value) => {
       cached = { at: Date.now(), value };
       return value;
@@ -41,9 +63,10 @@ export function loadAllHoldings(opts: { forceRefresh?: boolean } = {}): Promise<
   return pending;
 }
 
-async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<{ lines: HoldingLine[]; fxRate: number | null }> {
+async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<AllHoldings> {
   const [{ manual, live }, brokers] = await Promise.all([loadUsdKrwRates(opts), api.listBrokers()]);
   const lines: HoldingLine[] = [];
+  const failedBrokers: BrokerId[] = [];
   await Promise.all(
     brokers
       .filter((b) => b.configured)
@@ -55,8 +78,14 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<{ lin
               .then((ps) =>
                 ps.filter((p): p is NonNullable<typeof p> => p !== null).flatMap((p) => p.positions.map((pos) => ({ ...pos, accountId: p.accountId })))
               )
-              .catch(() => [])
-          : await api.listHoldingsStore({ broker: b.id }).catch(() => []);
+              .catch(() => {
+                failedBrokers.push(b.id);
+                return [];
+              })
+          : await api.listHoldingsStore({ broker: b.id }).catch(() => {
+              failedBrokers.push(b.id);
+              return [];
+            });
         for (const r of rows) {
           lines.push({
             broker: b.id,
@@ -73,5 +102,5 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<{ lin
         }
       })
   );
-  return { lines, fxRate: effectiveRate(manual, live) };
+  return { lines, fxRate: effectiveRate(manual, live), manualFxRate: manual, liveFxRate: live, failedBrokers };
 }

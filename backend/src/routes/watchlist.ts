@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { listWatchlist, removeWatchlistEntry, upsertWatchlistEntry } from '../db/watchlist';
 import { getCachedStockName } from '../db/stockNames';
 import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
-import { isTossConfigured } from '../brokers/toss/tossClient';
+import { fetchTossPreviousClose, fetchTossPrices, isTossConfigured } from '../brokers/toss/tossClient';
 
 export const watchlistRouter = Router();
 
@@ -22,10 +22,31 @@ watchlistRouter.get('/', async (_req, res) => {
     pricesBySymbol: {} as Record<string, number>,
   }));
 
+  // 등락률(직전 거래일 대비, 2026-11-18) — 토스가 있을 때만. 현재가 API엔 전일 종가가 없어 일봉(4시간 캐시)으로 구한다(`previousCloseFrom`).
+  // 관심종목은 몇 개뿐이라 종목마다 부른다. 실패한 종목은 null(화면은 "-").
+  const changeRateBySymbol: Record<string, number | null> = {};
+  if (isTossConfigured()) {
+    const times = new Map<string, string | null>();
+    try {
+      for (const p of await fetchTossPrices(entries.map((e) => e.symbol.toUpperCase()))) times.set(p.symbol.toUpperCase(), p.timestamp);
+    } catch {
+      // 시각을 모르면 지금 시각 기준
+    }
+    await Promise.all(
+      entries.map(async (e) => {
+        const sym = e.symbol.toUpperCase();
+        const last = pricesBySymbol[sym];
+        const prev = last ? await fetchTossPreviousClose(sym, times.get(sym) ?? null) : null;
+        changeRateBySymbol[sym] = last && prev ? last / prev - 1 : null;
+      })
+    );
+  }
+
   res.json(
     entries.map((e) => ({
       ...e,
       lastPrice: pricesBySymbol[e.symbol.toUpperCase()] ?? null,
+      changeRate: changeRateBySymbol[e.symbol.toUpperCase()] ?? null,
     }))
   );
 });

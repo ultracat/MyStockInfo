@@ -1,13 +1,8 @@
 import type { HoldingPosition } from '../types';
-import { krw2dp } from '../format';
+import { formatMoneyIn as formatMoney, qtyFmt } from '../format';
 import StockNameLink from './StockNameLink';
 import WarningBadges from './WarningBadges';
 import type { ActiveWarning } from '../types';
-
-function formatMoney(value: number, currency: string | null) {
-  const formatted = krw2dp.format(value);
-  return currency && currency !== 'KRW' ? `${formatted} ${currency}` : `${formatted}원`;
-}
 
 function formatRate(rate: number) {
   const pct = (rate * 100).toFixed(2);
@@ -41,15 +36,11 @@ export default function HoldingsTable({ rows }: { rows: Row[] }) {
             <th>종목</th>
             <th>시장</th>
             <th>수량</th>
-            <th>매입평균가</th>
-            <th>현재가</th>
+            <th title="위: 매입평균가, 아래: 현재가">평균가 · 현재가</th>
             <th>매입금액</th>
             <th>평가금액</th>
-            <th>손익금액</th>
-            <th>손익률</th>
-            <th title="평가손익 + 이 계좌에서 이 종목으로 받은 배당금(배당금 화면에 기록한 내역)">
-              배당 포함 손익금액
-            </th>
+            <th title="위: 손익금액, 아래: 손익률">손익</th>
+            <th title="평가손익 + 이 계좌에서 이 종목으로 받은 배당금(배당금 화면에 기록한 내역)">배당 포함 손익</th>
             <th>비중</th>
           </tr>
         </thead>
@@ -64,17 +55,17 @@ export default function HoldingsTable({ rows }: { rows: Row[] }) {
                 <WarningBadges warnings={r.warnings} />
               </td>
               <td>{r.market ?? '-'}</td>
-              <td>{r.quantity}</td>
-              <td>{formatMoney(r.averagePurchasePrice, r.currency)}</td>
-              <td>{formatMoney(r.lastPrice, r.currency)}</td>
+              <td>{qtyFmt.format(r.quantity)}</td>
+              <td>
+                {formatMoney(r.averagePurchasePrice, r.currency)}
+                <span className="cell-sub">{formatMoney(r.lastPrice, r.currency)}</span>
+              </td>
               <td>{formatMoney(r.purchaseAmount, r.currency)}</td>
               <td>{formatMoney(r.marketValue, r.currency)}</td>
               <td className={r.profitLossAmount >= 0 ? 'text-good' : 'text-critical'}>
                 {r.profitLossAmount >= 0 ? '+' : ''}
                 {formatMoney(r.profitLossAmount, r.currency)}
-              </td>
-              <td className={r.profitLossRate >= 0 ? 'text-good' : 'text-critical'}>
-                {formatRate(r.profitLossRate)}
+                <span className="cell-sub">{formatRate(r.profitLossRate)}</span>
               </td>
               {r.dividendAmount === null ? (
                 <td style={{ color: 'var(--text-muted)' }}>환율 미적용</td>

@@ -3,6 +3,7 @@ import { api } from '../../api';
 import { downloadCsv, parseCsv } from '../../csv';
 import { formatImportResult } from '../../importResult';
 import type { BrokerId } from '../../types';
+import ActionMenu from '../../components/ActionMenu';
 
 const HOLDINGS_CSV_HEADER = [
   'broker',
@@ -209,7 +210,7 @@ export function useHoldingsTransfer(refreshAfterStoreImport: () => Promise<void>
 export function HoldingsTransferButtons({ t }: { t: ReturnType<typeof useHoldingsTransfer> }) {
   const { fileInputRef, importing, googleConnected, googleSyncing, onExportCsv, onImportClick, onImportFile, onExportToGoogleSheet, onImportFromGoogleSheet } = t;
   return (
-    <>
+    <ActionMenu label="가져오기·내보내기">
           <button className="ghost" onClick={onExportCsv}>
             CSV 내보내기 (전체)
           </button>
@@ -238,6 +239,6 @@ export function HoldingsTransferButtons({ t }: { t: ReturnType<typeof useHolding
           >
             {googleSyncing ? '처리 중...' : 'Google Sheets에서 가져오기'}
           </button>
-    </>
+    </ActionMenu>
   );
 }

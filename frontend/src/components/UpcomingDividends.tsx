@@ -4,6 +4,7 @@ import { BROKER_LABELS } from '../brokers';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import { krw, localToday, usd4dp, usdFmt } from '../format';
 import CollapseToggle from './CollapseToggle';
+import Hint from './Hint';
 
 // 다가오는 배당(백엔드 upcomingDividends.ts) — 한국투자증권 키로만 만든다. 키가 없으면(`available:false`) 카드 자리에
 // "한국투자증권 API 키를 등록하면 보인다"는 안내만 그린다.
@@ -44,11 +45,11 @@ export default function UpcomingDividends({
     return (
       <div className="card">
         <h3 style={{ margin: 0 }}>다가오는 배당</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 0 }}>
+        <Hint>
           한국투자증권 API 키가 등록되어 있지 않아 다가오는 배당을 보여 줄 수 없습니다. 배당 일정(국내 예탁결제원 · 미국
           ICE)과 주당 배당금을 한국투자증권 API로 조회하기 때문입니다 — 한국투자증권 계좌가 없어도 키만 있으면 다른
           증권사의 보유 종목까지 보입니다. <strong>설정 → API 키 등록</strong>에서 한국투자증권 키를 등록해주세요.
-        </p>
+        </Hint>
       </div>
     );
   }
@@ -82,7 +83,7 @@ export default function UpcomingDividends({
       </div>
       {!collapsed && (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <Hint>
             <strong>확정</strong>은 한국투자증권 계좌에 배정된 지급 예정 배당이고, <strong>예상</strong>은 발표된 배당
             일정(국내는 예탁결제원, 미국은 ICE)의 주당 배당금 × 지금 보유 수량입니다(모든 증권사의 보유 종목, 기준일까지
             보유해야 받음). <strong>추정</strong>은 아직 일정이 없거나 금액이 미정인 배당을, 매달·분기처럼 일정하게 주는
@@ -91,7 +92,7 @@ export default function UpcomingDividends({
             보여 줍니다. 금액은 세전이고(미국 배당은 현지 원천징수 15% 전), 국내는 원화·해외는 달러로 따로 합계를 냅니다.
             배당 일정은 <strong>하루 한 번</strong> 새로 받아 저장해 두고(그사이엔 저장된 일정 × 지금 보유 수량), 새로 산 종목은
             바로 받아 더합니다 — 지금 다시 받으려면 <strong>새로고침</strong>.
-          </p>
+          </Hint>
           {error ? (
             <p className="text-critical">{error}</p>
           ) : items === null ? (

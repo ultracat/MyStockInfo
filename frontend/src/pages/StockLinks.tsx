@@ -3,6 +3,7 @@ import { api } from '../api';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { StockLinkEntry } from '../types';
 import { autoStockLink, resolveStockLink, stockLinkMap, type StockLinkSource } from '../stockLinks';
+import Hint from '../components/Hint';
 
 type SourceKind = '보유' | '배당' | '매매' | '관심';
 const SOURCE_ORDER: SourceKind[] = ['보유', '배당', '매매', '관심'];
@@ -39,6 +40,8 @@ export default function StockLinks() {
   const [message, setMessage] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('ALL');
+  // 링크가 있는 행은 긴 URL 입력칸 대신 짧은 글자로 보여 주고 "수정"을 눌러야 입력칸이 된다 — 수십 줄 모두 입력칸이라 빽빽했다(2026-11-18 UX 점검).
+  const [editing, setEditing] = useState<Set<string>>(new Set());
 
   // 메뉴를 옮겼다 돌아오면 목록을 그대로 둔 채 다시 모은다(pageActivity.tsx) — 0은 첫 로딩.
   const [reload, setReload] = useState(0);
@@ -147,14 +150,14 @@ export default function StockLinks() {
       {error && <p className="text-critical">{error}</p>}
       {message && <p className="text-good">{message}</p>}
 
-      <p className="card" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <Hint card>
         보유종목·배당금·매매내역·관심종목에 나온 종목이 자동으로 모입니다. 여기서 정한 링크는
         보유 종목·배당금·매매내역·관심종목 화면에서 종목명을 누르면 브라우저로 열립니다. <strong>국내 종목</strong>은 토스증권 종목
         페이지가 자동으로 채워지고, <strong>미국 종목</strong>은 토스 내부 코드를 규칙으로 알 수
         없어 확인된 몇 종목만 채워져 있습니다 — 토스증권 웹에서 그 종목 페이지 주소를 복사해
         붙여넣으면 됩니다. 칸을 비우고 저장하면 "링크 없음", "자동으로" 버튼은 직접 입력한 값을
         지우고 자동 링크로 되돌립니다.
-      </p>
+      </Hint>
 
       <div className="card">
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
@@ -211,14 +214,25 @@ export default function StockLinks() {
                       <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
                         {SOURCE_ORDER.filter((k) => s.sources.has(k)).join(' · ')}
                       </td>
-                      <td>
-                        <input
-                          type="url"
-                          value={draft}
-                          placeholder="https://www.tossinvest.com/stocks/…/order"
-                          style={{ width: 360, maxWidth: '100%' }}
-                          onChange={(e) => setDrafts((prev) => ({ ...prev, [s.symbol]: e.target.value }))}
-                        />
+                      <td style={{ textAlign: 'left' }}>
+                        {url && !dirty && !editing.has(s.symbol) ? (
+                          <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                            <span className="cell-name-truncate" style={{ maxWidth: 240, color: 'var(--text-secondary)', fontSize: 13 }} title={url ?? ''}>
+                              {(url ?? '').replace(/^https?:\/\/(www\.)?/, '')}
+                            </span>
+                            <button className="ghost" onClick={() => setEditing((prev) => new Set(prev).add(s.symbol))}>
+                              수정
+                            </button>
+                          </span>
+                        ) : (
+                          <input
+                            type="url"
+                            value={draft}
+                            placeholder="https://www.tossinvest.com/stocks/…/order"
+                            style={{ width: 280, maxWidth: '100%' }}
+                            onChange={(e) => setDrafts((prev) => ({ ...prev, [s.symbol]: e.target.value }))}
+                          />
+                        )}
                       </td>
                       <td style={{ fontSize: 13, color: source === 'none' ? 'var(--text-muted)' : undefined }}>
                         {SOURCE_TEXT[source]}
@@ -230,9 +244,11 @@ export default function StockLinks() {
                               열기
                             </a>
                           )}
-                          <button className="ghost" disabled={!dirty} onClick={() => onSave(s)}>
-                            저장
-                          </button>
+                          {(dirty || editing.has(s.symbol) || !url) && (
+                            <button className="ghost" disabled={!dirty} onClick={() => onSave(s)}>
+                              저장
+                            </button>
+                          )}
                           {savedMap.has(s.symbol) && (
                             <button
                               className="ghost"

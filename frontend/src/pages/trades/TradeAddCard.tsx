@@ -26,6 +26,8 @@ export function TradeAddCard({ onAdded }: { onAdded: (broker: BrokerId, accountI
   const [addTax, setAddTax] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [addResult, setAddResult] = useState<string | null>(null);
+  // 기본은 접힘 — 대부분의 매매는 증권사 API로 들어와 입력 폼이 화면 한가운데를 차지할 이유가 없다(2026-11-18 UX 점검).
+  const [open, setOpen] = useState(false);
 
   // CSV 가져오기와 같은 백엔드 엔드포인트(POST /trades-store/import)를 행 1개짜리
   // 배열로 호출한다 — id를 안 주면 서버가 새로 발급하므로 항상 새 매매내역으로
@@ -87,9 +89,25 @@ export function TradeAddCard({ onAdded }: { onAdded: (broker: BrokerId, accountI
     }
   }
 
+  if (!open) {
+    return (
+      <div className="card add-collapsed">
+        <button className="ghost" onClick={() => setOpen(true)}>
+          + 매매내역 직접 추가
+        </button>
+        <span>KB증권·삼성증권·미래에셋증권처럼 API가 없는 증권사만 — 다른 증권사는 자동으로 채워집니다.</span>
+      </div>
+    );
+  }
+
   return (
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>매매내역 추가</h3>
+        <div className="card-head">
+          <h3 style={{ margin: 0 }}>매매내역 추가</h3>
+          <button className="ghost" onClick={() => setOpen(false)}>
+            닫기
+          </button>
+        </div>
         <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
           API 연동이 없는 증권사(KB증권/삼성증권/미래에셋증권)만 직접 입력할 수 있습니다. 토스증권/
           한국투자증권은 실시간 조회로 매매내역이 자동으로 채워집니다.

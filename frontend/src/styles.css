@@ -305,8 +305,9 @@ body {
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 14px 18px;
-  min-width: 160px;
+  padding: 14px 16px;
+  /* 보유 종목 타일 5개(매입·평가 타일은 2칸)가 1280px 창 한 줄에 들어가게 — 160px일 땐 손익률 타일만 다음 줄로 떨어졌다(2026-11-18). */
+  min-width: 140px;
   flex: 1;
 }
 
@@ -333,6 +334,25 @@ body {
 .table-scroll {
   overflow-x: auto;
   container-type: inline-size;
+  /* 가로로 넘치면 넘친 쪽 가장자리에 그림자 — 표 오른쪽 열이 잘린 줄 몰랐다(2026-11-18 UX 점검). 앞 두 겹은 내용과 같이
+     움직이며(local) 끝까지 스크롤하면 그림자를 덮고, 뒤 두 겹은 상자에 고정된 그림자다. */
+  background:
+    linear-gradient(to right, var(--surface-1) 30%, transparent) left / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--surface-1) 30%, transparent) right / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.18), transparent) left / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.18), transparent) right / 10px 100% no-repeat scroll;
+}
+
+/* 한 칸에 두 값(금액 + 비율, 평균가 + 현재가) — 열 수를 줄여 1280px 창에서 표가 안 넘치게. 색은 칸의 손익 색을 그대로 따른다. */
+.cell-sub {
+  display: block;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.group-toggle-row td {
+  border-bottom: none;
+  padding-top: 12px;
 }
 
 table {
@@ -352,13 +372,16 @@ td {
 /* 종목명이 길면(특히 해외 ETF) "종목" 컬럼 하나가 표 전체 너비를 끌어올려서
    가로 스크롤이 필요해지는 폭을 키운다 — 종목코드(숫자/티커, 항상 짧음)는 그대로
    보여주고 이름만 말줄임표로 줄인다. 전체 이름은 title 툴팁으로 여전히 볼 수
-   있다. **창이 넓어서 자리가 충분하면 평소엔 줄이지 않는다** — `.table-scroll`
-   컨테이너 자체의 폭(표 내용 너비가 아니라 실제로 쓸 수 있는 공간)이 700px
-   밑으로 좁아질 때만 아래 컨테이너 쿼리로 줄임을 켠다. 기본(평소) 상태는 줄임
-   효과가 아예 없는 평문이다. */
+   있다. 컨테이너(`.table-scroll`) 폭이 700px 밑이면 아래 컨테이너 쿼리가 더 짧게 줄인다. */
 .cell-name-truncate {
   display: inline-block;
   vertical-align: bottom;
+  /* 긴 해외 ETF 이름(예: "… OPTION INCOME STRATEGY ETF")이 표 하나를 넘치게 했다 — 평소에도 220px에서 줄이고 전체는 title로.
+     좁은 창에선 아래 컨테이너 쿼리가 140px로 더 줄인다(2026-11-18). */
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 다가오는 배당 표의 계좌·종목 칸 — 국내 ETF 이름과 "증권사 · 별칭 (계좌번호)"가 길어 기본 창 폭(1280)에서도 표가 넘쳐
@@ -429,6 +452,18 @@ th {
   border-radius: 3px;
 }
 
+/* 폼 밖의 선택 상자·입력칸 기본 모양 — 예전엔 .form-row 안에서만 앱 스타일이고 밖(보고서 머리, 표 안 입력, 적립식 계획 등)은 브라우저
+   기본 모양(작은 회색 상자)이라 화면마다 달라 보였다(2026-11-18 UX 점검). :where()로 우선순위 0이라 각 화면의 지정·.form-row가 이긴다. */
+:where(select, textarea, input:not([type='checkbox'], [type='radio'], [type='file'], [type='range'], [type='color'])) {
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+}
+
 .form-row {
   display: flex;
   flex-direction: column;
@@ -464,6 +499,11 @@ button.primary {
 
 button.primary:hover {
   opacity: 0.9;
+}
+
+button.primary:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 button.ghost {
@@ -798,4 +838,167 @@ button.ghost:disabled {
   top: 50%;
   left: calc(100% + 8px);
   transform: translateY(-50%);
+}
+
+/* 설명 문단(components/Hint.tsx) — 처음엔 한 줄, "자세히"로 펼침(2026-11-18 UX 점검). */
+.hint {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.hint-body {
+  flex: 1;
+  min-width: 0;
+}
+.hint:not(.open) .hint-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+  overflow: hidden;
+}
+.hint-toggle {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--series-1);
+  cursor: pointer;
+}
+.hint-toggle:hover {
+  text-decoration: underline;
+}
+@media print {
+  .hint:not(.open) .hint-body {
+    display: block;
+  }
+}
+
+/* 버튼 묶음 메뉴(components/ActionMenu.tsx) */
+.action-menu {
+  position: relative;
+  display: inline-block;
+}
+.action-menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.action-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.ghost-button {
+  display: inline-block;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+.action-menu[open] > summary {
+  background: var(--surface-2);
+}
+.action-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 220px;
+  padding: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.action-menu-panel > button,
+.action-menu-panel button.ghost {
+  text-align: left;
+  border-color: transparent;
+}
+.action-menu-panel > button:not(:disabled):hover {
+  background: var(--surface-2);
+}
+.action-menu-panel .menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.action-menu-panel .menu-sep {
+  height: 1px;
+  background: var(--gridline);
+  margin: 2px 0;
+}
+
+/* 접힌 입력 폼(배당 기록·매매내역 직접 추가) — 버튼 하나 + 한 줄 설명 */
+.card.add-collapsed {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+/* 화면 바로가기(components/SectionNav.tsx) */
+.section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+.section-nav button {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.section-nav button:hover {
+  background: var(--surface-2);
+}
+.section-anchor {
+  scroll-margin-top: 12px;
+}
+
+/* 표의 종목명 링크 — 평소엔 일반 글씨, 올리면 밑줄(예전엔 모든 종목명이 파란 밑줄이라 표가 시끄러웠다, 2026-11-18 UX 점검). */
+a.stock-link {
+  color: inherit;
+  text-decoration: none;
+}
+a.stock-link:hover,
+a.stock-link:focus-visible {
+  color: var(--series-1);
+  text-decoration: underline;
+}
+
+/* 작은 입력칸 + 위 이름표(한 줄 폼) */
+.mini-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }

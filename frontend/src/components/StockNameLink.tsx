@@ -23,7 +23,7 @@ export default function StockNameLink({ name, url }: { name: string; url: string
   }
   return (
     <a
-      className="cell-name-truncate"
+      className="cell-name-truncate stock-link"
       href={url}
       target="_blank"
       rel="noreferrer"

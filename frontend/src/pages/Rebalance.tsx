@@ -5,6 +5,7 @@ import { krw, formatSignedKrw } from '../format';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import { usePlanner } from '../usePlanner';
 import type { TargetWeight } from '../types';
+import Hint from '../components/Hint';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 // 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
@@ -25,6 +26,7 @@ export default function Rebalance() {
   const [extraCash, setExtraCash] = useState('');
   const [newSymbol, setNewSymbol] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [showSmall, setShowSmall] = useState(false);
 
   const load = useCallback((forceRefresh = false) => {
     setLoading(true);
@@ -67,6 +69,23 @@ export default function Rebalance() {
       setMessage((e as Error).message);
     }
   };
+  // 처음 열면 전 종목이 "목표 없음 · 유지"라 어디서 시작할지 몰랐다(2026-11-18 UX 점검) — 지금 비중을 목표로 채워 두고 바꿀 종목만 고치게.
+  const fillFromCurrent = () => {
+    if (!result) return;
+    setDraft(Object.fromEntries(result.rows.filter((r) => r.currentPct > 0).map((r) => [r.symbol, r.currentPct.toFixed(1)])));
+    setMessage('지금 비중으로 채웠습니다. 바꾸고 싶은 종목만 고친 뒤 "목표 저장"을 누르세요.');
+  };
+  const clearTargets = () => {
+    setDraft({});
+    setMessage('목표를 모두 지웠습니다(저장해야 반영됩니다).');
+  };
+  // 목표가 없고 비중이 1% 밑인 종목은 접어 둔다 — 작은 종목 수십 줄이 표를 늘어뜨렸다.
+  const SMALL_PCT = 1;
+  const isSmall = (r: { targetPct: number | null; currentPct: number; symbol: string }) =>
+    r.targetPct === null && r.currentPct < SMALL_PCT && !(draft[r.symbol] ?? '').trim();
+  const smallCount = result ? result.rows.filter(isSmall).length : 0;
+  const shownRows = result ? (showSmall ? result.rows : result.rows.filter((r) => !isSmall(r))) : [];
+
   const addSymbol = () => {
     const s = newSymbol.trim().toUpperCase();
     if (!/^[A-Z0-9.-]{1,20}$/.test(s)) return setMessage('종목코드를 확인하세요(예: 005930, SCHD).');
@@ -77,19 +96,19 @@ export default function Rebalance() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <h1>리밸런싱</h1>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 16 }}>
+        <h2 className="page-title" style={{ margin: 0 }}>리밸런싱</h2>
         <button type="button" className="ghost" onClick={() => load(true)} disabled={loading}>
           {loading ? '불러오는 중...' : '새로고침'}
         </button>
       </div>
       <div className="card">
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+        <Hint>
           종목별 <b>목표 비중(%)</b>을 적으면 모든 증권사·계좌를 합친 지금 보유와 비교해 맞추려면 얼마를 사고팔아야 하는지 보여 줍니다. 목표를 적은 종목끼리만
           맞추고(합이 100%가 아니면 비례로 환산), 목표가 없는 종목은 그대로 둡니다. <b>추가 투자금</b>을 넣으면 팔지 않고 부족한 종목만 사서 맞추는 배분도 보여 줍니다.
           참고용 계산이며 수수료·세금·호가 단위는 반영하지 않습니다. 앱은 주문하지 않습니다.
-        </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        </Hint>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
           <label htmlFor="extra-cash" style={{ fontSize: 13 }}>
             추가 투자금(원)
           </label>
@@ -99,8 +118,14 @@ export default function Rebalance() {
           <button type="button" className="ghost" onClick={addSymbol}>
             추가
           </button>
-          <button type="button" onClick={() => void save()} disabled={!dirty}>
-            목표 저장
+          <button type="button" className="ghost" onClick={fillFromCurrent} disabled={!result} title="모든 종목의 목표를 지금 비중으로 채웁니다">
+            현재 비중으로 채우기
+          </button>
+          <button type="button" className="ghost" onClick={clearTargets} disabled={draftTargets.length === 0}>
+            목표 지우기
+          </button>
+          <button type="button" className="primary" onClick={() => void save()} disabled={!dirty}>
+            {dirty ? '목표 저장' : '저장됨'}
           </button>
         </div>
         {message && <p style={{ fontSize: 13 }}>{message}</p>}
@@ -126,6 +151,11 @@ export default function Rebalance() {
                 )}
               </div>
             </div>
+            {draftTargets.length === 0 && (
+              <div className="notice" style={{ fontSize: 13 }}>
+                아직 목표 비중이 없습니다. <b>현재 비중으로 채우기</b>로 시작해 바꾸고 싶은 종목만 고치거나, 표의 "목표 비중" 칸에 직접 적으세요.
+              </div>
+            )}
             {result.unconverted.length > 0 && (
               <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>환율을 못 구해 뺀 달러 종목: {result.unconverted.join(', ')}</p>
             )}
@@ -143,7 +173,7 @@ export default function Rebalance() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.rows.map((r) => (
+                  {shownRows.map((r) => (
                     <tr key={r.symbol}>
                       <td style={{ textAlign: 'left' }}>
                         <span className="upcoming-cell-truncate" title={`${r.name} ${r.symbol}`}>
@@ -170,6 +200,15 @@ export default function Rebalance() {
                       <td>{r.buyOnlyKrw > 0 ? won(r.buyOnlyKrw) : '-'}</td>
                     </tr>
                   ))}
+                  {smallCount > 0 && (
+                    <tr className="group-toggle-row">
+                      <td colSpan={7} style={{ textAlign: 'left' }}>
+                        <button type="button" className="ghost" onClick={() => setShowSmall((v) => !v)}>
+                          {showSmall ? `▾ 비중 ${SMALL_PCT}% 미만 ${smallCount}종목 접기` : `▸ 목표 없는 비중 ${SMALL_PCT}% 미만 ${smallCount}종목 펼치기`}
+                        </button>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

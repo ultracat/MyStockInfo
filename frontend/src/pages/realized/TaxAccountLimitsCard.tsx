@@ -11,6 +11,7 @@ import {
 } from '../../calc/taxAccounts';
 import type { RealizedSale } from '../../calc/realizedGains';
 import type { AccountLabel, BrokerId, DividendRecord, PlannerState, StoredHolding, TaxAccountPlan, TaxLimits } from '../../types';
+import Hint from '../../components/Hint';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 const pct = (used: number, limit: number) => (limit > 0 ? `${Math.min(999, Math.round((used / limit) * 100))}%` : '-');
@@ -112,11 +113,11 @@ export function TaxAccountLimitsCard({
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>ISA·연금 한도</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+      <Hint>
         <b>ISA</b>는 가입일부터의 매매 손익과 배당을 합친 순이익이 비과세 한도 안이면 세금이 없고, 넘는 몫만 만기·해지 때 {ISA_OVER_LIMIT_TAX_RATE * 100}%
         분리과세됩니다(가입일을 비우면 기록 전체). <b>연금저축·IRP</b>는 올해 납입액에 세액공제를 받습니다(총급여 5,500만원 이하 16.5%, 초과 13.2%).
         납입액은 증권사 API로 알 수 없어 직접 적습니다. 참고용 추정이며 세무 자문이 아닙니다.
-      </p>
+      </Hint>
       {message && <p className="text-critical">{message}</p>}
 
       {isa.length > 0 && (
@@ -126,8 +127,7 @@ export function TaxAccountLimitsCard({
               <tr>
                 <th style={{ textAlign: 'left' }}>ISA 계좌</th>
                 <th style={{ textAlign: 'left' }}>유형 · 가입일</th>
-                <th>매매 손익</th>
-                <th>배당</th>
+                <th title="위: 매매 손익, 아래: 배당">매매 손익 · 배당</th>
                 <th>순이익 / 한도</th>
                 <th>초과분 세금(추정)</th>
                 <th>지금 해지하면</th>
@@ -152,15 +152,22 @@ export function TaxAccountLimitsCard({
                       >
                         <option value="GENERAL">일반형</option>
                         <option value="SEOMIN">서민형</option>
-                      </select>{' '}
+                      </select>
+                      {/* 가입일이 비어 있으면 날짜 칸이 "연도. 월. 일."로만 보여 무엇을 넣는 칸인지 몰랐다(2026-11-18) */}
+                      <span className="cell-sub" style={{ marginTop: 4 }}>
+                        가입일{' '}
                       <OpenedOnInput
                         value={s.openedOn ?? ''}
                         onSave={(v) => void save({ ...plan, openedOn: v || undefined })}
                         label={`${label(s.broker, s.accountId)} 가입일`}
                       />
+                      </span>
                     </td>
-                    <td>{won(s.realizedKrw)}</td>
-                    <td>{won(s.dividendsKrw)}</td>
+                    {/* 두 칸을 한 칸으로 — ISA 표가 1280px 창에서 오른쪽 칸이 잘렸다(2026-11-18) */}
+                    <td>
+                      {won(s.realizedKrw)}
+                      <span className="cell-sub">배당 {won(s.dividendsKrw)}</span>
+                    </td>
                     <td>
                       {won(s.netIncomeKrw)} / {won(s.limitKrw)}
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: s.overKrw > 0 ? 700 : undefined }}>
@@ -245,10 +252,10 @@ export function TaxAccountLimitsCard({
 
       <details style={{ marginTop: 12 }}>
         <summary style={{ cursor: 'pointer', fontSize: 13 }}>한도 수치 바꾸기</summary>
-        <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+        <Hint>
           기본값은 2025년까지 확정된 수치입니다(ISA 비과세 일반 200만·서민형 400만원, 납입 연 2,000만원, 연금저축 600만·합산 900만원).
           ISA 한도를 올리는 개편(비과세 500만·1,000만원, 납입 4,000만원)이 시행됐다면 여기서 바꾸세요 — 앱은 법 개정 여부를 알 수 없습니다.
-        </p>
+        </Hint>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
           {(Object.keys(LIMIT_LABELS) as Array<keyof TaxLimits>).map((k) => (
             <label key={k} style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 4 }}>

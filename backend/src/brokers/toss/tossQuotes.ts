@@ -85,6 +85,8 @@ export interface TossPriceItem {
   symbol: string;
   lastPrice: number;
   currency: string;
+  /** 이 가격의 시각(ISO) — 명세상 선택 필드. 관심종목 등락률이 "직전 거래일"을 고르는 데 쓴다(tossMonthlyClose.ts `previousCloseFrom`). */
+  timestamp: string | null;
 }
 
 /**
@@ -117,6 +119,7 @@ export async function fetchTossPrices(symbols: string[], opts: FetchOpts = {}): 
         symbol: item.symbol,
         lastPrice: toNum(item.lastPrice),
         currency: item.currency,
+        timestamp: item.timestamp ?? null,
       }));
     },
     opts

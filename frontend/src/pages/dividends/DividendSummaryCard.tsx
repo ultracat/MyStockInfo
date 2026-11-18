@@ -15,6 +15,8 @@ import {
   type YearFilter,
 } from '../../calc/dividends';
 import type { BrokerId, DividendRecord, UpcomingDividend } from '../../types';
+import type { ComponentProps } from 'react';
+import { DividendProjectionCard } from './DividendProjectionCard';
 
 /**
  * "월별 배당금"(그래프 전용 증권사 필터, 흐린 예상 막대) + "증권사별 배당금 총계" 카드 — 하나의 접기 토글을 공유한다.
@@ -29,6 +31,7 @@ export function DividendSummaryCard({
   avgCostByBroker,
   lines,
   investedLoading,
+  projection,
 }: {
   year: YearFilter;
   /** 연도 필터를 적용한 배당 기록. */
@@ -39,7 +42,11 @@ export function DividendSummaryCard({
   avgCostByBroker: Partial<Record<BrokerId, Map<string, BrokerSymbolCost>>>;
   lines: BrokerLine[];
   investedLoading: boolean;
+  /** "앞으로 12개월" 보기에 넘길 값(DividendProjectionCard props) — 예전엔 따로 된 카드였다. */
+  projection: Omit<ComponentProps<typeof DividendProjectionCard>, 'embedded'>;
 }) {
+  // 보기: 지난 배당(연도·증권사 필터, 증권사별 총계) / 앞으로 12개월 예상(목표 대비) — 비슷한 막대 그래프 카드 두 개를 한 카드로(2026-11-18)
+  const [view, setView] = useState<'past' | 'next12'>('past');
   const [chartBroker, setChartBroker] = useState<BrokerFilter>('ALL');
   const [dividendPanelsCollapsed, setDividendPanelsCollapsed] = useState(false);
   const [selectedDividendMonth, setSelectedDividendMonth] = useState<string | null>(null);
@@ -63,20 +70,37 @@ export function DividendSummaryCard({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <h3 style={{ margin: 0 }}>월별 배당금</h3>
-            <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
-            <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
-              <option value="ALL">전체</option>
-              {brokerOptions.map((id) => (
-                <option key={id} value={id}>
-                  {BROKER_LABELS[id]}
-                </option>
-              ))}
-            </select>
+            <div className="seg" role="tablist" aria-label="월별 배당금 보기">
+              <button type="button" role="tab" aria-selected={view === 'past'} className={view === 'past' ? 'on' : ''} onClick={() => setView('past')}>
+                받은 배당
+              </button>
+              <button type="button" role="tab" aria-selected={view === 'next12'} className={view === 'next12' ? 'on' : ''} onClick={() => setView('next12')}>
+                앞으로 12개월 예상
+              </button>
+            </div>
+            {view === 'past' && (
+              <>
+                <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>증권사</label>
+                <select value={chartBroker} onChange={(e) => setChartBroker(e.target.value as BrokerFilter)}>
+                  <option value="ALL">전체</option>
+                  {brokerOptions.map((id) => (
+                    <option key={id} value={id}>
+                      {BROKER_LABELS[id]}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
           <CollapseToggle collapsed={dividendPanelsCollapsed} onClick={() => setDividendPanelsCollapsed((c) => !c)} />
         </div>
 
-        {!dividendPanelsCollapsed && (
+        {!dividendPanelsCollapsed && view === 'next12' && (
+          <div style={{ marginTop: 12 }}>
+            <DividendProjectionCard {...projection} embedded />
+          </div>
+        )}
+        {!dividendPanelsCollapsed && view === 'past' && (
           <div style={{ display: 'flex', alignItems: 'stretch', gap: 16, flexWrap: 'wrap', marginTop: 12 }}>
             <div style={{ flex: '1 1 420px', minWidth: 0 }}>
               <DividendsChart

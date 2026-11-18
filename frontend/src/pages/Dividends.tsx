@@ -21,7 +21,6 @@ import { DividendSummaryCard } from './dividends/DividendSummaryCard';
 import { useDividendSync } from './dividends/useDividendSync';
 import { useInvestedByBroker } from './dividends/useInvestedByBroker';
 import { useUpcomingDividends } from './dividends/useUpcomingDividends';
-import { DividendProjectionCard } from './dividends/DividendProjectionCard';
 import { DividendCalendarCard } from './dividends/DividendCalendarCard';
 import { DividendYieldCard } from './dividends/DividendYieldCard';
 import { usePlanner } from '../usePlanner';
@@ -224,7 +223,6 @@ export default function Dividends() {
         items={[
           { id: 'div-monthly', label: '월별 배당' },
           { id: 'div-upcoming', label: '다가오는 배당' },
-          { id: 'div-projection', label: '12개월 예상' },
           { id: 'div-calendar', label: '배당 달력' },
           { id: 'div-yield', label: '종목별 배당수익률' },
           { id: 'div-list', label: '배당 기록' },
@@ -279,21 +277,20 @@ export default function Dividends() {
         avgCostByBroker={avgCostByBroker}
         lines={brokerLines}
         investedLoading={investedLoading}
+        projection={{
+          items: upcomingAll,
+          available: upcomingRaw.available,
+          error: upcomingRaw.error,
+          records: records,
+          rateFor: dividendFxRateFor,
+          goalKrw: planner?.dividendGoalMonthlyKrw ?? null,
+          onGoalChange: async (v) => void (await updatePlanner({ dividendGoalMonthlyKrw: v })),
+        }}
       />
 
       <div id="div-upcoming" className="section-anchor" />
       <UpcomingDividends accountLabels={accountLabels} state={upcoming} onRefresh={() => loadUpcoming(true)} />
 
-      <div id="div-projection" className="section-anchor" />
-      <DividendProjectionCard
-        items={upcomingAll}
-        available={upcomingRaw.available}
-        error={upcomingRaw.error}
-        records={records}
-        rateFor={dividendFxRateFor}
-        goalKrw={planner?.dividendGoalMonthlyKrw ?? null}
-        onGoalChange={async (v) => void (await updatePlanner({ dividendGoalMonthlyKrw: v }))}
-      />
 
       <div id="div-calendar" className="section-anchor" />
       <DividendCalendarCard records={records} upcomingItems={upcomingAll} />

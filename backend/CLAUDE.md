@@ -468,7 +468,9 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
       (실측: 15일이 토요일이면 14일). 지급일 = 기준일 + 지난 일정의 **영업일 간격 중간값**(실측: 매달 분배 ETF 2영업일 — 설 연휴엔
       달력상 7일이라 달력 일수로는 틀린다). 휴장일은 국내휴장일조회(`fetchKisBusinessDays`, `CTCA0903R`, 이번 달 1일~다음 달 10일 무렵,
       한 페이지 24일, 연속조회는 본문 `ctx_area_nk`/`fk` — 100 없는 이름). 공식 예제가 **"1일 1회 호출"**을 요청해 `kis-holidays.json`에
-      날짜별로 저장하고 그날은 다시 안 부른다. 정보가 없는 날짜(과거·조회 실패)는 주말만 쉬는 날로 본다.
+      날짜별로 저장하고 그날은 다시 안 부른다. **KIS 값이 없는 날짜(12개월 예상의 몇 달 뒤·과거)는 휴장일 표 `src/krMarketCalendar.ts`**(2026-11-18 —
+      월력요항 2026·2027 + KRX 근로자의 날·연말 휴장, `krMarketClosedDays`를 국내 달력에만 깔고 KIS 값을 덮는다; 표에 없는 해는 주말만). ⚠ 해마다
+      6월쯤 다음 해 월력요항이 나오면 한 해를 더한다. ⚠ `isBusinessDay`의 기본값에 국내 표를 넣으면 안 된다 — 미국 달력은 쉬는 날만 담아서 국내 휴일이 섞인다.
   - KIS 계좌에 확정 건이 있는 종목·기준월은 그 계좌엔 예상·추정을 안 만든다. 테스트: `test/upcomingDividends.test.ts`.
   - **해외(미국, `currency: 'USD'`, `source: 'kis-overseas'`)** — 모든 증권사의 USD 보유 종목마다(2026-11-16 실측 — 종목 수십 개에 십수 초):
     - 날짜 = 해외주식 권리종합(`fetchKisOverseasIceRights`, `HHDFS78330900`, `NCOD=US`) — ICE 일정이라 **발표된 미래 배당이 미리 있다**
@@ -749,6 +751,10 @@ ISA/연금저축/IRP 계좌를 표시해두는 작은 `JsonStore`(`account-tax-t
 `resolveStockPrices`로 등록된 심볼 전체를 한 번에 라이브 조회해 합쳐서 응답한다
 (보유종목 CSV의 `lastPrice` 자동조회와 같은 원칙 — 시시각각 바뀌는 값을 저장해두면
 바로 stale해짐). `DELETE /api/watchlist/:symbol`.
+**등락률 `changeRate`**(2026-11-18, 토스 키가 있을 때만 — 없으면 null): 토스 현재가 API엔 전일 종가가 없어서 일봉(`/api/v1/candles`, 4시간 캐시)의
+**가격 시각보다 20시간 넘게 앞선 가장 최근 봉**을 직전 거래일로 본다(`tossMonthlyClose.ts`의 `previousCloseFrom`, 테스트 `krMarketCalendar.test.ts` —
+오늘 봉은 장 시작부터 가격 시각까지 길어야 16~17시간, 어제 봉은 24시간 이상 앞선다; 주말엔 마지막 거래일의 등락). 가격 시각은 `/prices`의 선택 필드
+`timestamp`(없으면 지금). ⚠ 일봉 `timestamp`가 그 거래일 시작 시각이라는 가정 — 실제 응답으로 등락률이 증권사 앱과 다르면 여기부터.
 
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/stockNameResolver.ts`, `src/routes/stockInfo.ts`)
 

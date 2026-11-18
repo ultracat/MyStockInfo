@@ -352,6 +352,8 @@ export interface WatchlistEntry {
   currency: string | null;
   addedAt: string;
   lastPrice: number | null;
+  /** 직전 거래일 종가 대비 등락률(0.012 = +1.2%) — 토스 미연동·조회 실패면 null(백엔드 routes/watchlist.ts). */
+  changeRate?: number | null;
 }
 
 /** 하루 한 번(앱 진입 시) 기록되는 전체 브로커/계좌 합산 KRW 환산 총액 — 이

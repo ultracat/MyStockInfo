@@ -1,7 +1,7 @@
 import { api } from '../../api';
 import { effectiveRate, toKrw as fxToKrw } from '../../fx';
-import { loadUsdKrwRates } from '../../fxLoader';
-import { API_BROKER_IDS } from '../../brokers';
+import { loadAllHoldings, resetAllHoldingsCache } from '../../allHoldings';
+import { BROKER_LABELS } from '../../brokers';
 import type { AccountLabel, DividendRecord, SnapshotRecord, StoredTrade } from '../../types';
 import type { FlatHolding, IndexCloses, MonthlyCloses } from '../../calc/overview';
 
@@ -81,6 +81,7 @@ export function subscribeOverview(l: () => void): () => void {
 export function resetOverviewStore(): void {
   state = INITIAL;
   inflight = null;
+  resetAllHoldingsCache();
   closeRequestId = 0;
   fxRequestId = 0;
   listeners.forEach((l) => l());
@@ -119,58 +120,48 @@ async function loadMonthlyAvgFxRates(divs: DividendRecord[]) {
 
 // ---- 한 번 받기 -----------------------------------------------------------------------------------------------------------
 
-async function fetchAll(opts: { forceRefresh?: boolean }): Promise<void> {
-  // 환율을 먼저 받아 보유 합계에 바로 쓴다(렌더 시점 state를 읽으면 첫 진입에 달러가 "환율 미적용"으로 빠졌다 — 예전 버그).
-  const [{ manual: manualRate, live: resolvedLiveFxRate }, brokers] = await Promise.all([loadUsdKrwRates(opts), api.listBrokers()]);
+async function fetchAll(opts: { forceRefresh?: boolean; skipCache?: boolean }): Promise<void> {
+  // 보유·환율은 리밸런싱·보고서와 같은 `loadAllHoldings`(allHoldings.ts — 진행 중 공유, 30초 재사용, 새로고침이면 건너뜀) 한 경로로(2026-11-18).
+  // 환율을 같이 받아 합계에 바로 쓴다(렌더 시점 state를 읽으면 첫 진입에 달러가 "환율 미적용"으로 빠졌다 — 예전 버그).
+  const [all, divs, allTrades, labels] = await Promise.all([
+    loadAllHoldings(opts),
+    api.listDividends(),
+    api.listTradesStore(),
+    api.listAccountLabels().catch(() => state.accountLabels),
+  ]);
+  const manualRate = all.manualFxRate;
+  const resolvedLiveFxRate = all.liveFxRate;
   const resolvedFxRate = effectiveRate(manualRate, resolvedLiveFxRate);
   const toKrwNow = (amount: number, currency: string | null) => fxToKrw(amount, currency, resolvedFxRate);
-  const configured = brokers.filter((b) => b.configured);
 
   const flat: FlatHolding[] = [];
   let purchaseKrw = 0;
   let marketKrw = 0;
   let unconverted = false;
-
-  const [, divs, allTrades, labels] = await Promise.all([
-    Promise.all(
-      configured.map(async (b) => {
-        const rows = API_BROKER_IDS.includes(b.id)
-          ? await api
-              .listAccounts(b.id, opts)
-              .then((accounts) => Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id, opts).catch(() => null))))
-              .then((portfolios) =>
-                portfolios
-                  .filter((p): p is NonNullable<typeof p> => p !== null)
-                  // 계좌별 보기용으로 어느 계좌의 포지션인지 남긴다(HoldingPosition 자체엔 accountId가 없음).
-                  .flatMap((p) => p.positions.map((pos) => ({ ...pos, accountId: p.accountId })))
-              )
-          : await api.listHoldingsStore({ broker: b.id });
-        for (const r of rows) {
-          flat.push({
-            broker: b.id,
-            accountId: r.accountId ?? '',
-            symbol: r.symbol,
-            name: r.name,
-            currency: r.currency,
-            quantity: r.quantity,
-            lastPrice: r.lastPrice,
-            purchaseAmount: r.purchaseAmount,
-          });
-          const pv = toKrwNow(r.purchaseAmount, r.currency);
-          const mv = toKrwNow(r.marketValue, r.currency);
-          if (pv === null || mv === null) {
-            unconverted = true;
-            continue;
-          }
-          purchaseKrw += pv;
-          marketKrw += mv;
-        }
-      })
-    ),
-    api.listDividends(),
-    api.listTradesStore(),
-    api.listAccountLabels().catch(() => state.accountLabels),
-  ]);
+  for (const r of all.lines) {
+    flat.push({
+      broker: r.broker,
+      accountId: r.accountId,
+      symbol: r.symbol,
+      name: r.name,
+      currency: r.currency,
+      quantity: r.quantity,
+      lastPrice: r.lastPrice,
+      purchaseAmount: r.purchaseAmount,
+    });
+    const pv = toKrwNow(r.purchaseAmount, r.currency);
+    const mv = toKrwNow(r.marketValue, r.currency);
+    if (pv === null || mv === null) {
+      unconverted = true;
+      continue;
+    }
+    purchaseKrw += pv;
+    marketKrw += mv;
+  }
+  // 증권사 하나가 실패해도 나머지는 보여 주고 알린다. 합계가 줄어든 값이라 그날 순자산 기록은 남기지 않는다.
+  const partialError = all.failedBrokers.length
+    ? `${all.failedBrokers.map((b) => BROKER_LABELS[b]).join('·')} 보유를 불러오지 못해 합계에서 빠졌습니다.`
+    : null;
 
   set({
     holdings: flat,
@@ -183,7 +174,7 @@ async function fetchAll(opts: { forceRefresh?: boolean }): Promise<void> {
     trades: allTrades,
     accountLabels: labels,
     lastLoadedAt: new Date(),
-    error: null,
+    error: partialError,
   });
 
   const heldSymbols = new Set(flat.filter((h) => h.quantity > 0).map((h) => h.symbol));
@@ -197,6 +188,7 @@ async function fetchAll(opts: { forceRefresh?: boolean }): Promise<void> {
   // 순자산 기록 — 오늘 날짜로 덮어쓴다(서버 upsert). 실패해도 이력 조회는 따로 한다.
   void (async () => {
     try {
+      if (partialError) throw new Error('일부 증권사 실패 — 기록 건너뜀');
       await api.capturePortfolioSnapshot({
         date: todayDate(),
         totalMarketValueKrw: marketKrw,
@@ -230,7 +222,8 @@ export async function reloadOverview(opts: { forceRefresh?: boolean; maxAgeMs?: 
   const promise = (async () => {
     set({ refreshing: !state.loading });
     try {
-      await fetchAll({ forceRefresh: force });
+      // 나이 제한 없이 부른 받기(데이터가 바뀐 뒤 등)는 보유 30초 재사용도 건너뛴다
+      await fetchAll({ forceRefresh: force, skipCache: opts.maxAgeMs === undefined });
     } catch (e) {
       set({ error: (e as Error).message });
     } finally {

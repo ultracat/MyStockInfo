@@ -389,6 +389,21 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - 프론트엔드 테스트: `frontend/test/*.test.ts`(`npm run test -w frontend`, 루트 `npm test`가 같이 돈다). `api.ts`는 `window`를 읽으니
   테스트할 로직은 api를 import하지 않는 순수 모듈(`fx.ts`, `csv.ts`)에 둔다.
 
+### 2026-11-18 화면 UX 정리 — 새 화면·카드를 만들 때 이것부터 쓴다
+- **설명 문단은 `components/Hint.tsx`**(한 줄 + "자세히", 인쇄 땐 전부) — `<p style={{color:muted,fontSize:13}}>` 긴 문단을 새로 쓰지 말 것. 화면 맨 위 단독 안내는 `<Hint card>`.
+- **CSV·Google Sheets 같은 버튼 묶음은 `components/ActionMenu.tsx`**(`<details>` 메뉴, 버튼을 누르면 닫힘, 바깥 클릭·Esc). 결과 문구는 메뉴 **밖**에(닫히면 안 보임).
+  패널은 `position:absolute`라 줌 포털 불필요. 줄 왼쪽에 놓이면 `align="left"`.
+- **긴 화면 바로가기 `components/SectionNav.tsx`** + 카드 앞 `<div id=… className="section-anchor" />`(배당금·실현손익·설정).
+- **차트 폭은 `useContainerWidth()`(콜백 ref + ResizeObserver)** — 예전엔 480px 고정이라 넓은 카드의 절반만 썼다. ⚠ 콜백 ref인 이유: 차트가 데이터 없을 땐 상자 없이
+  안내만 그리다 나중에 상자를 그려서, useRef + 마운트 effect는 상자를 놓쳤다(순자산 추이가 계속 480px). 숨긴 화면(폭 0)이면 직전 값을 둔다. 막대가 30px보다 가늘면
+  막대 위 숫자를 빼고 라벨을 건너뛴다(DividendsChart). 순자산 추이는 0원이 아니라 기록 범위로 그리고 금액 눈금을 단다.
+- **표 열 줄이기**: 금액 칸 안에 `<span className="cell-sub">`로 비율·두 번째 값(평균가·현재가, 손익·손익률) — 1280px 창에서 오른쪽 열이 잘렸다. `.cell-name-truncate`는
+  이제 평소에도 220px(좁은 상자 140px). `.table-scroll`은 넘치면 가장자리 그림자(배경 local/scroll 4겹 — 표 행에 배경색을 주면 가려진다).
+- 포지션 통화 금액은 `format.ts`의 `formatMoneyIn`(달러 `$58.00`), 수량은 `qtyFmt`. 0인 통화 줄은 타일에서 뺀다(StatTiles·PurchaseMarketTile).
+- 폼 밖 `select`/`input` 기본 모양은 `styles.css`의 `:where(...)` 규칙(우선순위 0). 종목명 링크는 `a.stock-link`(평소 일반 글씨). 비활성 `button.primary`는 흐리게.
+- 직접 입력 폼(배당 기록·매매내역)은 기본 접힘, 리밸런싱은 "현재 비중으로 채우기"와 1% 미만 접기, 종목별 수익은 보유 없는 종목 접기(합계엔 포함).
+- 화면 제목은 전부 `<h2 className="page-title">`(분석·리밸런싱·보고서가 h1이었다).
+
 ### 2026-11-17 대시보드·분석 데이터 공유(`overview/overviewStore.ts`)
 - 예전엔 `useOverviewData`가 화면마다 상태와 받기를 따로 가져서, 분석을 처음 열거나 다시 볼 때 대시보드가 받은 전 증권사 보유·배당·매매·월별 종가·
   월평균 환율·지수를 처음부터 다시 받았다. 지금은 **모듈 저장소 한 벌 + `useSyncExternalStore` 구독**이다.

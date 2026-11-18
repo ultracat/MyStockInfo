@@ -4,6 +4,7 @@ import { downloadCsv, parseCsv } from '../../csv';
 import { formatImportResult } from '../../importResult';
 import type { BrokerId } from '../../types';
 import type { useTradesData } from './useTradesData';
+import ActionMenu from '../../components/ActionMenu';
 
 // id는 브로커 고유 체결번호라 CSV 입력행엔 없고 없으면 서버가 새로 발급한다.
 // name(종목명)은 선택 컬럼 — 비워두면 백엔드가 토스→KIS→KB 순으로 자동조회해서
@@ -219,6 +220,7 @@ export function TradesToolbar({ data }: { data: ReturnType<typeof useTradesData>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <h2 className="page-title">매매내역</h2>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <ActionMenu label="가져오기·내보내기">
           <button className="ghost" onClick={onExportCsv}>
             CSV 내보내기 (전체)
           </button>
@@ -250,6 +252,7 @@ export function TradesToolbar({ data }: { data: ReturnType<typeof useTradesData>
           >
             {refreshingNames ? '갱신 중...' : '종목명 일괄 갱신'}
           </button>
+          </ActionMenu>
           {isKbSyncable && (
             <button className="ghost" onClick={triggerKbSync} disabled={kbSyncing}>
               {kbSyncing ? '동기화 중...' : '새로고침'}

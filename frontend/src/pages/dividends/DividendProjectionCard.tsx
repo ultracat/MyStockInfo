@@ -4,6 +4,7 @@ import DividendsChart from '../../components/DividendsChart';
 import { projectionRows, rowsKrw } from '../../calc/projection';
 import { krw, localToday } from '../../format';
 import type { DividendRecord, UpcomingDividend } from '../../types';
+import Hint from '../../components/Hint';
 
 /**
  * 앞으로 12개월 예상 배당 — 다가오는 배당(확정·예상·추정)을 1년 뒤까지 넓혀(`GET /dividends/upcoming?months=12`) 월별 세후 추정을 그린다.
@@ -63,11 +64,11 @@ export function DividendProjectionCard({
       </div>
       {!collapsed && (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <Hint>
             이번 달부터 12개월 동안 받을 배당의 <b>세후 추정</b>입니다. 이번 달은 받은 배당(진한 막대) 위에 남은 예상(흐린 막대)을 얹습니다.
             예상은 발표된 일정, 그 뒤는 지난 일정으로 짐작한 것이라(주당 = 최근 12회 중간값) 배당 정책이 바뀌면 달라집니다. 지금 보유 수량 기준이고,
             ISA·연금 계좌의 국내 배당은 세전 그대로, 그 밖은 국내 15.4%·미국 15%를 뺐습니다. 달러는 환율이 있을 때만 원화로 더합니다.
-          </p>
+          </Hint>
           {!available ? (
             <p style={{ color: 'var(--text-muted)' }}>한국투자증권 API 키를 등록하면 배당 일정을 받아 예상할 수 있습니다.</p>
           ) : error ? (

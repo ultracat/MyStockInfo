@@ -6,6 +6,7 @@ import { monthlyRateOr } from '../../fx';
 import { krw, localToday } from '../../format';
 import { usePlanner } from '../../usePlanner';
 import type { SavingsPlan, StoredTrade } from '../../types';
+import Hint from '../../components/Hint';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 const STATE_LABEL = { met: '달성', partial: '부족', missed: '누락', current: '진행 중' } as const;
@@ -68,14 +69,24 @@ export function SavingsPlanCard({ allTrades, fxRate }: { allTrades: StoredTrade[
       </div>
       {!collapsed && (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <Hint>
             "이 종목을 매달 얼마씩 산다"를 적어 두면 모든 계좌의 실제 매수와 달마다 맞춰 봅니다(최근 12개월). 계획의 95% 이상이면 달성입니다. 매매내역이 앱에 모여 있어야
             정확합니다 — 증권사 API 계좌는 매매내역 화면에서 그 기간을 한 번 조회해야 쌓입니다. 달러 매수는 그 달 평균 환율로 원화 환산합니다.
-          </p>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input value={form.symbol} onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))} placeholder="종목코드" style={{ width: 120 }} aria-label="적립 종목코드" />
-            <input value={form.monthly} onChange={(e) => setForm((f) => ({ ...f, monthly: e.target.value }))} placeholder="월 적립액(원)" inputMode="numeric" style={{ width: 140 }} aria-label="월 적립액" />
-            <input type="month" value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} aria-label="시작 달" />
+          </Hint>
+          {/* 입력칸 위에 이름표 — 자리표시 글자만 있어 값을 넣으면 무슨 칸인지 사라졌다(2026-11-18 UX 점검) */}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label className="mini-field">
+              종목코드
+              <input value={form.symbol} onChange={(e) => setForm((f) => ({ ...f, symbol: e.target.value }))} placeholder="예: 005930, SCHD" style={{ width: 130 }} />
+            </label>
+            <label className="mini-field">
+              월 적립액(원)
+              <input value={form.monthly} onChange={(e) => setForm((f) => ({ ...f, monthly: e.target.value }))} placeholder="예: 300,000" inputMode="numeric" style={{ width: 140 }} />
+            </label>
+            <label className="mini-field">
+              시작 달
+              <input type="month" value={form.start} onChange={(e) => setForm((f) => ({ ...f, start: e.target.value }))} />
+            </label>
             <button type="button" className="ghost" onClick={add}>
               계획 추가
             </button>

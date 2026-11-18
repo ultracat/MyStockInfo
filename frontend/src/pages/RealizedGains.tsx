@@ -7,7 +7,7 @@ import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredHolding, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
-import { formatKrwValue, localToday } from '../format';
+import { formatKrwValue, localToday, qtyFmt } from '../format';
 import { usePlanner } from '../usePlanner';
 import { TaxAccountLimitsCard } from './realized/TaxAccountLimitsCard';
 import OfficialRealizedCompare from '../components/OfficialRealizedCompare';
@@ -17,6 +17,8 @@ import {
   FINANCIAL_INCOME_THRESHOLD_KRW,
   type RealizedSale,
 } from '../calc/realizedGains';
+import Hint from '../components/Hint';
+import SectionNav from '../components/SectionNav';
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
@@ -300,24 +302,22 @@ export default function RealizedGains() {
           <thead>
             <tr>
               <th>일자</th>
-              {isAllMode && <th>증권사</th>}
-              {isAllMode && <th>계좌</th>}
+              {isAllMode && <th>증권사 · 계좌</th>}
               <th>종목</th>
               <th>수량</th>
               <th>매도금액</th>
               <th>취득금액</th>
-              <th>손익</th>
-              <th>수익률</th>
+              <th title="위: 손익, 아래: 수익률">손익</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((s, idx) => (
               <tr key={`${s.broker}:${s.accountId}:${s.symbol}:${s.date}:${idx}`}>
                 <td>{s.date}</td>
-                {isAllMode && <td>{BROKER_LABELS[s.broker]}</td>}
                 {isAllMode && (
                   <td>
-                    <span className="cell-name-truncate" title={accountDisplay(s.broker, s.accountId)}>
+                    {BROKER_LABELS[s.broker]}
+                    <span className="cell-sub cell-name-truncate" style={{ display: 'block' }} title={accountDisplay(s.broker, s.accountId)}>
                       {accountDisplay(s.broker, s.accountId)}
                     </span>
                   </td>
@@ -334,15 +334,15 @@ export default function RealizedGains() {
                     s.symbol
                   )}
                 </td>
-                <td>{s.quantity}</td>
+                <td>{qtyFmt.format(s.quantity)}</td>
                 <td>{formatKrwValue(s.proceedsKrw)}</td>
                 <td>{formatKrwValue(s.costKrw)}</td>
                 <td className={s.gainKrw >= 0 ? 'text-good' : 'text-critical'}>
                   {s.gainKrw >= 0 ? '+' : ''}
                   {formatKrwValue(s.gainKrw)}
-                </td>
-                <td className={s.gainKrw >= 0 ? 'text-good' : 'text-critical'}>
-                  {s.costKrw > 0 ? `${s.gainKrw >= 0 ? '+' : ''}${((s.gainKrw / s.costKrw) * 100).toFixed(2)}%` : '-'}
+                  <span className="cell-sub">
+                    {s.costKrw > 0 ? `${s.gainKrw >= 0 ? '+' : ''}${((s.gainKrw / s.costKrw) * 100).toFixed(2)}%` : '-'}
+                  </span>
                 </td>
               </tr>
             ))}
@@ -359,12 +359,12 @@ export default function RealizedGains() {
       <h2 className="page-title">실현손익</h2>
       {error && <p className="text-critical">{error}</p>}
 
-      <p className="card" style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <Hint card>
         매도 거래를 이동평균법으로 계산한 <strong>참고용 추정치</strong>입니다 — 환율은 거래
         당일이 아니라 <strong>그 달의 평균 환율</strong>을 쓰고, 로컬에 매수 기록이 없는
         매도분은 원가를 알 수 없어 그만큼 제외됩니다. 실제 세금 신고는 증권사가 발급하는
         공식 자료나 세무 전문가를 통해 꼭 확인해주세요.
-      </p>
+      </Hint>
 
       {excludedSymbols.length > 0 && (
         <p className="card text-critical" style={{ fontSize: 13 }}>
@@ -378,6 +378,28 @@ export default function RealizedGains() {
         지정합니다.
       </p>
 
+      <SectionNav
+        items={[
+          { id: 'rg-yearend', label: '연말 절세' },
+          { id: 'rg-overseas', label: '해외 양도소득' },
+          { id: 'rg-domestic', label: '국내 매도' },
+          { id: 'rg-dividend', label: '배당소득' },
+          { id: 'rg-limits', label: 'ISA·연금 한도' },
+        ]}
+      />
+
+      {/* 연말 절세 도우미는 이 화면에서 가장 "할 일"로 이어지는 카드라 맨 위로(예전엔 맨 아래 근처였다, 2026-11-18 UX 점검) */}
+      <div id="rg-yearend" className="section-anchor" />
+      <YearEndTaxCard
+        realizedOverseasKrw={thisYearOverseasGainKrw}
+        holdings={holdings}
+        isGeneral={isGeneralAccount}
+        usdRate={effectiveFxRate}
+        dividendIncomeKrw={thisYearDividendKrw}
+        year={CURRENT_YEAR}
+      />
+
+      <div id="rg-overseas" className="section-anchor" />
       <div className="card">
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
           <div className="form-row" style={{ marginBottom: 0 }}>
@@ -428,16 +450,17 @@ export default function RealizedGains() {
         )}
       </div>
 
+      <div id="rg-domestic" className="section-anchor" />
       {domesticSales.length > 0 && (
         <div className="card">
           <h3 style={{ marginTop: 0 }}>국내 상장 종목 매도 (22% 대상 아님)</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+          <Hint>
             위 양도소득세 계산에 포함되지 않습니다. 국내 주식·국내 주식형 ETF(예: KODEX 코스피100)의
             매매차익은 대주주가 아니면 <strong>비과세</strong>이고, 국내 상장 해외·기타 ETF(예: 미국 지수
             추종 ETF, 커버드콜 ETF)의 매매차익은 매도할 때 <strong>배당소득으로 15.4% 원천징수</strong>돼
             이미 과세가 끝납니다(아래 금융소득종합과세 기준에도 합산됨). 종목별 구분은 이 화면이 판단하지
             못하므로 증권사 자료로 확인해주세요.
-          </p>
+          </Hint>
           <div className="summary-row">
             <div className="stat-tile">
               <div className="label">{year}년 국내 상장 종목 실현손익(일반계좌)</div>
@@ -493,16 +516,17 @@ export default function RealizedGains() {
         </>
       )}
 
+      <div id="rg-dividend" className="section-anchor" />
       <div className="card">
         <h3 style={{ marginTop: 0 }}>배당소득</h3>
-        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+        <Hint>
           배당금은 매매차익과 다른 소득(배당소득)이라 위 양도소득세에 합산되지 않고, 지급될 때
           원천징수(국내 15.4%, 미국 주식은 현지 15%)로 끝납니다. 다만 이자·배당소득이 연{' '}
           {formatKrwValue(FINANCIAL_INCOME_THRESHOLD_KRW)}을 넘으면 초과분이 금융소득종합과세 대상이
           됩니다. 배당금 화면에 입력한 금액 기준이며(세전 금액으로 입력해야 기준과 정확히 비교됨),
           달러 배당은 지급월 평균 환율로 환산합니다. ISA/연금저축/IRP 계좌 배당과, 위 "국내 상장
           종목 매도"의 해외·기타 ETF 매매차익(배당소득으로 과세)은 포함하지 않습니다.
-        </p>
+        </Hint>
         <div className="summary-row">
           <div className="stat-tile">
             <div className="label">{year}년 배당소득 합계(일반계좌, 원화 환산)</div>
@@ -571,15 +595,8 @@ export default function RealizedGains() {
         )}
       </div>
 
-      <YearEndTaxCard
-        realizedOverseasKrw={thisYearOverseasGainKrw}
-        holdings={holdings}
-        isGeneral={isGeneralAccount}
-        usdRate={effectiveFxRate}
-        dividendIncomeKrw={thisYearDividendKrw}
-        year={CURRENT_YEAR}
-      />
 
+      <div id="rg-limits" className="section-anchor" />
       <TaxAccountLimitsCard
         accounts={taxTypes}
         planner={plannerState.planner}
@@ -597,11 +614,11 @@ export default function RealizedGains() {
       {taxAdvantagedSales.length > 0 && (
         <div className="card">
           <h3 style={{ marginTop: 0 }}>세제혜택 계좌 매도 내역(ISA/연금저축/IRP)</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+          <Hint>
             위 실현손익 합계·추정 세액·배당소득에는 포함되지 않습니다 — 이 계좌들은 각자 다른 과세
             체계(ISA는 손익통산 후 비과세 한도 초과분만 9.9% 분리과세, 연금저축/IRP는 매도
             시점엔 과세되지 않고 나중에 연금·퇴직소득으로 인출할 때 과세)가 적용됩니다.
-          </p>
+          </Hint>
           {renderSalesTable(taxAdvantagedSales)}
         </div>
       )}

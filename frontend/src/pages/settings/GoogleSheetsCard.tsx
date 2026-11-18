@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import type { SecureStorageStatus } from '../../types';
 import { errorText, type Notify } from './notify';
+import Hint from '../../components/Hint';
 
 // Google Sheets 연동 — 사용자가 자기 Google Cloud 프로젝트에서 만든 OAuth 클라이언트(Client ID/Secret)를 먼저 넣고
 // (백엔드 google/clientCredentials.ts, 2026-11-16부터 — 개발자 클라이언트를 빌드에 넣지 않는다), 그다음 계정을
@@ -95,18 +96,18 @@ export function GoogleSheetsCard({ secureStorage, notify }: { secureStorage: Sec
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>Google Sheets 연동</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <Hint>
         Google 계정을 연결하면 Drive 루트에 "MyStock" 스프레드시트를 만들고(이미 있으면 그대로
         사용) Holdings/Trades/Dividends 세 탭에 보유종목/매매내역/배당금을 내보내거나
         가져올 수 있습니다 — 각 화면(보유 종목/매매내역/배당 기록)의 "Google Sheets" 버튼으로
         실행합니다.
-      </p>
+      </Hint>
 
-      <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+      <Hint>
         연결하려면 먼저 <strong>본인 Google Cloud 프로젝트에서 만든 OAuth 클라이언트</strong>(애플리케이션 유형 "데스크톱 앱")의
         Client ID와 Client Secret을 넣어야 합니다. 만드는 순서는 사용자 매뉴얼의 부록 "Google API 키(OAuth 클라이언트) 설정하기"에 있습니다.
         값은 OS 키체인으로 암호화해 이 PC에만 저장하며, Secret은 다시 보여 주지 않습니다.
-      </p>
+      </Hint>
 
       {googleStatus && (!googleStatus.hasClientCredentials || editing) ? (
         <div>

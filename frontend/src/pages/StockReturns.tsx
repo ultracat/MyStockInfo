@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { effectiveRate } from '../fx';
 import { loadUsdKrwRates } from '../fxLoader';
@@ -6,7 +6,8 @@ import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { BrokerId, DividendRecord } from '../types';
 import { API_BROKER_IDS } from '../brokers';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
-import { formatKrwValue, formatSignedKrw } from '../format';
+import { formatKrwValue, formatSignedKrw, qtyFmt } from '../format';
+import Hint from '../components/Hint';
 
 /** 전체 브로커/계좌의 보유종목 한 줄 — 종목별로 합치기 전의 원본(통화 기준 금액). */
 interface FlatHolding {
@@ -71,6 +72,7 @@ export default function StockReturns() {
   const [sortKey, setSortKey] = useState<SortKey>('market');
   const [sortAsc, setSortAsc] = useState(false);
   const [includeSoldOut, setIncludeSoldOut] = useState(true);
+  const [soldOpen, setSoldOpen] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
 
   // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
@@ -298,6 +300,19 @@ export default function StockReturns() {
   const totalValuationRate = totals.purchaseKrw > 0 ? totalValuationGain / totals.purchaseKrw : null;
   const totalDividendRate = totals.purchaseKrw > 0 ? totals.dividendKrw / totals.purchaseKrw : null;
 
+  // 지금 보유하지 않고 배당 기록만 있는 종목은 표 아래에 접어 둔다(합계에는 포함 — 예전엔 0원 줄 수십 개가 보유 종목 사이에 섞였다, 2026-11-18).
+  const heldShown = shownRows.filter((r) => r.held);
+  const soldShown = shownRows.filter((r) => !r.held);
+  const soldToggle = (
+    <tr className="group-toggle-row">
+      <td colSpan={7} style={{ textAlign: 'left' }}>
+        <button className="ghost" onClick={() => setSoldOpen((v) => !v)}>
+          {soldOpen ? '▾' : '▸'} 지금 보유하지 않는 종목 {soldShown.length}개(배당 기록만) {soldOpen ? '접기' : '펼치기'}
+        </button>
+      </td>
+    </tr>
+  );
+
   function sortButton(key: SortKey, label: string) {
     const active = sortKey === key;
     return (
@@ -331,7 +346,7 @@ export default function StockReturns() {
               {lastLoadedAt.toLocaleTimeString('ko-KR')} 기준
             </span>
           )}
-          <button onClick={handleRefresh} disabled={loading || refreshing}>
+          <button className="ghost" onClick={handleRefresh} disabled={loading || refreshing}>
             {refreshing ? '새로고침 중...' : '새로고침'}
           </button>
         </div>
@@ -375,12 +390,12 @@ export default function StockReturns() {
           </div>
 
           <div className="card">
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+            <Hint>
               전체 증권사·계좌의 보유종목을 종목 단위로 합치고, 같은 종목의 배당 기록을 전부 더한 누적배당금을 함께
               보여줍니다. 모든 금액은 원화 환산값입니다 — 달러 보유분은 지금 환율, 달러 배당금은 지급월 평균 환율로
               환산합니다. 배당금은 배당금 화면의 기록(세후)이 전부입니다 — 토스증권·한국투자증권은 API로 자동 동기화되고, 그
               밖의 증권사는 직접 기록한 내역만 반영됩니다(기록하지 않은 배당은 0으로 나옵니다).
-            </p>
+            </Hint>
             {totals.unconverted && (
               <p className="text-critical" style={{ fontSize: 13 }}>
                 환율을 가져오지 못해 일부 달러 금액이 합계에서 빠졌습니다(설정에서 환율을 직접 입력할 수 있습니다).
@@ -408,45 +423,50 @@ export default function StockReturns() {
                       <th>수량</th>
                       <th>{sortButton('purchase', '투자금')}</th>
                       <th>{sortButton('market', '현재평가금')}</th>
-                      <th>평가손익</th>
-                      <th>손익률</th>
-                      <th>{sortButton('dividend', '누적배당금')}</th>
-                      <th>배당수익률</th>
-                      <th>{sortButton('totalReturn', '총 수익')}</th>
-                      <th>총 수익률</th>
+                      <th title="위: 평가손익, 아래: 손익률">평가손익</th>
+                      <th title="위: 누적배당금, 아래: 투자금 대비 배당수익률">{sortButton('dividend', '누적배당금')}</th>
+                      <th title="위: 평가손익 + 배당, 아래: 총 수익률">{sortButton('totalReturn', '총 수익')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {shownRows.map((r) => {
+                    {[...heldShown, ...(soldOpen ? soldShown : [])].map((r, i) => {
                       const valuationGain = r.marketKrw - r.purchaseKrw;
                       const rowReturn = valuationGain + r.dividendKrw;
                       const valuationRate = r.purchaseKrw > 0 ? valuationGain / r.purchaseKrw : null;
                       const dividendRate = r.purchaseKrw > 0 ? r.dividendKrw / r.purchaseKrw : null;
                       const returnRate = r.purchaseKrw > 0 ? rowReturn / r.purchaseKrw : null;
                       return (
-                        <tr key={r.symbol}>
-                          <td className="cell-name-truncate">
+                        <Fragment key={r.symbol}>
+                        {i === heldShown.length && soldShown.length > 0 && soldToggle}
+                        <tr>
+                          <td>
                             <StockNameLink name={r.name} url={stockLinkFor(r.symbol, r.currency)} />{' '}
                             <span style={{ color: 'var(--text-muted)' }}>({r.symbol})</span>
                             {!r.held && <span style={{ color: 'var(--text-muted)' }}> · 보유 없음</span>}
                             {r.unconverted && <span className="text-critical"> · 환율 미적용</span>}
                           </td>
-                          <td>{r.quantity}</td>
+                          <td>{qtyFmt.format(r.quantity)}</td>
                           <td>{formatKrwValue(r.purchaseKrw)}</td>
                           <td>{formatKrwValue(r.marketKrw)}</td>
-                          <td className={toneOf(valuationGain)}>{formatSignedKrw(valuationGain)}</td>
-                          <td className={valuationRate === null ? undefined : toneOf(valuationRate)}>
-                            {formatRate(valuationRate)}
+                          <td className={toneOf(valuationGain)}>
+                            {formatSignedKrw(valuationGain)}
+                            <span className="cell-sub">{formatRate(valuationRate)}</span>
                           </td>
-                          <td>{formatKrwValue(r.dividendKrw)}</td>
-                          <td>{dividendRate === null ? '-' : `${(dividendRate * 100).toFixed(2)}%`}</td>
-                          <td className={toneOf(rowReturn)}>{formatSignedKrw(rowReturn)}</td>
-                          <td className={returnRate === null ? undefined : toneOf(returnRate)}>
-                            {formatRate(returnRate)}
+                          <td>
+                            {formatKrwValue(r.dividendKrw)}
+                            <span className="cell-sub">
+                              {dividendRate === null ? '-' : `${(dividendRate * 100).toFixed(2)}%`}
+                            </span>
+                          </td>
+                          <td className={toneOf(rowReturn)}>
+                            {formatSignedKrw(rowReturn)}
+                            <span className="cell-sub">{formatRate(returnRate)}</span>
                           </td>
                         </tr>
+                        </Fragment>
                       );
                     })}
+                    {!soldOpen && soldShown.length > 0 && soldToggle}
                   </tbody>
                   <tfoot>
                     <tr>
@@ -456,25 +476,17 @@ export default function StockReturns() {
                       <td style={{ fontWeight: 600 }}>{formatKrwValue(totals.marketKrw)}</td>
                       <td className={toneOf(totalValuationGain)} style={{ fontWeight: 600 }}>
                         {formatSignedKrw(totalValuationGain)}
+                        <span className="cell-sub">{formatRate(totalValuationRate)}</span>
                       </td>
-                      <td
-                        className={totalValuationRate === null ? undefined : toneOf(totalValuationRate)}
-                        style={{ fontWeight: 600 }}
-                      >
-                        {formatRate(totalValuationRate)}
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{formatKrwValue(totals.dividendKrw)}</td>
                       <td style={{ fontWeight: 600 }}>
-                        {totalDividendRate === null ? '-' : `${(totalDividendRate * 100).toFixed(2)}%`}
+                        {formatKrwValue(totals.dividendKrw)}
+                        <span className="cell-sub">
+                          {totalDividendRate === null ? '-' : `${(totalDividendRate * 100).toFixed(2)}%`}
+                        </span>
                       </td>
                       <td className={toneOf(totalReturn)} style={{ fontWeight: 600 }}>
                         {formatSignedKrw(totalReturn)}
-                      </td>
-                      <td
-                        className={totalReturnRate === null ? undefined : toneOf(totalReturnRate)}
-                        style={{ fontWeight: 600 }}
-                      >
-                        {formatRate(totalReturnRate)}
+                        <span className="cell-sub">{formatRate(totalReturnRate)}</span>
                       </td>
                     </tr>
                   </tfoot>

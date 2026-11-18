@@ -15,6 +15,7 @@ import {
   type SectorWeights,
   type ToKrw,
 } from '../../calc/overview';
+import Hint from '../../components/Hint';
 
 /** 대시보드 "전체 계좌 보유종목 비중"·"섹터 비중" 카드 + 보유종목 상세 팝업(종목별/계좌별). */
 export function HoldingsCards({
@@ -101,14 +102,14 @@ export function HoldingsCards({
         sectors.length > 0 && (
           <div className="card">
             <h3 style={{ marginTop: 0 }}>섹터 비중</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+            <Hint>
               토스증권 섹터 분류(대분류) 기준입니다. 여러 섹터에 속한 종목은 평가금액을 똑같이 나누고, 우선주는 보통주의
               섹터를 따릅니다. <strong>ETF</strong>는 국내 ETF면 한국투자증권 구성종목(비중 상위 30개)대로 쪼개고
               {etfCounts.components > 0 && ` (${etfCounts.components}개)`}, 안 되면 토스가 분류한 섹터에
               넣습니다{etfCounts.sector > 0 && ` (${etfCounts.sector}개)`}. 상위 30개 밖 비중, 채권·현금, 분류가 없는
               ETF(미국 지수·커버드콜 등)는 "분류 안 됨"입니다.
               {sectorEtfPending && ' 토스 ETF 섹터 분류를 받는 중이라(하루 한 번, 약 2분) 끝나면 자동으로 다시 그립니다.'}
-            </p>
+            </Hint>
             <DonutChart
               slices={sectors}
               centerLabel="총 평가금액"

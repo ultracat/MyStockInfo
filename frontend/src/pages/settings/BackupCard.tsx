@@ -3,6 +3,7 @@ import { api } from '../../api';
 import { downloadBlob } from '../../csv';
 import type { RestoreBackupResult } from '../../types';
 import { errorText, type Notify } from './notify';
+import Hint from '../../components/Hint';
 
 // 복원 업로드는 zip을 base64로 감싸 보통 JSON body로 보낸다(api.ts의
 // restoreBackup 참고) — ArrayBuffer를 base64로 바꿀 때 `String.fromCharCode(...bytes)`를
@@ -145,13 +146,13 @@ export function BackupCard({ notify }: { notify: Notify }) {
   return (
     <div className="card">
       <h3 style={{ marginTop: 0 }}>데이터 백업/복원</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+      <Hint>
         보유종목/매매내역/배당 기록 등 로컬에 저장된 데이터를 zip 파일로 내려받거나,
         백업 파일로 되돌릴 수 있습니다. <b>백업 비밀번호</b>를 정하면 API 키와 Google
         연결도 그 비밀번호로 암호화해 넣어서, 다른 PC에서도 비밀번호만 입력하면 그대로
         복원됩니다. 비워 두면 키는 넣지 않습니다. 증권사 접속 토큰은 항상 빼고, 필요할 때
         앱이 다시 받습니다.
-      </p>
+      </Hint>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <input
           type="password"
@@ -209,10 +210,10 @@ export function BackupCard({ notify }: { notify: Notify }) {
       )}
 
       <h4 style={{ marginBottom: 4 }}>자동 백업</h4>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 0 }}>
+      <Hint>
         앱이 하루 한 번, 그리고 복원하기 직전에 이 PC에 데이터를 자동으로 남깁니다(최근 7개). API 키·Google 연결·접속 토큰은
         넣지 않으므로 되돌려도 지금 등록된 키는 그대로입니다. 가져오기를 잘못했을 때 그 전 시점으로 되돌리는 용도입니다.
-      </p>
+      </Hint>
       {autoBackups.length === 0 ? (
         <p style={{ fontSize: 13 }}>아직 자동 백업이 없습니다(앱을 켜고 1분쯤 뒤 첫 백업이 생깁니다).</p>
       ) : (

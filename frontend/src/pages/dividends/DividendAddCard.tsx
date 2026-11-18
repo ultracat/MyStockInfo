@@ -38,6 +38,8 @@ export function DividendAddCard({
   const [paidDate, setPaidDate] = useState(today());
   const [memo, setMemo] = useState('');
   const [taxInput, setTaxInput] = useState('');
+  // 기본은 접힘 — 목록 바로 위에 큰 입력 폼이 늘 펼쳐져 있었다(2026-11-18 UX 점검).
+  const [open, setOpen] = useState(false);
 
   // 종목명 자동조회 — 백엔드가 심볼별로 로컬 캐시(SQLite, stockNames.sqlite)를
   // 두므로 같은 심볼을 다시 입력해도 매번 토스 API를 부르지 않는다. 사용자가
@@ -150,9 +152,26 @@ export function DividendAddCard({
     }
   }
 
+  if (!open) {
+    return (
+      <div className="card add-collapsed">
+        <button className="ghost" onClick={() => setOpen(true)}>
+          + 배당 기록 직접 추가
+        </button>
+        <span>API로 동기화되지 않는 증권사·계좌의 배당을 입력합니다.</span>
+        {error && <p className="text-critical" style={{ whiteSpace: 'pre-wrap', width: '100%', margin: 0 }}>{error}</p>}
+      </div>
+    );
+  }
+
   return (
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>배당 기록 추가</h3>
+        <div className="card-head">
+          <h3 style={{ margin: 0 }}>배당 기록 추가</h3>
+          <button className="ghost" onClick={() => setOpen(false)}>
+            닫기
+          </button>
+        </div>
         {error && (
           <p className="text-critical" style={{ whiteSpace: 'pre-wrap' }}>
             {error}

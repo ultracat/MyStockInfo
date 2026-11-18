@@ -8,7 +8,8 @@ import { krw, localToday, formatSignedKrw } from '../format';
 import { BROKER_LABELS } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
-import type { AccountTaxTypeEntry, DividendRecord, SnapshotRecord, StoredTrade } from '../types';
+import type { AccountTaxTypeEntry, DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
+import DividendsChart from '../components/DividendsChart';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 // 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
@@ -84,6 +85,20 @@ export default function Report() {
     return buildReport({ period, dividends, trades, sales, snapshots, rateFor }, (b, a) => taxAdvantaged.has(accountLabelKey(b as never, a)));
   }, [period, dividends, trades, snapshots, rateFor, taxAdvantaged]);
 
+  // 연간 보고서의 월별 배당 막대(예전엔 표만 있어 한 해의 흐름이 안 보였다, 2026-11-18 UX 점검). 세후 기록 그대로, 달러는 DividendsChart가 지급월 환율로.
+  const yearMonthlyRows = useMemo<MonthlySummaryRow[]>(() => {
+    if (kind !== 'year') return [];
+    const rows = Array.from({ length: 12 }, (_, i) => ({ month: `${period}-${String(i + 1).padStart(2, '0')}`, totalKrw: 0, totalUsd: 0, count: 0 }));
+    for (const d of dividends) {
+      if (!d.paidDate.startsWith(period)) continue;
+      const row = rows[Number(d.paidDate.slice(5, 7)) - 1];
+      if (d.currency === 'USD') row.totalUsd += d.amount;
+      else row.totalKrw += d.amount;
+      row.count += 1;
+    }
+    return rows;
+  }, [kind, period, dividends]);
+
   const topHoldings = useMemo(() => {
     if (!holdings) return null;
     const by = new Map<string, { name: string; valueKrw: number; costKrw: number }>();
@@ -117,8 +132,8 @@ export default function Report() {
 
   return (
     <div className="report-page">
-      <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <h1 style={{ marginRight: 'auto' }}>보고서</h1>
+      <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        <h2 className="page-title" style={{ margin: 0, marginRight: 'auto' }}>보고서</h2>
         <select
           value={kind}
           onChange={(e) => {
@@ -138,7 +153,7 @@ export default function Report() {
             </option>
           ))}
         </select>
-        <button type="button" onClick={() => void savePdf()} disabled={saving || !loaded || !holdings} title={!loaded || !holdings ? '자료를 받는 중입니다' : undefined}>
+        <button type="button" className="primary" onClick={() => void savePdf()} disabled={saving || !loaded || !holdings} title={!loaded || !holdings ? '자료를 받는 중입니다' : undefined}>
           {saving ? 'PDF 만드는 중...' : 'PDF로 저장'}
         </button>
       </div>
@@ -188,6 +203,12 @@ export default function Report() {
         {report.dividends.count === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>이 기간에 받은 배당이 없습니다.</p>
         ) : (
+          <>
+          {report.kind === 'year' && (
+            <div style={{ marginBottom: 12 }}>
+              <DividendsChart rows={yearMonthlyRows} fxRate={rateFor} />
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: report.kind === 'year' ? '1fr 1fr' : '1fr', gap: 16 }}>
             {report.kind === 'year' && (
               <table>
@@ -226,6 +247,7 @@ export default function Report() {
               </tbody>
             </table>
           </div>
+          </>
         )}
         {report.dividends.unconvertedUsd > 0 && (
           <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>환율을 몰라 뺀 달러 배당 ${report.dividends.unconvertedUsd.toFixed(2)}</p>

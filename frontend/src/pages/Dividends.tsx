@@ -25,6 +25,8 @@ import { DividendProjectionCard } from './dividends/DividendProjectionCard';
 import { DividendCalendarCard } from './dividends/DividendCalendarCard';
 import { DividendYieldCard } from './dividends/DividendYieldCard';
 import { usePlanner } from '../usePlanner';
+import Hint from '../components/Hint';
+import SectionNav from '../components/SectionNav';
 
 const CURRENT_YEAR = new Date().getFullYear();
 
@@ -218,11 +220,21 @@ export default function Dividends() {
   return (
     <div>
       <h2 className="page-title">배당금</h2>
-      <div className="notice">
+      <SectionNav
+        items={[
+          { id: 'div-monthly', label: '월별 배당' },
+          { id: 'div-upcoming', label: '다가오는 배당' },
+          { id: 'div-projection', label: '12개월 예상' },
+          { id: 'div-calendar', label: '배당 달력' },
+          { id: 'div-yield', label: '종목별 배당수익률' },
+          { id: 'div-list', label: '배당 기록' },
+        ]}
+      />
+      <Hint card>
         토스증권·한국투자증권은 API 키가 등록돼 있으면 이 화면에 들어올 때 배당(국내 ETF 분배금, 외화세금환급 포함)을
         API 내용으로 자동으로 맞춥니다 — 그 증권사 기록은 직접 고칠 수 없습니다. 그 밖의 증권사는 입금된 배당을
         조회하는 API가 없어 지급 시 직접 입력합니다. 배당금은 세후 실수령액이고, 세금은 따로 적습니다.
-      </div>
+      </Hint>
       {eximbankConfigured === false && records.some((r) => r.currency === 'USD') && (
         <div className="notice">
           <strong>한국수출입은행 환율 인증키가 없습니다.</strong> 달러 배당금을 지급한 달의 평균 환율 대신 오늘 환율로 원화
@@ -257,6 +269,7 @@ export default function Dividends() {
         </div>
       </div>
 
+      <div id="div-monthly" className="section-anchor" />
       <DividendSummaryCard
         year={year}
         visibleRecords={visibleRecords}
@@ -268,8 +281,10 @@ export default function Dividends() {
         investedLoading={investedLoading}
       />
 
+      <div id="div-upcoming" className="section-anchor" />
       <UpcomingDividends accountLabels={accountLabels} state={upcoming} onRefresh={() => loadUpcoming(true)} />
 
+      <div id="div-projection" className="section-anchor" />
       <DividendProjectionCard
         items={upcomingAll}
         available={upcomingRaw.available}
@@ -280,10 +295,13 @@ export default function Dividends() {
         onGoalChange={async (v) => void (await updatePlanner({ dividendGoalMonthlyKrw: v }))}
       />
 
+      <div id="div-calendar" className="section-anchor" />
       <DividendCalendarCard records={records} upcomingItems={upcomingAll} />
 
+      <div id="div-yield" className="section-anchor" />
       <DividendYieldCard records={records} rateFor={dividendFxRateFor} />
 
+      <div id="div-list" className="section-anchor" />
       <DividendAddCard
         syncOwnedBrokers={sync.syncOwnedBrokers}
         isRowSyncOwned={sync.isRowSyncOwned}

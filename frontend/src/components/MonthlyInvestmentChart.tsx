@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useContainerWidth } from '../useContainerWidth';
 import { krw, krwCompact } from '../format';
 
 export interface MonthlyInvestmentRow {
@@ -31,13 +32,14 @@ export default function MonthlyInvestmentChart({ rows }: { rows: MonthlyInvestme
     hAlign: 'center' | 'left' | 'right';
     vAlign: 'above' | 'below';
   } | null>(null);
+  const [boxRef, boxWidth] = useContainerWidth();
 
   if (rows.length === 0) {
     return <p style={{ color: 'var(--text-muted)' }}>매수 후 보유 중인 종목의 매매내역이 없습니다.</p>;
   }
 
   const max = Math.max(...rows.map((r) => Math.max(r.investedKrw, r.currentKrw)), 1) * 1.1;
-  const colWidth = Math.max(30, Math.min(60, 480 / rows.length));
+  const colWidth = Math.max(30, Math.min(90, boxWidth / rows.length)); // 카드 폭에 맞춤(예전 480px 고정, 2026-11-18)
   const width = rows.length * colWidth;
   const y = (v: number) => TOP_MARGIN + HEIGHT - (v / max) * HEIGHT;
   const x = (i: number) => i * colWidth + colWidth / 2;
@@ -57,7 +59,7 @@ export default function MonthlyInvestmentChart({ rows }: { rows: MonthlyInvestme
           총 수입금(현재 평가금액)
         </span>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div ref={boxRef} style={{ overflowX: 'auto' }}>
         <svg width={width} height={TOP_MARGIN + HEIGHT + AXIS_SPACE} role="img" aria-label="월별 총 투자금과 총 수입금 추이">
           {[0, 0.25, 0.5, 0.75, 1].map((f) => (
             <line

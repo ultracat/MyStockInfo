@@ -12,6 +12,7 @@ import { FxRateCard } from './settings/FxRateCard';
 import { GoogleSheetsCard } from './settings/GoogleSheetsCard';
 import { errorText, type Notify } from './settings/notify';
 import { useSettingsAccounts } from './settings/useSettingsAccounts';
+import SectionNav from '../components/SectionNav';
 
 // 설정 화면 — 카드마다 파일 하나(pages/settings/, 2026-11-17 분할). 여기는 카드들이 함께 쓰는 것만 둔다:
 // 맨 위 공용 안내(notify), 증권사 키 상태(연동 상태·API 키 카드), 암호화 가능 여부(키 저장 카드들이 버튼을 막는 데 씀),
@@ -89,6 +90,18 @@ export default function Settings() {
       )}
       {message && <p className="text-good">{message}</p>}
 
+      <SectionNav
+        items={[
+          { id: 'set-brokers', label: '증권사 연동' },
+          { id: 'set-keys', label: 'API 키' },
+          { id: 'set-fx', label: '환율' },
+          { id: 'set-alerts', label: '알림' },
+          { id: 'set-google', label: 'Google Sheets' },
+          { id: 'set-accounts', label: '계좌 별칭·세금 유형' },
+          { id: 'set-backup', label: '백업' },
+        ]}
+      />
+      <div id="set-brokers" className="section-anchor" />
       <BrokerStatusCard
         status={status}
         fieldSpecs={fieldSpecs}
@@ -96,12 +109,18 @@ export default function Settings() {
         apiAccounts={accounts.apiAccounts}
         onClear={(b) => void onClearCredential(b)}
       />
-      <ApiKeyCard fieldSpecs={fieldSpecs} secureStorage={secureStorage} notify={notify} onSaved={afterCredentialChange} />
+      <div id="set-keys" className="section-anchor" />
+      <ApiKeyCard fieldSpecs={fieldSpecs} secureStorage={secureStorage} notify={notify} onSaved={afterCredentialChange} status={status} />
+      <div id="set-fx" className="section-anchor" />
       <EximbankKeyCard secureStorage={secureStorage} />
       <FxRateCard notify={notify} />
+      <div id="set-alerts" className="section-anchor" />
       <AlertsCard />
+      <div id="set-google" className="section-anchor" />
       <GoogleSheetsCard secureStorage={secureStorage} notify={notify} />
+      <div id="set-accounts" className="section-anchor" />
       <AccountLabelsCard accounts={accounts} notify={notify} />
+      <div id="set-backup" className="section-anchor" />
       <BackupCard notify={notify} />
     </div>
   );

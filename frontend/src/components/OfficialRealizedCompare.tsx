@@ -3,6 +3,7 @@ import { api } from '../api';
 import type { KisRealizedRow } from '../types';
 import { krw } from '../format';
 import CollapseToggle from './CollapseToggle';
+import Hint from './Hint';
 
 // 증권사가 직접 계산한 매도 실현손익과 이 앱의 이동평균 추정치를 종목별로 나란히 보여준다.
 // - 한국투자증권: 국내 기간별매매손익현황(TTTC8715R, 매도 건별), 해외 기간손익(TTTS3039R, 원화 기준)
@@ -139,11 +140,11 @@ export default function OfficialRealizedCompare({
       </div>
       {!collapsed && (
         <>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+          <Hint>
             증권사 값은 {brokerName}이 계좌 장부로 계산한 매도 손익(수수료·세금 차감)이고, 앱 값은 이 화면이
             매매내역으로 추정한 값입니다(계좌 세금 유형과 무관하게 이 계좌의 매도 전부). 매매내역이 다 모이지 않았거나
             원가 기준이 다르면 차이가 납니다 — 다르면 증권사 값을 기준으로 보세요.
-          </p>
+          </Hint>
           {error ? (
             <p className="text-critical">{error}</p>
           ) : rows === null ? (

@@ -222,20 +222,6 @@ export default function Dashboard() {
             </div>
           )}
 
-          {!hasUnconvertedUsd && effectiveFxRate && portfolio.positions.some((p) => p.currency === 'USD') && (
-            <div className="notice">
-              USD 종목 비중 계산에 적용된 환율: 1 USD = {krw.format(Math.round(effectiveFxRate))}원
-              {manualFxRate ? ' (설정에서 직접 입력)' : ' (토스증권 실시간 조회)'}
-            </div>
-          )}
-
-          {isCurrentBrokerApi && selectedBroker === 'toss' && portfolio.cashBalanceKrw !== null && (
-            <div className="notice" style={{ fontSize: 13 }}>
-              토스증권 예수금은 "매수 가능 금액"(미수 미발생 기준) API로 조회한 값이라, 매도 후 정산 전인
-              금액이 있으면 실제 예수금과 약간 다를 수 있습니다.
-            </div>
-          )}
-
           <div className="summary-row">
             {isCurrentBrokerApi ? (
               <AmountTile
@@ -291,6 +277,23 @@ export default function Dashboard() {
               fallbackRate={portfolio.profitLossRate}
             />
           </div>
+
+          {/* 환율·예수금 안내는 상자 두 개 대신 타일 아래 한 줄로(2026-11-18 UX 점검 — 안내 상자가 숫자보다 먼저 자리를 차지했다) */}
+          {((!hasUnconvertedUsd && effectiveFxRate && portfolio.positions.some((p) => p.currency === 'USD')) ||
+            (isCurrentBrokerApi && selectedBroker === 'toss' && portfolio.cashBalanceKrw !== null)) && (
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '-8px 0 16px' }}>
+              {!hasUnconvertedUsd && effectiveFxRate && portfolio.positions.some((p) => p.currency === 'USD') && (
+                <>
+                  적용 환율 1 USD = {krw.format(Math.round(effectiveFxRate))}원{manualFxRate ? '(설정에서 직접 입력)' : '(실시간 조회)'}
+                </>
+              )}
+              {isCurrentBrokerApi && selectedBroker === 'toss' && portfolio.cashBalanceKrw !== null && (
+                <span title="토스증권 예수금은 매수 가능 금액(미수 미발생 기준) API 값이라, 매도 후 정산 전 금액이 있으면 실제 예수금과 조금 다를 수 있습니다.">
+                  {' '}· 토스증권 예수금은 "매수 가능 금액" 기준 ⓘ
+                </span>
+              )}
+            </p>
+          )}
 
           {/* 입금 기준 원금 — 입출금 내역 API가 있는 토스·NH·키움만(한투·KB는 없음). 모의투자 계좌는 원금 개념이 없어 뺀다. */}
           {isCurrentBrokerApi &&

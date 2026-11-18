@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { krw, krwCompact } from '../format';
 import type { SnapshotRecord } from '../types';
+import { useContainerWidth } from '../useContainerWidth';
 
 const HEIGHT = 180;
 const TOP_MARGIN = 24;
 const AXIS_SPACE = 24;
 const TOOLTIP_HALF_WIDTH = 100;
+/** 왼쪽 세로축 눈금 글자 자리 */
+const Y_AXIS = 52;
 
 /**
  * `MonthlyInvestmentChart`와 같은 2-series line chart(투자금 vs 평가금액,
@@ -21,16 +24,27 @@ export default function NetWorthChart({ rows }: { rows: SnapshotRecord[] }) {
     hAlign: 'center' | 'left' | 'right';
     vAlign: 'above' | 'below';
   } | null>(null);
+  const [boxRef, boxWidth] = useContainerWidth();
 
   if (rows.length === 0) {
     return <p style={{ color: 'var(--text-muted)' }}>아직 기록된 스냅샷이 없습니다 — 다음에 앱을 열면 오늘부터 쌓입니다.</p>;
   }
 
-  const max = Math.max(...rows.map((r) => Math.max(r.totalPurchaseAmountKrw, r.totalMarketValueKrw)), 1) * 1.1;
-  const colWidth = Math.max(30, Math.min(60, 480 / rows.length));
-  const width = rows.length * colWidth;
-  const y = (v: number) => TOP_MARGIN + HEIGHT - (v / max) * HEIGHT;
-  const x = (i: number) => i * colWidth + colWidth / 2;
+  // 2026-11-18 UX 점검: ① 0원부터 그려 두 선이 거의 평평했다 → 기록 범위(최저~최고)에 여백을 두고 그리고 왼쪽에 금액 눈금을 단다
+  // (0부터가 아니라는 걸 눈금이 알려 준다). ② 폭이 480px 기준이라 날짜 라벨이 겹쳤다 → 카드 폭에 맞추고 라벨은 겹치지 않게 건너뛴다.
+  const values = rows.flatMap((r) => [r.totalPurchaseAmountKrw, r.totalMarketValueKrw]);
+  const vMin = Math.min(...values);
+  const vMax = Math.max(...values, 1);
+  const pad = Math.max((vMax - vMin) * 0.15, vMax * 0.01);
+  const lo = Math.max(0, vMin - pad);
+  const hi = vMax + pad;
+  const plotWidth = Math.max(120, boxWidth - Y_AXIS);
+  const colWidth = Math.max(4, Math.min(60, plotWidth / rows.length));
+  const width = Y_AXIS + rows.length * colWidth;
+  const y = (v: number) => TOP_MARGIN + HEIGHT - ((v - lo) / (hi - lo)) * HEIGHT;
+  const x = (i: number) => Y_AXIS + i * colWidth + colWidth / 2;
+  const labelEvery = Math.max(1, Math.ceil(44 / colWidth));
+  const showDots = colWidth >= 10;
 
   const investedPath = rows.map((r, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(r.totalPurchaseAmountKrw)}`).join(' ');
   const currentPath = rows.map((r, i) => `${i === 0 ? 'M' : 'L'} ${x(i)} ${y(r.totalMarketValueKrw)}`).join(' ');
@@ -51,34 +65,42 @@ export default function NetWorthChart({ rows }: { rows: SnapshotRecord[] }) {
           총 평가금액
         </span>
       </div>
-      <div style={{ overflowX: 'auto' }}>
+      <div ref={boxRef} style={{ overflowX: 'auto' }}>
         <svg width={width} height={TOP_MARGIN + HEIGHT + AXIS_SPACE} role="img" aria-label="일별 총 투자금과 총 평가금액 추이">
           {[0, 0.25, 0.5, 0.75, 1].map((f) => (
-            <line
-              key={f}
-              x1={0}
-              x2={width}
-              y1={TOP_MARGIN + HEIGHT - HEIGHT * f}
-              y2={TOP_MARGIN + HEIGHT - HEIGHT * f}
-              stroke={f === 0 ? 'var(--baseline)' : 'var(--gridline)'}
-              strokeWidth={1}
-            />
+            <g key={f}>
+              <line
+                x1={Y_AXIS}
+                x2={width}
+                y1={TOP_MARGIN + HEIGHT - HEIGHT * f}
+                y2={TOP_MARGIN + HEIGHT - HEIGHT * f}
+                stroke={f === 0 ? 'var(--baseline)' : 'var(--gridline)'}
+                strokeWidth={1}
+              />
+              <text x={Y_AXIS - 6} y={TOP_MARGIN + HEIGHT - HEIGHT * f + 4} textAnchor="end" fontSize={10} fill="var(--text-muted)">
+                {krwCompact.format(lo + (hi - lo) * f)}
+              </text>
+            </g>
           ))}
           <path d={investedPath} fill="none" stroke="var(--series-1)" strokeWidth={2} />
           <path d={currentPath} fill="none" stroke="var(--series-2)" strokeWidth={2} />
           {rows.map((row, i) => {
             const colCenterX = x(i);
             let hAlign: 'center' | 'left' | 'right' = 'center';
-            if (colCenterX < TOOLTIP_HALF_WIDTH) hAlign = 'left';
+            if (colCenterX - Y_AXIS < TOOLTIP_HALF_WIDTH) hAlign = 'left';
             else if (colCenterX > width - TOOLTIP_HALF_WIDTH) hAlign = 'right';
             const anchorY = Math.min(y(row.totalPurchaseAmountKrw), y(row.totalMarketValueKrw));
             const vAlign: 'above' | 'below' = anchorY < 60 ? 'below' : 'above';
             return (
               <g key={row.date}>
-                <circle cx={colCenterX} cy={y(row.totalPurchaseAmountKrw)} r={3} fill="var(--series-1)" />
-                <circle cx={colCenterX} cy={y(row.totalMarketValueKrw)} r={3} fill="var(--series-2)" />
+                {(showDots || hover?.index === i) && (
+                  <>
+                    <circle cx={colCenterX} cy={y(row.totalPurchaseAmountKrw)} r={3} fill="var(--series-1)" />
+                    <circle cx={colCenterX} cy={y(row.totalMarketValueKrw)} r={3} fill="var(--series-2)" />
+                  </>
+                )}
                 <rect
-                  x={i * colWidth}
+                  x={Y_AXIS + i * colWidth}
                   y={0}
                   width={colWidth}
                   height={TOP_MARGIN + HEIGHT + AXIS_SPACE}
@@ -86,7 +108,7 @@ export default function NetWorthChart({ rows }: { rows: SnapshotRecord[] }) {
                   onMouseEnter={() =>
                     setHover({
                       index: i,
-                      x: hAlign === 'left' ? i * colWidth : hAlign === 'right' ? (i + 1) * colWidth : colCenterX,
+                      x: hAlign === 'left' ? Y_AXIS + i * colWidth : hAlign === 'right' ? Y_AXIS + (i + 1) * colWidth : colCenterX,
                       y: anchorY,
                       hAlign,
                       vAlign,
@@ -101,7 +123,7 @@ export default function NetWorthChart({ rows }: { rows: SnapshotRecord[] }) {
                   fontSize={11}
                   fill="var(--text-muted)"
                 >
-                  {row.date.slice(5)}
+                  {i % labelEvery === 0 ? row.date.slice(5) : ''}
                 </text>
               </g>
             );

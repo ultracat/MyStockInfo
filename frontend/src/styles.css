@@ -754,3 +754,48 @@ button.ghost:disabled {
   padding: 0 5px;
   margin-left: 4px;
 }
+
+/* 분석 — 종목끼리 상관계수 표: 가운데 맞춤으로 행·열 교차를 읽기 쉽게 */
+.corr-table th,
+.corr-table td {
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* 잘린 이름 툴팁(분석 상관계수 표의 NameTip) — 마우스를 올리거나 포커스하면 바로 전체 이름. 표 스크롤 영역(.table-scroll) 안에서 잘리지 않게
+   열 머리는 아래로, 행 머리는 오른쪽으로 띄운다. */
+.name-tip {
+  position: relative;
+  cursor: help;
+  border-bottom: 1px dotted var(--text-muted);
+}
+.name-tip::after {
+  content: attr(data-full);
+  position: absolute;
+  z-index: 20;
+  display: none;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: normal;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  pointer-events: none;
+}
+.name-tip:hover::after,
+.name-tip:focus::after {
+  display: block;
+}
+.name-tip-below::after {
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.name-tip-right::after {
+  top: 50%;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
+}

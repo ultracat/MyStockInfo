@@ -7,6 +7,24 @@ const pct = (v: number | null, digits = 1) => (v === null ? '-' : `${v >= 0 ? '+
 const plain = (v: number | null, digits = 1) => (v === null ? '-' : `${(v * 100).toFixed(digits)}%`);
 const signClass = (v: number | null) => (v === null || v === 0 ? undefined : v > 0 ? 'text-good' : 'text-critical');
 
+/**
+ * 잘린 이름 위에 마우스를 올리면(키보드 포커스도) **바로** 전체 이름을 띄운다 — 브라우저 `title` 툴팁은 1초쯤 늦고 눈에 잘 안 띈다(2026-11-18 사용자 요청).
+ * CSS만(`.name-tip`), 화면 낭독기는 `aria-label`로 전체 이름을 읽는다. `place`: 열 머리는 아래, 행 머리는 오른쪽(표 스크롤 영역 안에 머물게).
+ */
+function NameTip({ full, place, children }: { full: string; place: 'below' | 'right'; children: React.ReactNode }) {
+  return (
+    <span className={`name-tip name-tip-${place}`} data-full={full} tabIndex={0} aria-label={full}>
+      {children}
+    </span>
+  );
+}
+
+/** 표 머리에 쓸 짧은 이름 — 길면 앞 9자 + …(전체 이름과 코드는 마우스를 올리면). */
+export function shortName(name: string): string {
+  const n = name.trim();
+  return n.length > 9 ? `${n.slice(0, 9)}…` : n;
+}
+
 export const BENCH_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥', SPY: 'S&P500(SPY)', QQQ: '나스닥100(QQQ)' };
 
 /** 벤치마크 대비 성과 — 기간별 누적 수익률 표. */
@@ -96,40 +114,83 @@ export function RiskCard({
         </div>
       </div>
       {holdingRows.length > 0 && (
-        <div className="table-scroll" style={{ marginTop: 12 }}>
-          <table>
-            <thead>
-              <tr>
-                <th style={{ textAlign: 'left' }}>종목(평가 상위)</th>
-                <th>변동성</th>
+        <>
+          <h4 style={{ margin: '16px 0 4px' }}>종목별 변동성 (평가 상위 {holdingRows.length}종목, 최근 12개월)</h4>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>종목</th>
+                  <th>연환산 변동성</th>
+                  <th>계산에 쓴 개월 수</th>
+                </tr>
+              </thead>
+              <tbody>
                 {holdingRows.map((h) => (
-                  <th key={h.symbol} title={h.name}>
-                    {h.symbol}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {holdingRows.map((h, i) => (
-                <tr key={h.symbol}>
-                  <td style={{ textAlign: 'left' }}>
-                    <span className="upcoming-cell-truncate" title={`${h.name} ${h.symbol}`}>
-                      {h.name}
-                    </span>
-                  </td>
-                  <td>{plain(h.volatility)}</td>
-                  {matrix[i].map((c, j) => (
-                    <td key={j} style={{ fontWeight: c !== null && i !== j && c >= 0.7 ? 700 : undefined }}>
-                      {c === null ? '-' : c.toFixed(2)}
-                      {c !== null && i !== j && c >= 0.7 ? ' 높음' : ''}
+                  <tr key={h.symbol}>
+                    <td style={{ textAlign: 'left' }}>
+                      {h.name} <span style={{ color: 'var(--text-muted)' }}>{h.symbol}</span>
                     </td>
+                    <td>{plain(h.volatility)}</td>
+                    <td>{h.months ? `${h.months}개월` : '자료 없음'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4 style={{ margin: '16px 0 4px' }}>종목끼리 상관계수</h4>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, margin: '0 0 6px' }}>
+            <b>가로 종목과 세로 종목이 만나는 칸</b> = 두 종목이 매달 얼마나 같이 오르내렸는지(−1~1). <b>1</b>이면 똑같이 움직이고(대각선은 자기 자신이라 항상 1),
+            <b>0 근처</b>면 서로 상관없이, <b>음수</b>면 반대로 움직입니다. <b>0.7 이상("높음")</b>은 거의 같이 움직여 둘 다 들고 있어도 위험이 잘 나뉘지 않습니다.
+          </p>
+          <div className="table-scroll">
+            <table className="corr-table">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }} />
+                  {holdingRows.map((h) => (
+                    <th key={h.symbol}>
+                      <NameTip full={`${h.name} (${h.symbol})`} place="below">
+                        {shortName(h.name)}
+                      </NameTip>
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>오른쪽 표는 종목끼리 상관계수(1이면 똑같이 움직임). 0.7 이상은 굵게 "높음" — 함께 오르내려 분산 효과가 작습니다.</p>
-        </div>
+              </thead>
+              <tbody>
+                {holdingRows.map((h, i) => (
+                  <tr key={h.symbol}>
+                    <th scope="row" style={{ textAlign: 'left', fontWeight: 'normal' }}>
+                      <NameTip full={`${h.name} (${h.symbol})`} place="right">
+                        {shortName(h.name)}
+                      </NameTip>
+                    </th>
+                    {matrix[i].map((c, j) => {
+                      const high = c !== null && i !== j && c >= 0.7;
+                      return (
+                        <td
+                          key={j}
+                          style={{ fontWeight: high ? 700 : undefined, color: i === j ? 'var(--text-muted)' : undefined }}
+                          title={c === null ? '자료 부족' : `${holdingRows[i].name} × ${holdingRows[j].name}: ${c.toFixed(2)}`}
+                        >
+                          {c === null ? '-' : c.toFixed(2)}
+                          {high ? ' 높음' : ''}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {holdingRows.some((h) => h.months < 6) && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 12 }}>
+              "-"는 월말 종가가 6개월 넘게 겹치지 않아 계산하지 못한 칸입니다
+              ({holdingRows.filter((h) => h.months < 6).map((h) => h.name).join(', ')} — 토스증권에서 그 종목의 월별 시세를 받지 못했거나 상장한 지 얼마 안 됨).
+            </p>
+          )}
+        </>
       )}
     </div>
   );

@@ -181,3 +181,9 @@ test('벤치마크: 수익률 열에 빈 달이 끼면(연속 아님) 그 기간
   assert.notEqual(rows.find((r) => r.months === 1)!.mine, null);
   assert.equal(rows.find((r) => r.months === 3)!.mine, null);
 });
+
+test('종목별 위험: 전체 이력이 있어도 최근 12개월로 맞춘다', () => {
+  const long = Array.from({ length: 40 }, (_, i) => ({ month: `${2023 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`, closePrice: 100 + (i % 3), currency: 'KRW' }));
+  const r = holdingRisk([{ symbol: 'L', name: 'L' }], { L: long });
+  assert.equal(r.rows[0].months, 12);
+});

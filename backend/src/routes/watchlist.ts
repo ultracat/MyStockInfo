@@ -3,6 +3,7 @@ import { listWatchlist, removeWatchlistEntry, upsertWatchlistEntry } from '../db
 import { getCachedStockName } from '../db/stockNames';
 import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
 import { fetchTossPreviousClose, fetchTossPrices, isTossConfigured } from '../brokers/toss/tossClient';
+import { fetchKisDomesticBasePrice, isKisConfigured } from '../brokers/kis/kisClient';
 
 export const watchlistRouter = Router();
 
@@ -36,8 +37,11 @@ watchlistRouter.get('/', async (_req, res) => {
       entries.map(async (e) => {
         const sym = e.symbol.toUpperCase();
         const last = pricesBySymbol[sym];
-        const prev = last ? await fetchTossPreviousClose(sym, times.get(sym) ?? null) : null;
-        changeRateBySymbol[sym] = last && prev ? last / prev - 1 : null;
+        if (!last) return void (changeRateBySymbol[sym] = null);
+        // 국내 6자리는 KIS 기준가가 있으면 그것 — 토스 일봉 종가는 NXT 시간외 마지막 가격이라 KRX 기준가와 다르다(2026-11-18 대조).
+        const kisBase = /^\d{6}$/.test(sym) && isKisConfigured() ? await fetchKisDomesticBasePrice(sym).catch(() => null) : null;
+        const prev = kisBase ?? (await fetchTossPreviousClose(sym, times.get(sym) ?? null));
+        changeRateBySymbol[sym] = prev ? last / prev - 1 : null;
       })
     );
   }

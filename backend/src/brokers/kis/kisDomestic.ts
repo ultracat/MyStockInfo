@@ -352,6 +352,27 @@ export async function fetchKisDomesticPrice(symbol: string, opts: FetchOpts = {}
 }
 
 /**
+ * 국내 종목의 **기준가**(`stck_sdpr`, 같은 `inquire-price` 응답) — 그날 등락률의 기준(보통 전일 KRX 종가, 배당락·권리락이면 조정된 값).
+ * 관심종목 등락률에 쓴다(2026-11-18 실데이터 대조): 토스 일봉 종가는 NXT 시간외까지 포함한 그날 마지막 가격이라 KRX 기준가와
+ * 다를 수 있다. 기준가는 하루 동안 바뀌지 않아 10분 캐시.
+ */
+export async function fetchKisDomesticBasePrice(symbol: string, opts: FetchOpts = {}): Promise<number | null> {
+  return withCache(
+    `kis:basePrice:${symbol}`,
+    10 * 60 * 1000,
+    async () => {
+      const res = await kisGet('/uapi/domestic-stock/v1/quotations/inquire-price', 'FHKST01010100', {
+        FID_COND_MRKT_DIV_CODE: 'J',
+        FID_INPUT_ISCD: symbol,
+      });
+      const base = Number(asRows(res.output)[0]?.stck_sdpr);
+      return Number.isFinite(base) && base > 0 ? base : null;
+    },
+    opts
+  );
+}
+
+/**
  * 주식기본조회(`search-stock-info`, TR `CTPF1002R`, 공식 예제
  * examples_llm/domestic_stock/search_stock_info/search_stock_info.py +
  * chk_search_stock_info.py의 COLUMN_MAPPING 확인, checked 2026-08-17) — 종목코드로

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { BROKER_LABELS } from '../brokers';
 import { accountLabelKey, TAX_TYPE_LABELS } from '../accountLabels';
-import { monthlyAmountRows as monthlyAmountRowsOf } from '../calc/overview';
+import { monthlyAmountRows as monthlyAmountRowsOf, type MonthlyCloses } from '../calc/overview';
 import {
   benchmarkTable,
   closesToReturns,
@@ -64,7 +64,26 @@ export default function Analysis() {
     }
     return [...by.entries()].sort((a, b) => b[1].v - a[1].v).slice(0, 6).map(([symbol, x]) => ({ symbol, name: x.name }));
   }, [holdings, toKrw]);
-  const hRisk = useMemo(() => holdingRisk(top, data.monthlyClosePrices), [top, data.monthlyClosePrices]);
+  // 대시보드 저장소의 월별 종가는 "보유 + 매매내역이 있는" 종목만이라(매매내역이 없는 CSV 보유는 빠짐) 상위 종목 중 빠진 것만 따로 받는다
+  // (12개월 + 기준 달 1개, 토스 일봉 — 백엔드 캐시). 예전엔 그런 종목의 변동성·상관계수가 전부 "-"였다.
+  const [extraCloses, setExtraCloses] = useState<MonthlyCloses>({});
+  const missingKey = top
+    .map((t) => t.symbol)
+    .filter((s) => !(data.monthlyClosePrices[s]?.length) && !extraCloses[s])
+    .join(',');
+  useEffect(() => {
+    if (!missingKey || data.loadingClosePrices) return;
+    let alive = true;
+    api
+      .getMonthlyClosePrices(missingKey.split(','), 13)
+      .then((r) => alive && setExtraCloses((prev) => ({ ...prev, ...Object.fromEntries(missingKey.split(',').map((s) => [s, r[s] ?? []])) })))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [missingKey, data.loadingClosePrices]);
+  const closes = useMemo(() => ({ ...extraCloses, ...data.monthlyClosePrices }), [extraCloses, data.monthlyClosePrices]);
+  const hRisk = useMemo(() => holdingRisk(top, closes), [top, closes]);
 
   const taxTypeOf = useMemo(() => {
     const m = new Map(taxTypes.map((t) => [accountLabelKey(t.broker, t.accountId), t.taxType]));

@@ -151,9 +151,19 @@ export function riskSummary(mine: MonthlyReturn[], kospi: MonthlyReturn[]): Risk
 /** 종목별 연환산 변동성과 상위 종목끼리 상관계수(월말 종가, 6개월 이상 겹친 것만). */
 export function holdingRisk(
   symbols: Array<{ symbol: string; name: string }>,
-  closes: MonthlyCloses
+  closes: MonthlyCloses,
+  months = 12
 ): { rows: Array<{ symbol: string; name: string; volatility: number | null; months: number }>; matrix: Array<Array<number | null>> } {
-  const series = symbols.map((s) => closesToReturns((closes[s.symbol] ?? []).map((c) => ({ month: c.month, close: c.closePrice }))));
+  // 최근 `months`개월 수익률만(월말 종가 months + 1개) — 백엔드가 캐시해 둔 전체 이력을 그대로 쓰면 종목마다 기간이 달라(21개월 vs 50년)
+  // 변동성을 서로 비교할 수 없었다(2026-11-18 화면 확인).
+  const series = symbols.map((s) =>
+    closesToReturns(
+      [...(closes[s.symbol] ?? [])]
+        .sort((a, b) => (a.month < b.month ? -1 : 1))
+        .slice(-(months + 1))
+        .map((c) => ({ month: c.month, close: c.closePrice }))
+    )
+  );
   const rows = symbols.map((s, i) => {
     const sd = stdev(series[i].map((x) => x.r));
     return { symbol: s.symbol, name: s.name, volatility: sd === null ? null : sd * Math.sqrt(12), months: series[i].length };

@@ -404,6 +404,9 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   데이터는 **공용 저장소 `overview/overviewStore.ts` 한 벌**(아래 "대시보드·분석 데이터 공유")이라 대시보드를 본 뒤 분석을 열면 다시 받지 않는다.
   카드: `analysis/AnalysisCards`(벤치마크·위험·분산·비용, calc/analysis.ts), `analysis/SimulationCard`(calc/simulation.ts, 입력은 planner.simulation).
   ⚠ 내 월간 수익률은 `monthlyAmountRows`(최근 12개월, 지금 보유 종목의 매매내역 재구성) 기준이라 기간이 최대 11~12개월이다. 자산군은 이름 정규식(`assetClassOf`).
+- 위험 카드(2026-11-18): 종목별 변동성 표와 상관계수 표를 나누고 행·열 머리를 짧은 이름 + `NameTip`(CSS `::after` 즉시 툴팁, 열 머리는 아래·행 머리는
+  오른쪽 — `.table-scroll` 안에서 안 잘리게). `holdingRisk`는 최근 12개월만(백엔드가 캐시한 전체 이력이 섞여 종목마다 기간이 달랐다). 대시보드 저장소의 월별 종가는
+  "보유 + 매매내역" 종목뿐이라, 분석 화면이 상위 종목 중 빠진 것만 `getMonthlyClosePrices(…, 13)`로 따로 받는다.
 - 실현손익 `realized/YearEndTaxCard`(calc/yearEndTax.ts — 올해·일반 계좌·해외 상장만, 평가손익은 지금 환율 근사), 매매내역 `trades/SavingsPlanCard`(calc/savings.ts).
 - **빠른 종목 검색** `components/QuickSearch.tsx`(calc/stockSearch.ts) — App.tsx가 ⌘K/Ctrl+K와 사이드바 "종목 검색"으로 연다. 열 때마다 로컬 저장소 네 개만 읽는다(API 호출 없음).
   `position: fixed` 모달이라 `document.body`로 포털(화면 줌 절). 이동은 App의 `goTo`.

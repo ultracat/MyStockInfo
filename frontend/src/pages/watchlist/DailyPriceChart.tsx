@@ -101,7 +101,8 @@ export default function DailyPriceChart({
           return (
             <g key={t.key}>
               {inRange && <line x1={Y_AXIS} x2={width - RIGHT} y1={ty} y2={ty} stroke="var(--text-muted)" strokeDasharray="4 3" />}
-              <text x={width - RIGHT - 2} y={inRange ? ty - 4 : ty} textAnchor="end" fontSize={10} fill="var(--text-secondary)">
+              {/* 범위 밖이면 축 바로 옆 위·아래 귀퉁이에(오른쪽 끝은 최근 가격 선과 겹친다) */}
+              <text x={inRange ? width - RIGHT - 2 : Y_AXIS + 4} y={inRange ? ty - 4 : t.v > max ? TOP - 2 : TOP + PRICE_H + 8} textAnchor={inRange ? 'end' : 'start'} fontSize={10} fill="var(--text-secondary)">
                 {inRange ? '' : t.v > max ? '↑ ' : '↓ '}목표 {t.sign} {fmtPrice(t.v, currency)}
               </text>
             </g>

@@ -765,8 +765,9 @@ ISA/연금저축/IRP 계좌를 표시해두는 작은 `JsonStore`(`account-tax-t
   그날, 테스트 있음). 관심종목이 아닌 종목(비교 기준 KODEX 200 `069500`·`SPY`)도 받는다. 토스 키가 없으면 409.
   ⚠ **`adjusted=false`(실제 가격)로 받는다** — 토스 기본은 **수정주가**다(2026-11-19 실측: 매달 분배하는 국내 ETF는 과거 종가가 그동안의 분배금만큼
   낮게 오고(10개월 전 봉이 약 8% 차이), `SPY`·삼성전자는 같았다). 수정주가로 그리면 내 매수가(▲)가 과거로 갈수록 선 위로 떠서 어긋났다.
-  ⚠ **월별 종가(`fetchTossMonthlyClosePrices`)와 직전 종가(`fetchTossPreviousClose`)는 아직 기본값(수정주가)이다** — 대시보드의 월별 평가금액은 분배금
-  많은 ETF의 과거 달이 낮게 잡힐 수 있다(디스크 캐시가 있어 바꾸려면 캐시도 비워야 함, 미결).
+  **월별 종가(`fetchTossMonthlyClosePrices`)·직전 종가(`fetchTossPreviousClose`)도 같은 날 실제 가격으로 바꿨다** — 그 전엔 대시보드 월별 평가금액에서
+  분배금 많은 ETF의 지난 달이 낮게 잡혔다. 디스크 캐시는 `monthly-close-cache-v2.json`으로 새로 받고 옛 `monthly-close-cache.json`(수정주가)은 처음 열 때 지운다.
+  **토스 일봉을 새로 부를 땐 `adjusted=false`를 꼭 준다.**
 - `GET /api/watchlist/:symbol/dividends?currency=KRW|USD` — `getSymbolDividends`(`upcomingDividends.ts`): 다가오는 배당과 **같은 원본**(국내 예탁원 일정 /
   미국 ICE + 기간별권리)을 종목 하나로 받아 지난 1년여(`history`, 기준일 오늘 이전)와 `planSymbolDividends`로 앞으로 12개월(`upcoming`). 6시간 캐시, KIS 키 없으면 409.
   주 단위 분배 ETF는 `planSymbolDividends`의 주기 추정이 월 단위라 "다음 배당"이 두어 건만 나온다(다가오는 배당 화면과 같은 한계).
@@ -935,7 +936,7 @@ USD/KRW 환율은 **토스 → 한국수출입은행 순으로 시도한다**(`r
   종목 수만큼 API 호출이 늘어나므로(종목당 1~2페이지), 이미 다른 화면보다 호출량이
   많다고 문서화된 `Overview.tsx`의 특성이 여기서 한 번 더 커진다.
 - **확정된 달(지난달보다 이전)의 종가는 디스크에 영구 캐시한다**
-  (`db/monthlyCloseCache.ts`, `monthly-close-cache.json`) — 캐시가 요청 범위를
+  (`db/monthlyCloseCache.ts`, `monthly-close-cache-v2.json` — 실제 가격, 2026-11-19 전 파일은 수정주가라 버림) — 캐시가 요청 범위를
   덮으면(`coveredFrom`) 최신 일봉 한 페이지만 받아 합친다, 앱 재시작 후에도 종목당
   1페이지. 지난달은 한국 시간 1일 새벽 미국장 마감 전엔 미확정일 수 있어 일부러
   캐시하지 않는다(최신 페이지에 항상 포함돼 추가 비용 없음). **디스크 기록은

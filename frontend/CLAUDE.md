@@ -961,6 +961,13 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   계산 버튼을 누를 때만 부른다, 무거워서), 배당수익률(최근 12개월 주당 합 ÷ 현재가, 세전, 주기는 기준일 간격 중간값). `CompareChart`는 모든 계열 날짜의 합집합을
   축으로 쓴다(국내·미국 휴장일이 달라도 선이 안 어긋남). 미국 종목은 `KisStockInsights` 대신 KIS 해외 현재가상세 타일. 메모는 `PUT /watchlist/:symbol/memo`
   (`BACKGROUND_WRITES` — 다른 화면 데이터와 무관), 목록 종목명 아래 첫 줄을 `cell-sub`로.
+  **두 번째 묶음(2026-11-19)**: 일봉 차트에 선/봉(`mode` — 봉 색은 손익 색 `--good`/`--critical`), 볼린저 밴드(`bollinger` 20일 ±2σ, `--series-1` 8% 띠), 내 평균 매수가
+  가로선(`--series-5`, `myTradeSummary.avgBuyPrice` — 매수만의 가중평균). 아래 **보조 지표** `IndicatorChart`(낙폭 `drawdownSeries`·RSI `rsi` 와일더 14일·변동성
+  `rollingVolatility` 20일 연환산) — 일봉 차트와 같은 `Y_AXIS`(64)·`RIGHT`(8)·봉 폭이라 같은 날이 위아래로 맞는다(한쪽만 바꾸지 말 것). RSI·변동성·볼린저는 **자르기 전 전체
+  일봉**으로 계산해 자른다, 낙폭만 보기 기간의 고점 기준. **배당 포함 수익**(`totalReturnSeries` — 실주가 + 기준일 다음 거래일부터 주당 배당 누적, 재투자 없음. 수정주가를
+  쓰지 않는다는 사용자 결정의 대안), **월별 등락률 표**(`monthlyReturnGrid`, 일봉 약 2년에서 — 월별 종가 API를 따로 부르지 않음, 칸 색은 `color-mix`로 손익 색 0~35%),
+  **주당 배당 막대** `DividendBars`(지난 = 진한, 다음 = 같은 색 흐리게 — DividendsChart 규칙). 이름 설명은 `.name-tip.help-tip`(즉시 CSS 툴팁, 여러 줄) —
+  ⚠ `title` 속성 툴팁은 Electron에서 물음표 커서만 보이고 설명이 안 떠서(사용자 지적) 쓰지 않는다.
 
 ## 개발
 

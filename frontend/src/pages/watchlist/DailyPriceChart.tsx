@@ -39,6 +39,9 @@ export default function DailyPriceChart({
   currency,
   targets,
   marks,
+  mode = 'line',
+  bands = null,
+  avgBuy = null,
 }: {
   candles: DailyCandle[];
   /** 보여 줄 이동평균 — `values`는 `candles`와 같은 길이. */
@@ -46,6 +49,12 @@ export default function DailyPriceChart({
   currency: string;
   targets: { above: number | null; below: number | null };
   marks: TradeMark[];
+  /** 'line' = 종가 선, 'candle' = 봉(시가·고가·저가·종가). */
+  mode?: 'line' | 'candle';
+  /** 볼린저 밴드(위·아래, `candles`와 같은 길이). */
+  bands?: { upper: (number | null)[]; lower: (number | null)[] } | null;
+  /** 내 평균 매수가 가로선. */
+  avgBuy?: number | null;
 }) {
   const [ref, boxWidth] = useContainerWidth(640);
   const [hover, setHover] = useState<number | null>(null);
@@ -54,7 +63,15 @@ export default function DailyPriceChart({
   const width = Math.max(320, boxWidth);
   const plotW = width - Y_AXIS - RIGHT;
   const values = candles.map((c) => c.close);
+  if (mode === 'candle') for (const c of candles) values.push(c.high || c.close, c.low || c.close);
   for (const m of ma) for (const v of m.values) if (v !== null) values.push(v);
+  if (bands) for (const v of [...bands.upper, ...bands.lower]) if (v !== null) values.push(v);
+  // 내 평균 매수가는 가격 범위의 1.5배 안이면 축에 넣는다(멀면 목표가처럼 가장자리 글자로)
+  {
+    const lo = Math.min(...values);
+    const hi = Math.max(...values);
+    if (avgBuy && avgBuy >= lo - (hi - lo) * 0.5 && avgBuy <= hi + (hi - lo) * 0.5) values.push(avgBuy);
+  }
   let min = Math.min(...values);
   let max = Math.max(...values);
   const pad = (max - min) * 0.06 || max * 0.02 || 1;
@@ -102,12 +119,39 @@ export default function DailyPriceChart({
             <g key={t.key}>
               {inRange && <line x1={Y_AXIS} x2={width - RIGHT} y1={ty} y2={ty} stroke="var(--text-muted)" strokeDasharray="4 3" />}
               {/* 범위 밖이면 축 바로 옆 위·아래 귀퉁이에(오른쪽 끝은 최근 가격 선과 겹친다) */}
-              <text x={inRange ? width - RIGHT - 2 : Y_AXIS + 4} y={inRange ? ty - 4 : t.v > max ? TOP - 2 : TOP + PRICE_H + 8} textAnchor={inRange ? 'end' : 'start'} fontSize={10} fill="var(--text-secondary)">
+              <text x={inRange ? width - RIGHT - 2 : Y_AXIS + 4} y={inRange ? ty - 4 : t.v > max ? TOP - 2 : TOP + PRICE_H + 8} textAnchor={inRange ? 'end' : 'start'} fontSize={10} fill="var(--text-secondary)" stroke="var(--surface-1)" strokeWidth={3} paintOrder="stroke">
                 {inRange ? '' : t.v > max ? '↑ ' : '↓ '}목표 {t.sign} {fmtPrice(t.v, currency)}
               </text>
             </g>
           );
         })}
+        {bands && (
+          <path
+            d={`${line(bands.upper)} ${bands.lower
+              .map((v, i) => [v, i] as const)
+              .filter(([v]) => v !== null)
+              .reverse()
+              .map(([v, i]) => `L ${x(i).toFixed(1)} ${y(v!).toFixed(1)}`)
+              .join(' ')} Z`}
+            fill="var(--series-1)"
+            fillOpacity={0.08}
+            stroke="var(--series-1)"
+            strokeOpacity={0.35}
+            strokeWidth={1}
+          />
+        )}
+        {avgBuy !== null && avgBuy > 0 && (() => {
+          const inRange = avgBuy >= min && avgBuy <= max;
+          const ay = inRange ? y(avgBuy) : avgBuy > max ? TOP - 2 : TOP + PRICE_H + 8;
+          return (
+            <g>
+              {inRange && <line x1={Y_AXIS} x2={width - RIGHT} y1={ay} y2={ay} stroke="var(--series-5)" strokeWidth={1.25} />}
+              <text x={inRange ? Y_AXIS + 4 : width - RIGHT - 2} y={inRange ? ay - 4 : ay} textAnchor={inRange ? 'start' : 'end'} fontSize={10} fill="var(--series-5)" stroke="var(--surface-1)" strokeWidth={3} paintOrder="stroke">
+                {inRange ? '' : avgBuy > max ? '↑ ' : '↓ '}내 평균 매수가 {fmtPrice(avgBuy, currency)}
+              </text>
+            </g>
+          );
+        })()}
         {candles.map((c, i) => {
           const bh = (c.volume / maxVol) * VOL_H;
           return <rect key={c.date} x={x(i) - Math.max(0.5, step * 0.35)} width={Math.max(1, step * 0.7)} y={volTop + VOL_H - bh} height={bh} fill="var(--baseline)" />;
@@ -115,7 +159,22 @@ export default function DailyPriceChart({
         {ma.map((m) => (
           <path key={m.period} d={line(m.values)} fill="none" stroke={m.color} strokeWidth={1.25} />
         ))}
-        <path d={line(candles.map((c) => c.close))} fill="none" stroke="var(--series-1)" strokeWidth={2} />
+        {mode === 'candle' ? (
+          candles.map((c, i) => {
+            const up = c.close >= c.open;
+            const color = up ? 'var(--good)' : 'var(--critical)';
+            const bw = Math.max(1, step * 0.6);
+            const top = y(Math.max(c.open, c.close));
+            return (
+              <g key={c.date}>
+                {c.high > 0 && c.low > 0 && <line x1={x(i)} x2={x(i)} y1={y(c.high)} y2={y(c.low)} stroke={color} strokeWidth={1} />}
+                <rect x={x(i) - bw / 2} width={bw} y={top} height={Math.max(1, y(Math.min(c.open, c.close)) - top)} fill={color} stroke={color} strokeWidth={1} />
+              </g>
+            );
+          })
+        ) : (
+          <path d={line(candles.map((c) => c.close))} fill="none" stroke="var(--series-1)" strokeWidth={2} />
+        )}
         {shownMarks.map((m, k) => {
           const px = x(m.i);
           const py = y(Math.min(max, Math.max(min, m.price)));

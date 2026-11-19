@@ -557,6 +557,51 @@ export const LIVE_FIELDS: Record<string, { recordedAt: string; fields: Record<st
           "vi_cls_code"
         ]
       },
+      "HHDFS76200200": {
+        "output": [
+          "base",
+          "bpsx",
+          "curr",
+          "dnlp",
+          "e_hogau",
+          "e_icod",
+          "e_ordyn",
+          "e_parp",
+          "epsx",
+          "etyp_nm",
+          "h52d",
+          "h52p",
+          "high",
+          "l52d",
+          "l52p",
+          "last",
+          "low",
+          "mcap",
+          "open",
+          "p_rate",
+          "p_xdif",
+          "p_xprc",
+          "p_xrat",
+          "p_xsng",
+          "pamt",
+          "pbrx",
+          "perx",
+          "pvol",
+          "rsym",
+          "shar",
+          "t_rate",
+          "t_xdif",
+          "t_xprc",
+          "t_xrat",
+          "t_xsgn",
+          "tamt",
+          "tomv",
+          "tvol",
+          "uplp",
+          "vnit",
+          "zdiv"
+        ]
+      },
       "HHDFS78330900": {
         "output1": [
           "anno_dt",
@@ -747,7 +792,7 @@ export const LIVE_FIELDS: Record<string, { recordedAt: string; fields: Record<st
         ]
       }
     },
-    "recordedAt": "2026-11-17"
+    "recordedAt": "2026-11-19"
   },
   "nh": {
     "fields": {

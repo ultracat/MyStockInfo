@@ -754,10 +754,28 @@ ISA/연금저축/IRP 계좌를 표시해두는 작은 `JsonStore`(`account-tax-t
 **등락률 `changeRate`**(2026-11-18, 토스 키가 있을 때만 — 없으면 null): 토스 현재가 API엔 전일 종가가 없어서 일봉(`/api/v1/candles`, 4시간 캐시)의
 **가격 시각보다 20시간 넘게 앞선 가장 최근 봉**을 직전 거래일로 본다(`tossMonthlyClose.ts`의 `previousCloseFrom`, 테스트 `krMarketCalendar.test.ts` —
 오늘 봉은 장 시작부터 가격 시각까지 길어야 16~17시간, 어제 봉은 24시간 이상 앞선다; 주말엔 마지막 거래일의 등락). 가격 시각은 `/prices`의 선택 필드
-`timestamp`(없으면 지금). **2026-11-18 실데이터 대조**: 일봉 `timestamp`는 국내 그날 00:00 KST, 미국 그날 00:00 ET(=14:00 KST)이고 `adjusted`
-값과 무관했다. ⚠ **국내 일봉 종가는 NXT 시간외까지 포함한 그날 마지막 가격**이라 KRX 기준가와 다르다(예: 기준가보다 수백 원 차이) → 국내 6자리는
+`timestamp`(없으면 지금). **2026-11-18 실데이터 대조**: 일봉 `timestamp`는 국내 그날 00:00 KST, 미국 그날 00:00 ET(=14:00 KST)이다.
+(`adjusted`는 그날 대조한 종목에선 차이가 없었지만, 분배금 많은 국내 ETF는 다르다 — 아래 "상세 화면" 참고.) ⚠ **국내 일봉 종가는 NXT 시간외까지 포함한 그날 마지막 가격**이라 KRX 기준가와 다르다(예: 기준가보다 수백 원 차이) → 국내 6자리는
 **KIS 키가 있으면 `inquire-price`의 기준가 `stck_sdpr`**(`fetchKisDomesticBasePrice`, 10분 캐시)를 쓰고, 없을 때만 토스 일봉. 미국은 토스 일봉이
 마지막 정규장 종가와 맞았다 — KIS 해외 `rate`는 "마지막 정규장의 등락"이라 주간거래·프리마켓 시간엔 우리 값(지금 가격 ÷ 마지막 정규장 종가)과 다른 게 정상.
+
+**상세 화면 API**(2026-11-19 — 화면은 `frontend/src/pages/watchlist/`):
+- `GET /api/watchlist/candles/:symbol?days=`(30~900, 기본 400) — `fetchTossDailyCandles`(`tossMonthlyClose.ts`): 일봉 시가·고가·저가·종가·거래량,
+  한 페이지 200봉씩 최대 3페이지, 페이지마다 4시간 캐시. 거래일은 `candleTradingDate`(봉 시각 + 12시간의 UTC 날짜 — 국내 00:00 KST·미국 00:00 ET 둘 다
+  그날, 테스트 있음). 관심종목이 아닌 종목(비교 기준 KODEX 200 `069500`·`SPY`)도 받는다. 토스 키가 없으면 409.
+  ⚠ **`adjusted=false`(실제 가격)로 받는다** — 토스 기본은 **수정주가**다(2026-11-19 실측: 매달 분배하는 국내 ETF는 과거 종가가 그동안의 분배금만큼
+  낮게 오고(10개월 전 봉이 약 8% 차이), `SPY`·삼성전자는 같았다). 수정주가로 그리면 내 매수가(▲)가 과거로 갈수록 선 위로 떠서 어긋났다.
+  ⚠ **월별 종가(`fetchTossMonthlyClosePrices`)와 직전 종가(`fetchTossPreviousClose`)는 아직 기본값(수정주가)이다** — 대시보드의 월별 평가금액은 분배금
+  많은 ETF의 과거 달이 낮게 잡힐 수 있다(디스크 캐시가 있어 바꾸려면 캐시도 비워야 함, 미결).
+- `GET /api/watchlist/:symbol/dividends?currency=KRW|USD` — `getSymbolDividends`(`upcomingDividends.ts`): 다가오는 배당과 **같은 원본**(국내 예탁원 일정 /
+  미국 ICE + 기간별권리)을 종목 하나로 받아 지난 1년여(`history`, 기준일 오늘 이전)와 `planSymbolDividends`로 앞으로 12개월(`upcoming`). 6시간 캐시, KIS 키 없으면 409.
+  주 단위 분배 ETF는 `planSymbolDividends`의 주기 추정이 월 단위라 "다음 배당"이 두어 건만 나온다(다가오는 배당 화면과 같은 한계).
+- `GET /api/watchlist/:symbol/overseas-detail` — KIS **해외주식 현재가상세 `HHDFS76200200`**(`fetchKisOverseasPriceDetail`, `kisOverseas.ts`, 거래소 NAS→NYS→AMS
+  순서로 현재가가 있는 것, 10분 캐시). PER·PBR·EPS·BPS·시가총액(`tomv` — **달러 단위**, 실측)·상장주수·52주 고저(날짜 포함)·업종(`e_icod`)·ETP 분류(`etyp_nm`).
+  **ETF는 PER·PBR·EPS·BPS가 0으로 와서**(실측 SPY) null로 바꾼다. KIS 52주 고저는 일봉 실제 가격으로 계산한 화면 요약과 다를 수 있다(실측: 분배금 많은 미국
+  ETF에서 KIS 최고가가 일봉 최고가보다 20%가량 낮았다 — 분배금 조정 추정).
+- `PUT /api/watchlist/:symbol/memo` `{memo}`(2000자, 빈 값이면 지움 — 화면의 `BACKGROUND_WRITES`). 저장소 항목에 `memo`·`addedPrice`(추가할 때 현재가,
+  "넣은 뒤 수익률" 기준 — 그 전에 넣은 종목은 없어서 화면이 추가한 날 이후 첫 종가로 대신)가 생겼다. 같은 종목을 다시 추가해도 추가일·그때 가격·메모는 그대로.
 
 ## 종목명 자동조회 (`src/db/stockNames.ts`, `src/stockNameResolver.ts`, `src/routes/stockInfo.ts`)
 

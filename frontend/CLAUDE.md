@@ -951,6 +951,16 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   토스 미연동이거나 그 종목을 못 찾으면 빈 배열이 와서 차트 대신 안내 문구를
   보여준다. 목록의 **"등락률" 열**(2026-11-18)은 백엔드가 준 `changeRate`(직전 거래일 종가 대비, 토스 없으면 null → "-"). **"목표가" 열**(2026-11-18)은 `usePlanner()`의 `watchTargets`를 읽기만 한다(고치는 곳은 상세의
   `WatchTargetEditor`) — 지금 가격이 이상·이하 조건에 닿으면 굵게 "도달"(상태 색 아님).
+  **상세는 `pages/watchlist/WatchDetail.tsx`**(2026-11-19 확장, 화면은 `key={symbol}`로 종목이 바뀌면 새로 만든다 — 보기 상태 초기화). 위 월별 종가 차트는
+  이제 "월별 종가" 보기(고를 때만 받음)이고 기본은 **일봉**(`DailyPriceChart` — 종가 + 이동평균 20·60·120일(`MA_LINES`, 슬롯 3·4·6) + 목표가 점선 + 내 매수 ▲
+  `--series-1`·매도 ▼ `--series-2`(TradesChart와 같은 색 규칙) + 거래량 막대 `--baseline`). 일봉은 약 2년(`CANDLE_DAYS` 800일)을 한 번 받아 기간(1·3·6개월·1년)은
+  화면에서 자르고, **이동평균은 자르기 전 전체로 계산**해 기간 첫날부터 선이 있게 한다. 백엔드가 실제 가격(`adjusted=false`)으로 준다 — 수정주가면 내 매수가가 어긋남
+  (`backend/CLAUDE.md` 관심종목 "상세 화면 API"). 계산은 전부 `calc/watchDetail.ts`(테스트 `frontend/test/watchDetail.test.ts`): 기간 수익률(기준은 그 날짜 이전 마지막
+  종가, 올해는 작년 마지막 거래일), 52주 범위(장중 고저), 넣은 뒤 수익률(저장한 `addedPrice` 우선), 비교(`normalizedSeries`, 기준 지수는 지수 일봉이 없어 KODEX 200·SPY
+  ETF — `benchmarkFor`), 내 매매(`listTradesStore` 전체에서 이 종목·같은 통화, 마지막 매도 뒤 수익률), "만약 지금 산다면"(`loadAllHoldings` 원화 환산 합계 대비 비중 —
+  계산 버튼을 누를 때만 부른다, 무거워서), 배당수익률(최근 12개월 주당 합 ÷ 현재가, 세전, 주기는 기준일 간격 중간값). `CompareChart`는 모든 계열 날짜의 합집합을
+  축으로 쓴다(국내·미국 휴장일이 달라도 선이 안 어긋남). 미국 종목은 `KisStockInsights` 대신 KIS 해외 현재가상세 타일. 메모는 `PUT /watchlist/:symbol/memo`
+  (`BACKGROUND_WRITES` — 다른 화면 데이터와 무관), 목록 종목명 아래 첫 줄을 `cell-sub`로.
 
 ## 개발
 

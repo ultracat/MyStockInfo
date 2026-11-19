@@ -2,7 +2,7 @@ import './setup';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { isKrMarketClosed, krMarketClosedDays, krYearEndClosing } from '../src/krMarketCalendar';
-import { previousCloseFrom } from '../src/brokers/toss/tossMonthlyClose';
+import { candleTradingDate, previousCloseFrom } from '../src/brokers/toss/tossMonthlyClose';
 
 // 국내 휴장일 표(월력요항 2026·2027 + KRX 근로자의 날·연말 휴장) — 12개월 예상 배당의 추정 날짜가 설·추석에 어긋나지 않게.
 test('설·추석·대체공휴일·연말 휴장', () => {
@@ -42,4 +42,13 @@ test('주말: 마지막 거래일(금)의 전 거래일', () => {
 test('고를 봉이 없거나 값이 0이면 null', () => {
   assert.equal(previousCloseFrom([{ timestamp: '2026-11-18T00:00:00+09:00', closePrice: 105 }], new Date('2026-11-18T13:00:00+09:00')), null);
   assert.equal(previousCloseFrom([{ timestamp: '2026-11-17T00:00:00+09:00', closePrice: 0 }], new Date('2026-11-18T13:00:00+09:00')), null);
+});
+
+// 일봉 timestamp → 거래일(관심종목 상세 차트) — 국내 00:00 KST, 미국 00:00 ET(서머타임 전후)가 모두 그날이어야 한다.
+test('일봉 시각을 거래일로', () => {
+  assert.equal(candleTradingDate('2026-11-18T00:00:00+09:00'), '2026-11-18');
+  assert.equal(candleTradingDate('2026-11-17T15:00:00Z'), '2026-11-18');
+  assert.equal(candleTradingDate('2026-11-18T00:00:00-05:00'), '2026-11-18');
+  assert.equal(candleTradingDate('2026-07-01T00:00:00-04:00'), '2026-07-01');
+  assert.equal(candleTradingDate('bad'), null);
 });

@@ -1,10 +1,10 @@
 // ⚠ 자동 생성 파일 — 직접 고치지 말 것. `npm run kis:types`가 backend/spec/kis-catalog.json(공식 예제 74b0a08)과
-// backend/spec/snapshots/kis-live.json(실제 응답 기록 2026-11-17)에서 만든다(scripts/kis-verify.cjs).
+// backend/spec/snapshots/kis-live.json(실제 응답 기록 2026-11-19)에서 만든다(scripts/kis-verify.cjs).
 // 값은 KIS가 전부 문자열로 준다. 실측한 블록의 필드는 필수, 실측 전 블록은 공식 예제 목록이라 선택.
 /* eslint-disable */
 
 export interface KisResponses {
-  /** [국내주식] 업종/기타 > 국내휴장일조회[국내주식-040] — GET /uapi/domestic-stock/v1/quotations/chk-holiday (실측 2026-11-17) */
+  /** [국내주식] 업종/기타 > 국내휴장일조회[국내주식-040] — GET /uapi/domestic-stock/v1/quotations/chk-holiday (실측 2026-11-19) */
   CTCA0903R: {
     output?: Array<{
       bass_dt: string;
@@ -15,7 +15,7 @@ export interface KisResponses {
       wday_dvsn_cd: string;
     }>;
   };
-  /** [국내주식] 종목정보 - 주식기본조회 — GET /uapi/domestic-stock/v1/quotations/search-stock-info (실측 2026-11-17) */
+  /** [국내주식] 종목정보 - 주식기본조회 — GET /uapi/domestic-stock/v1/quotations/search-stock-info (실측 2026-11-19) */
   CTPF1002R: {
     output?: {
       admn_item_yn: string;
@@ -87,7 +87,7 @@ export interface KisResponses {
       trst_istt_issu_istt_cd: string;
     };
   };
-  /** [국내주식] 주문/계좌 > 기간별계좌권리현황조회 [국내주식-211] — GET /uapi/domestic-stock/v1/trading/period-rights (실측 2026-11-17) */
+  /** [국내주식] 주문/계좌 > 기간별계좌권리현황조회 [국내주식-211] — GET /uapi/domestic-stock/v1/trading/period-rights (실측 2026-11-19) */
   CTRGA011R: {
     output?: Array<{
       bass_dt: string;
@@ -120,7 +120,7 @@ export interface KisResponses {
       tot_alct_qty: string;
     }>;
   };
-  /** [해외주식] 시세분석 > 해외주식 기간별권리조회 [해외주식-052] — GET /uapi/overseas-price/v1/quotations/period-rights (실측 2026-11-17) */
+  /** [해외주식] 시세분석 > 해외주식 기간별권리조회 [해외주식-052] — GET /uapi/overseas-price/v1/quotations/period-rights (실측 2026-11-19) */
   CTRGT011R: {
     output?: Array<{
       acpl_bass_dt: string;
@@ -145,7 +145,7 @@ export interface KisResponses {
       stkp_dvdn_frcr_amt4: string;
     }>;
   };
-  /** [해외주식] 주문/계좌 > 해외주식 체결기준현재잔고 [v1_해외주식-008] — GET /uapi/overseas-stock/v1/trading/inquire-present-balance (실측 2026-11-17) */
+  /** [해외주식] 주문/계좌 > 해외주식 체결기준현재잔고 [v1_해외주식-008] — GET /uapi/overseas-stock/v1/trading/inquire-present-balance (실측 2026-11-19) */
   CTRP6504R: {
     output1?: Array<{
       /** 실측 전 — 공식 예제 COLUMN_MAPPING */
@@ -253,7 +253,7 @@ export interface KisResponses {
       wdrw_psbl_tot_amt: string;
     };
   };
-  /** [국내주식] 주문/계좌 > 주식일별주문체결조회[v1_국내주식-005] — GET /uapi/domestic-stock/v1/trading/inquire-daily-ccld (실측 2026-11-17) */
+  /** [국내주식] 주문/계좌 > 주식일별주문체결조회[v1_국내주식-005] — GET /uapi/domestic-stock/v1/trading/inquire-daily-ccld (실측 2026-11-19) */
   CTSC9215R: {
     output1?: Array<{
       avg_prvs: string;
@@ -301,7 +301,7 @@ export interface KisResponses {
       tot_ord_qty: string;
     };
   };
-  /** [국내주식] 기본시세 > 주식현재가 시세[v1_국내주식-008] — GET /uapi/domestic-stock/v1/quotations/inquire-price (실측 2026-11-17) */
+  /** [국내주식] 기본시세 > 주식현재가 시세[v1_국내주식-008] — GET /uapi/domestic-stock/v1/quotations/inquire-price (실측 2026-11-19) */
   FHKST01010100: {
     output?: {
       acml_tr_pbmn: string;
@@ -386,7 +386,7 @@ export interface KisResponses {
       whol_loan_rmnd_rate: string;
     };
   };
-  /** [국내주식] 업종/기타 - 종합 시황/공시(제목) — GET /uapi/domestic-stock/v1/quotations/news-title (실측 2026-11-17) */
+  /** [국내주식] 업종/기타 - 종합 시황/공시(제목) — GET /uapi/domestic-stock/v1/quotations/news-title (실측 2026-11-19) */
   FHKST01011800: {
     output?: Array<{
       cntt_usiq_srno: string;
@@ -418,7 +418,7 @@ export interface KisResponses {
       news_ofer_entp_code: string;
     }>;
   };
-  /** [국내주식] 기본시세 > ETF 구성종목시세[국내주식-073] — GET /uapi/etfetn/v1/quotations/inquire-component-stock-price (실측 2026-11-17) */
+  /** [국내주식] 기본시세 > ETF 구성종목시세[국내주식-073] — GET /uapi/etfetn/v1/quotations/inquire-component-stock-price (실측 2026-11-19) */
   FHKST121600C0: {
     output1?: {
       etf_cnfg_issu_avls: string;
@@ -457,7 +457,7 @@ export interface KisResponses {
       tr_pbmn_tnrt: string;
     }>;
   };
-  /** [국내주식] 종목정보 - 국내주식 종목투자의견 — GET /uapi/domestic-stock/v1/quotations/invest-opinion (실측 2026-11-17) */
+  /** [국내주식] 종목정보 - 국내주식 종목투자의견 — GET /uapi/domestic-stock/v1/quotations/invest-opinion (실측 2026-11-19) */
   FHKST663300C0: {
     output?: Array<{
       dprt: string;
@@ -502,7 +502,7 @@ export interface KisResponses {
       stac_yymm?: string;
     }>;
   };
-  /** [국내주식] 기본시세 > ETF/ETN 현재가[v1_국내주식-068] — GET /uapi/etfetn/v1/quotations/inquire-price (실측 2026-11-17) */
+  /** [국내주식] 기본시세 > ETF/ETN 현재가[v1_국내주식-068] — GET /uapi/etfetn/v1/quotations/inquire-price (실측 2026-11-19) */
   FHPST02400000: {
     output?: {
       acml_vol: string;
@@ -565,7 +565,53 @@ export interface KisResponses {
       vi_cls_code: string;
     };
   };
-  /** [해외주식] 시세분석 > 해외주식 권리종합 [해외주식-050] — GET /uapi/overseas-price/v1/quotations/rights-by-ice (실측 2026-11-17) */
+  /** [해외주식] 기본시세 > 해외주식 현재가상세[v1_해외주식-029] — GET /uapi/overseas-price/v1/quotations/price-detail (실측 2026-11-19) */
+  HHDFS76200200: {
+    output?: {
+      base: string;
+      bpsx: string;
+      curr: string;
+      dnlp: string;
+      e_hogau: string;
+      e_icod: string;
+      e_ordyn: string;
+      e_parp: string;
+      epsx: string;
+      etyp_nm: string;
+      h52d: string;
+      h52p: string;
+      high: string;
+      l52d: string;
+      l52p: string;
+      last: string;
+      low: string;
+      mcap: string;
+      open: string;
+      p_rate: string;
+      p_xdif: string;
+      p_xprc: string;
+      p_xrat: string;
+      p_xsng: string;
+      pamt: string;
+      pbrx: string;
+      perx: string;
+      pvol: string;
+      rsym: string;
+      shar: string;
+      t_rate: string;
+      t_xdif: string;
+      t_xprc: string;
+      t_xrat: string;
+      t_xsgn: string;
+      tamt: string;
+      tomv: string;
+      tvol: string;
+      uplp: string;
+      vnit: string;
+      zdiv: string;
+    };
+  };
+  /** [해외주식] 시세분석 > 해외주식 권리종합 [해외주식-050] — GET /uapi/overseas-price/v1/quotations/rights-by-ice (실측 2026-11-19) */
   HHDFS78330900: {
     output1?: Array<{
       anno_dt: string;
@@ -582,7 +628,7 @@ export interface KisResponses {
       validity_dt: string;
     }>;
   };
-  /** [국내주식] 종목정보 - 예탁원정보(배당일정) — GET /uapi/domestic-stock/v1/ksdinfo/dividend (실측 2026-11-17) */
+  /** [국내주식] 종목정보 - 예탁원정보(배당일정) — GET /uapi/domestic-stock/v1/ksdinfo/dividend (실측 2026-11-19) */
   HHKDB669102C0: {
     output1?: Array<{
       divi_kind: string;
@@ -600,7 +646,7 @@ export interface KisResponses {
       stk_kind: string;
     }>;
   };
-  /** [국내주식] 주문/계좌 > 주식일별주문체결조회[v1_국내주식-005] — GET /uapi/domestic-stock/v1/trading/inquire-daily-ccld (실측 2026-11-17) */
+  /** [국내주식] 주문/계좌 > 주식일별주문체결조회[v1_국내주식-005] — GET /uapi/domestic-stock/v1/trading/inquire-daily-ccld (실측 2026-11-19) */
   TTTC0081R: {
     output1?: Array<{
       avg_prvs: string;
@@ -648,7 +694,7 @@ export interface KisResponses {
       tot_ord_qty: string;
     };
   };
-  /** [국내주식] 주문/계좌 > 주식잔고조회[v1_국내주식-006] — GET /uapi/domestic-stock/v1/trading/inquire-balance (실측 2026-11-17) */
+  /** [국내주식] 주문/계좌 > 주식잔고조회[v1_국내주식-006] — GET /uapi/domestic-stock/v1/trading/inquire-balance (실측 2026-11-19) */
   TTTC8434R: {
     output1?: Array<{
       bfdy_buy_qty: string;
@@ -705,7 +751,7 @@ export interface KisResponses {
       tot_stln_slng_chgs: string;
     }>;
   };
-  /** [국내주식] 주문/계좌 > 기간별매매손익현황조회[v1_국내주식-060] — GET /uapi/domestic-stock/v1/trading/inquire-period-trade-profit (실측 2026-11-17) */
+  /** [국내주식] 주문/계좌 > 기간별매매손익현황조회[v1_국내주식-060] — GET /uapi/domestic-stock/v1/trading/inquire-period-trade-profit (실측 2026-11-19) */
   TTTC8715R: {
     output1?: Array<{
       buy_amt: string;
@@ -785,7 +831,7 @@ export interface KisResponses {
       usa_amk_exts_rqst_yn?: string;
     }>;
   };
-  /** [해외주식] 주문/계좌 > 해외주식 기간손익 [v1_해외주식-032] — GET /uapi/overseas-stock/v1/trading/inquire-period-profit (실측 2026-11-17) */
+  /** [해외주식] 주문/계좌 > 해외주식 기간손익 [v1_해외주식-032] — GET /uapi/overseas-stock/v1/trading/inquire-period-profit (실측 2026-11-19) */
   TTTS3039R: {
     output1?: Array<{
       /** 실측 전 — 공식 예제 COLUMN_MAPPING */
@@ -829,6 +875,7 @@ export interface KisParamNames {
   FHKST663300C0: "FID_COND_MRKT_DIV_CODE" | "FID_COND_SCR_DIV_CODE" | "FID_INPUT_DATE_1" | "FID_INPUT_DATE_2" | "FID_INPUT_ISCD";
   FHKST66430300: "FID_COND_MRKT_DIV_CODE" | "FID_DIV_CLS_CODE" | "FID_INPUT_ISCD";
   FHPST02400000: "FID_COND_MRKT_DIV_CODE" | "FID_INPUT_ISCD";
+  HHDFS76200200: "AUTH" | "EXCD" | "SYMB";
   HHDFS78330900: "ED_YMD" | "NCOD" | "ST_YMD" | "SYMB";
   HHKDB669102C0: "CTS" | "F_DT" | "GB1" | "HIGH_GB" | "SHT_CD" | "T_DT";
   TTTC0081R: "ACNT_PRDT_CD" | "CANO" | "CCLD_DVSN" | "CTX_AREA_FK100" | "CTX_AREA_NK100" | "INQR_DVSN" | "INQR_DVSN_1" | "INQR_DVSN_3" | "INQR_END_DT" | "INQR_STRT_DT" | "ODNO" | "ORD_GNO_BRNO" | "PDNO" | "SLL_BUY_DVSN_CD";
@@ -874,6 +921,9 @@ export const KIS_LIVE_FIELDS = {
   },
   FHPST02400000: {
     output: ["acml_vol", "bstp_kor_isnm", "crcd", "dprt", "dryy_hgpr_date", "dryy_hgpr_vrss_prpr_rate", "dryy_lwpr_date", "dryy_lwpr_vrss_prpr_rate", "etf_cnfg_issu_cnt", "etf_crcl_ntas_ttam", "etf_crcl_stcn", "etf_cu_unit_scrt_cnt", "etf_div_name", "etf_dvdn_cycl", "etf_frcr_crcl_ntas_ttam", "etf_frcr_last_ntas_wrth_val", "etf_frcr_ntas_ttam", "etf_ntas_ttam", "etf_rprs_bstp_kor_isnm", "etf_trc_ert_mltp", "etf_trgt_nmix_bstp_code", "frgn_hldn_qty", "frgn_hldn_qty_rate", "frgn_limt_rate", "frgn_oder_able_qty", "lp_hldn_rate", "lp_hldn_vol", "lp_oder_able_cls_code", "lstn_stcn", "mbcr_name", "mtrt_date", "nav", "nav_prdy_ctrt", "nav_prdy_vrss", "nav_prdy_vrss_sign", "prdy_clpr_vrss_hgpr_rate", "prdy_clpr_vrss_lwpr_rate", "prdy_clpr_vrss_oprc_rate", "prdy_ctrt", "prdy_last_nav", "prdy_vol", "prdy_vrss", "prdy_vrss_sign", "shrg_type_code", "stck_dryy_hgpr", "stck_dryy_lwpr", "stck_hgpr", "stck_llam", "stck_lstn_date", "stck_lwpr", "stck_mxpr", "stck_oprc", "stck_prdy_clpr", "stck_prpr", "stck_sdpr", "stck_sspr", "trc_errt", "vi_cls_code"],
+  },
+  HHDFS76200200: {
+    output: ["base", "bpsx", "curr", "dnlp", "e_hogau", "e_icod", "e_ordyn", "e_parp", "epsx", "etyp_nm", "h52d", "h52p", "high", "l52d", "l52p", "last", "low", "mcap", "open", "p_rate", "p_xdif", "p_xprc", "p_xrat", "p_xsng", "pamt", "pbrx", "perx", "pvol", "rsym", "shar", "t_rate", "t_xdif", "t_xprc", "t_xrat", "t_xsgn", "tamt", "tomv", "tvol", "uplp", "vnit", "zdiv"],
   },
   HHDFS78330900: {
     output1: ["anno_dt", "ca_title", "delist_dt", "div_lock_dt", "early_redempt_dt", "effective_dt", "local_end_dt", "lock_dt", "pay_dt", "record_dt", "redempt_dt", "validity_dt"],

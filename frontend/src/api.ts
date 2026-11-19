@@ -29,6 +29,9 @@ import type {
   PlannerState,
   TradeRecord,
   WatchlistEntry,
+  DailyCandle,
+  SymbolDividends,
+  OverseasStockDetail,
 } from './types';
 
 // 백엔드가 `/api/*` 요청마다 요구하는 실행별 토큰과, 백엔드가 실제로 뜬 포트 —
@@ -52,6 +55,7 @@ const BACKGROUND_WRITES = [
   // 화면 데이터와 무관한 쓰기(오류 기록·새 버전 알림 설정·로그 폴더 열기) — 다른 화면을 다시 불러오게 하지 않는다.
   /^\/about\/(client-error|update-check|open-logs)$/,
   /^\/backup\/auto$/,
+  /^\/watchlist\/[^/]+\/memo$/, // 관심종목 메모 — 다른 화면 데이터와 무관
   /^\/report\/pdf$/, // 보고서 PDF 저장 — 데이터를 바꾸지 않는다
   // 계획·목표 값(알림 설정·목표 비중·납입액 등) — 보유·배당 데이터와 무관해서, "데이터 변경"으로 잡으면 숨긴 화면이 다음에 보일 때
   // 간격 제한을 건너뛰고 무거운 배당 동기화까지 다시 돌았다(2026-11-17 UI 점검). 화면끼리는 usePlanner 공유 저장소로 맞춘다.
@@ -391,6 +395,14 @@ export const api = {
     request<WatchlistEntry>('/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }),
   removeWatchlist: (symbol: string) =>
     request<void>(`/watchlist/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
+  getDailyCandles: (symbol: string, days = 400) =>
+    request<{ candles: DailyCandle[] }>(`/watchlist/candles/${encodeURIComponent(symbol)}?days=${days}`),
+  getSymbolDividends: (symbol: string, currency: 'KRW' | 'USD') =>
+    request<SymbolDividends>(`/watchlist/${encodeURIComponent(symbol)}/dividends?currency=${currency}`),
+  getOverseasStockDetail: (symbol: string) =>
+    request<OverseasStockDetail>(`/watchlist/${encodeURIComponent(symbol)}/overseas-detail`),
+  setWatchlistMemo: (symbol: string, memo: string | null) =>
+    request<WatchlistEntry>(`/watchlist/${encodeURIComponent(symbol)}/memo`, { method: 'PUT', body: JSON.stringify({ memo }) }),
 
   // 하루 한 번(Overview.tsx 진입 시) 이미 계산된 합산 총액을 그대로 저장 —
   // 서버는 집계를 다시 하지 않고 upsert만 한다(backend/CLAUDE.md의

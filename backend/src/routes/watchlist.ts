@@ -5,20 +5,23 @@ import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
 import { fetchTossDailyCandles, fetchTossPreviousClose, fetchTossPrices, isTossConfigured } from '../brokers/toss/tossClient';
 import { fetchKisDomesticBasePrice, fetchKisOverseasPriceDetail, isKisConfigured } from '../brokers/kis/kisClient';
 import { getSymbolDividends } from '../upcomingDividends';
+import { redactText } from '../logRedact';
 
 export const watchlistRouter = Router();
 
 // 토스 종목 기본 정보 API가 실제로 허용하는 패턴 — routes/stockInfo.ts의
 // TOSS_SYMBOL_PATTERN과 동일(그쪽 주석 참고: 잘못된 문자를 그냥 토스에 넘기면
 // 400 + 에러 로그만 남긴다).
-const SYMBOL_PATTERN = /^[A-Za-z0-9.,-]+$/;
+// 길이 제한(1~20자) — 종목별 메모리 캐시 키가 끝없이 늘지 않게(2026-11-19 보안 리뷰).
+const SYMBOL_PATTERN = /^[A-Za-z0-9.,-]{1,20}$/;
 
 // 등록된 종목 전체의 현재가를 매 조회마다 라이브로 채운다 — 보유종목 CSV의
 // lastPrice 자동조회(stockNameResolver.ts)와 같은 원칙으로, 가격은 저장소에
 // 저장하지 않는다(시시각각 바뀌는 값이라 저장해두면 바로 stale해짐).
-watchlistRouter.get('/', async (_req, res) => {
+watchlistRouter.get('/', async (req, res) => {
   const entries = listWatchlist();
-  if (entries.length === 0) return res.json([]);
+  // `?prices=0` — 저장된 목록만(종목 검색 창·종목 링크 화면처럼 코드·이름만 쓰는 곳, 2026-11-19 성능 리뷰: 열 때마다 시세·등락률 호출이 나갔다)
+  if (entries.length === 0 || req.query.prices === '0') return res.json(entries);
 
   const { pricesBySymbol } = await resolveStockPrices(entries.map((e) => e.symbol)).catch(() => ({
     pricesBySymbol: {} as Record<string, number>,
@@ -105,7 +108,7 @@ watchlistRouter.get('/candles/:symbol', async (req, res) => {
   try {
     res.json({ candles: await fetchTossDailyCandles(symbol, days) });
   } catch (e) {
-    res.status(502).json({ error: `일봉을 받지 못했습니다: ${(e as Error).message}` });
+    res.status(502).json({ error: `일봉을 받지 못했습니다: ${redactText((e as Error).message)}` });
   }
 });
 
@@ -117,7 +120,7 @@ watchlistRouter.get('/:symbol/dividends', async (req, res) => {
   try {
     res.json(await getSymbolDividends(symbol, currency));
   } catch (e) {
-    res.status(502).json({ error: (e as Error).message });
+    res.status(502).json({ error: redactText((e as Error).message) });
   }
 });
 
@@ -152,11 +155,12 @@ watchlistRouter.get('/:symbol/overseas-detail', async (req, res) => {
       etpType: row.etyp_nm || null,
     });
   } catch (e) {
-    res.status(502).json({ error: (e as Error).message });
+    res.status(502).json({ error: redactText((e as Error).message) });
   }
 });
 
 watchlistRouter.put('/:symbol/memo', (req, res) => {
+  if (!SYMBOL_PATTERN.test(req.params.symbol)) return res.status(400).json({ error: '올바른 종목코드 형식이 아닙니다.' });
   const { memo } = (req.body ?? {}) as Record<string, unknown>;
   if (memo !== null && typeof memo !== 'string') return res.status(400).json({ error: 'memo는 문자열이어야 합니다.' });
   if (typeof memo === 'string' && memo.length > 2000) return res.status(400).json({ error: '메모는 2000자까지입니다.' });
@@ -166,6 +170,7 @@ watchlistRouter.put('/:symbol/memo', (req, res) => {
 });
 
 watchlistRouter.delete('/:symbol', (req, res) => {
+  if (!SYMBOL_PATTERN.test(req.params.symbol)) return res.status(400).json({ error: '올바른 종목코드 형식이 아닙니다.' });
   const removed = removeWatchlistEntry(req.params.symbol);
   if (!removed) return res.status(404).json({ error: '해당 관심종목을 찾을 수 없습니다.' });
   res.status(204).end();

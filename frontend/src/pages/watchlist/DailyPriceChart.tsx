@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useContainerWidth } from '../../useContainerWidth';
 import { krw, krwCompact, qtyFmt, usdFmt } from '../../format';
 import type { DailyCandle } from '../../types';
@@ -58,137 +58,158 @@ export default function DailyPriceChart({
 }) {
   const [ref, boxWidth] = useContainerWidth(640);
   const [hover, setHover] = useState<number | null>(null);
-  if (candles.length < 2) return <p style={{ color: 'var(--text-muted)' }}>이 기간의 일봉이 없습니다.</p>;
+  // 마우스를 움직이면 hover만 바뀐다 — 축·선·봉·거래량(수백~천여 개 요소)은 아래 두 useMemo로 한 번만 만들어 두고 hover 때는 세로선·점·툴팁만
+  // 다시 그린다(2026-11-19 성능 리뷰: 봉 경계를 넘을 때마다 SVG 전체를 다시 만들었다). 같은 React 요소 객체를 돌려주면 그 아래는 비교도 건너뛴다.
+  const targetAbove = targets.above;
+  const targetBelow = targets.below;
+  const geo = useMemo(() => {
+    if (candles.length < 2) return null;
+    const targets = { above: targetAbove, below: targetBelow };
 
-  const width = Math.max(320, boxWidth);
-  const plotW = width - Y_AXIS - RIGHT;
-  const values = candles.map((c) => c.close);
-  if (mode === 'candle') for (const c of candles) values.push(c.high || c.close, c.low || c.close);
-  for (const m of ma) for (const v of m.values) if (v !== null) values.push(v);
-  if (bands) for (const v of [...bands.upper, ...bands.lower]) if (v !== null) values.push(v);
-  // 내 평균 매수가는 가격 범위의 1.5배 안이면 축에 넣는다(멀면 목표가처럼 가장자리 글자로)
-  {
-    const lo = Math.min(...values);
-    const hi = Math.max(...values);
-    if (avgBuy && avgBuy >= lo - (hi - lo) * 0.5 && avgBuy <= hi + (hi - lo) * 0.5) values.push(avgBuy);
-  }
-  let min = Math.min(...values);
-  let max = Math.max(...values);
-  const pad = (max - min) * 0.06 || max * 0.02 || 1;
-  min -= pad;
-  max += pad;
-  const step = plotW / candles.length;
-  const x = (i: number) => Y_AXIS + i * step + step / 2;
-  const y = (v: number) => TOP + PRICE_H - ((v - min) / (max - min)) * PRICE_H;
-  const volTop = TOP + PRICE_H + GAP;
-  const maxVol = Math.max(...candles.map((c) => c.volume), 1);
-  const line = (vals: (number | null)[]) =>
-    vals.reduce((d, v, i) => (v === null ? d : `${d}${d === '' || vals[i - 1] === null ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)} `), '');
-  const ticks = [0, 0.5, 1].map((t) => min + pad + (max - min - 2 * pad) * t);
-  const height = volTop + VOL_H + AXIS_H;
-  const byDate = new Map(candles.map((c, i) => [c.date, i]));
-  const shownMarks = marks.flatMap((m) => {
-    const i = byDate.get(m.date);
-    return i === undefined ? [] : [{ ...m, i }];
-  });
-  // 날짜 라벨 — 대략 6개(월이 바뀌는 첫 봉 우선)
-  const labelEvery = Math.max(1, Math.ceil(candles.length / 6));
-  const targetLines = (
-    [
-      ['above', targets.above, '≥'],
-      ['below', targets.below, '≤'],
-    ] as const
-  ).flatMap(([key, v, sign]) => (v === null ? [] : [{ key, v, sign }]));
+    const width = Math.max(320, boxWidth);
+    const plotW = width - Y_AXIS - RIGHT;
+    const values = candles.map((c) => c.close);
+    if (mode === 'candle') for (const c of candles) values.push(c.high || c.close, c.low || c.close);
+    for (const m of ma) for (const v of m.values) if (v !== null) values.push(v);
+    if (bands) for (const v of [...bands.upper, ...bands.lower]) if (v !== null) values.push(v);
+    // 내 평균 매수가는 가격 범위의 1.5배 안이면 축에 넣는다(멀면 목표가처럼 가장자리 글자로)
+    {
+      const lo = Math.min(...values);
+      const hi = Math.max(...values);
+      if (avgBuy && avgBuy >= lo - (hi - lo) * 0.5 && avgBuy <= hi + (hi - lo) * 0.5) values.push(avgBuy);
+    }
+    let min = Math.min(...values);
+    let max = Math.max(...values);
+    const pad = (max - min) * 0.06 || max * 0.02 || 1;
+    min -= pad;
+    max += pad;
+    const step = plotW / candles.length;
+    const x = (i: number) => Y_AXIS + i * step + step / 2;
+    const y = (v: number) => TOP + PRICE_H - ((v - min) / (max - min)) * PRICE_H;
+    const volTop = TOP + PRICE_H + GAP;
+    const maxVol = Math.max(...candles.map((c) => c.volume), 1);
+    const line = (vals: (number | null)[]) =>
+      vals.reduce((d, v, i) => (v === null ? d : `${d}${d === '' || vals[i - 1] === null ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)} `), '');
+    const ticks = [0, 0.5, 1].map((t) => min + pad + (max - min - 2 * pad) * t);
+    const height = volTop + VOL_H + AXIS_H;
+    const byDate = new Map(candles.map((c, i) => [c.date, i]));
+    const shownMarks = marks.flatMap((m) => {
+      const i = byDate.get(m.date);
+      return i === undefined ? [] : [{ ...m, i }];
+    });
+    // 날짜 라벨 — 대략 6개(월이 바뀌는 첫 봉 우선)
+    const labelEvery = Math.max(1, Math.ceil(candles.length / 6));
+    const targetLines = (
+      [
+        ['above', targets.above, '≥'],
+        ['below', targets.below, '≤'],
+      ] as const
+    ).flatMap(([key, v, sign]) => (v === null ? [] : [{ key, v, sign }]));
+    return { width, plotW, min, max, step, x, y, volTop, maxVol, line, ticks, height, shownMarks, labelEvery, targetLines };
+  }, [candles, ma, bands, avgBuy, mode, marks, targetAbove, targetBelow, boxWidth]);
+
+  const staticLayer = useMemo(() => {
+    if (!geo) return null;
+    const { width, min, max, step, x, y, volTop, maxVol, line, ticks, height, shownMarks, labelEvery, targetLines } = geo;
+    return (
+      <>
+          {ticks.map((t) => (
+            <g key={t}>
+              <line x1={Y_AXIS} x2={width - RIGHT} y1={y(t)} y2={y(t)} stroke="var(--gridline)" />
+              <text x={Y_AXIS - 6} y={y(t) + 4} textAnchor="end" fontSize={10} fill="var(--text-muted)">
+                {fmtAxis(t, currency)}
+              </text>
+            </g>
+          ))}
+          {targetLines.map((t) => {
+            const inRange = t.v >= min && t.v <= max;
+            const ty = inRange ? y(t.v) : t.v > max ? TOP + 8 : TOP + PRICE_H - 4;
+            return (
+              <g key={t.key}>
+                {inRange && <line x1={Y_AXIS} x2={width - RIGHT} y1={ty} y2={ty} stroke="var(--text-muted)" strokeDasharray="4 3" />}
+                {/* 범위 밖이면 축 바로 옆 위·아래 귀퉁이에(오른쪽 끝은 최근 가격 선과 겹친다) */}
+                <text x={inRange ? width - RIGHT - 2 : Y_AXIS + 4} y={inRange ? ty - 4 : t.v > max ? TOP - 2 : TOP + PRICE_H + 8} textAnchor={inRange ? 'end' : 'start'} fontSize={10} fill="var(--text-secondary)" stroke="var(--surface-1)" strokeWidth={3} paintOrder="stroke">
+                  {inRange ? '' : t.v > max ? '↑ ' : '↓ '}목표 {t.sign} {fmtPrice(t.v, currency)}
+                </text>
+              </g>
+            );
+          })}
+          {bands && (
+            <path
+              d={`${line(bands.upper)} ${bands.lower
+                .map((v, i) => [v, i] as const)
+                .filter(([v]) => v !== null)
+                .reverse()
+                .map(([v, i]) => `L ${x(i).toFixed(1)} ${y(v!).toFixed(1)}`)
+                .join(' ')} Z`}
+              fill="var(--series-1)"
+              fillOpacity={0.08}
+              stroke="var(--series-1)"
+              strokeOpacity={0.35}
+              strokeWidth={1}
+            />
+          )}
+          {avgBuy !== null && avgBuy > 0 && (() => {
+            const inRange = avgBuy >= min && avgBuy <= max;
+            const ay = inRange ? y(avgBuy) : avgBuy > max ? TOP - 2 : TOP + PRICE_H + 8;
+            return (
+              <g>
+                {inRange && <line x1={Y_AXIS} x2={width - RIGHT} y1={ay} y2={ay} stroke="var(--series-5)" strokeWidth={1.25} />}
+                <text x={inRange ? Y_AXIS + 4 : width - RIGHT - 2} y={inRange ? ay - 4 : ay} textAnchor={inRange ? 'start' : 'end'} fontSize={10} fill="var(--series-5)" stroke="var(--surface-1)" strokeWidth={3} paintOrder="stroke">
+                  {inRange ? '' : avgBuy > max ? '↑ ' : '↓ '}내 평균 매수가 {fmtPrice(avgBuy, currency)}
+                </text>
+              </g>
+            );
+          })()}
+          {candles.map((c, i) => {
+            const bh = (c.volume / maxVol) * VOL_H;
+            return <rect key={c.date} x={x(i) - Math.max(0.5, step * 0.35)} width={Math.max(1, step * 0.7)} y={volTop + VOL_H - bh} height={bh} fill="var(--baseline)" />;
+          })}
+          {ma.map((m) => (
+            <path key={m.period} d={line(m.values)} fill="none" stroke={m.color} strokeWidth={1.25} />
+          ))}
+          {mode === 'candle' ? (
+            candles.map((c, i) => {
+              const up = c.close >= c.open;
+              const color = up ? 'var(--good)' : 'var(--critical)';
+              const bw = Math.max(1, step * 0.6);
+              const top = y(Math.max(c.open, c.close));
+              return (
+                <g key={c.date}>
+                  {c.high > 0 && c.low > 0 && <line x1={x(i)} x2={x(i)} y1={y(c.high)} y2={y(c.low)} stroke={color} strokeWidth={1} />}
+                  <rect x={x(i) - bw / 2} width={bw} y={top} height={Math.max(1, y(Math.min(c.open, c.close)) - top)} fill={color} stroke={color} strokeWidth={1} />
+                </g>
+              );
+            })
+          ) : (
+            <path d={line(candles.map((c) => c.close))} fill="none" stroke="var(--series-1)" strokeWidth={2} />
+          )}
+          {shownMarks.map((m, k) => {
+            const px = x(m.i);
+            const py = y(Math.min(max, Math.max(min, m.price)));
+            const up = m.side === 'BUY';
+            const d = up ? `M ${px} ${py + 3} l -5 9 l 10 0 Z` : `M ${px} ${py - 3} l -5 -9 l 10 0 Z`;
+            return <path key={k} d={d} fill={up ? 'var(--series-1)' : 'var(--series-2)'} stroke="var(--surface-1)" strokeWidth={1} />;
+          })}
+          {candles.map((c, i) =>
+            i % labelEvery === 0 ? (
+              <text key={c.date} x={x(i)} y={height - 4} textAnchor="middle" fontSize={10} fill="var(--text-muted)">
+                {c.date.slice(2).replace(/-/g, '.')}
+              </text>
+            ) : null
+          )}
+      </>
+    );
+  }, [geo, candles, ma, bands, avgBuy, mode, currency]);
+
+  if (!geo) return <p style={{ color: 'var(--text-muted)' }}>이 기간의 일봉이 없습니다.</p>;
+  const { width, plotW, x, y, volTop, height, shownMarks } = geo;
   const h = hover === null ? null : candles[hover];
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <svg width={width} height={height} role="img" aria-label="일봉 종가·이동평균·거래량 차트" onMouseLeave={() => setHover(null)}>
-        {ticks.map((t) => (
-          <g key={t}>
-            <line x1={Y_AXIS} x2={width - RIGHT} y1={y(t)} y2={y(t)} stroke="var(--gridline)" />
-            <text x={Y_AXIS - 6} y={y(t) + 4} textAnchor="end" fontSize={10} fill="var(--text-muted)">
-              {fmtAxis(t, currency)}
-            </text>
-          </g>
-        ))}
-        {targetLines.map((t) => {
-          const inRange = t.v >= min && t.v <= max;
-          const ty = inRange ? y(t.v) : t.v > max ? TOP + 8 : TOP + PRICE_H - 4;
-          return (
-            <g key={t.key}>
-              {inRange && <line x1={Y_AXIS} x2={width - RIGHT} y1={ty} y2={ty} stroke="var(--text-muted)" strokeDasharray="4 3" />}
-              {/* 범위 밖이면 축 바로 옆 위·아래 귀퉁이에(오른쪽 끝은 최근 가격 선과 겹친다) */}
-              <text x={inRange ? width - RIGHT - 2 : Y_AXIS + 4} y={inRange ? ty - 4 : t.v > max ? TOP - 2 : TOP + PRICE_H + 8} textAnchor={inRange ? 'end' : 'start'} fontSize={10} fill="var(--text-secondary)" stroke="var(--surface-1)" strokeWidth={3} paintOrder="stroke">
-                {inRange ? '' : t.v > max ? '↑ ' : '↓ '}목표 {t.sign} {fmtPrice(t.v, currency)}
-              </text>
-            </g>
-          );
-        })}
-        {bands && (
-          <path
-            d={`${line(bands.upper)} ${bands.lower
-              .map((v, i) => [v, i] as const)
-              .filter(([v]) => v !== null)
-              .reverse()
-              .map(([v, i]) => `L ${x(i).toFixed(1)} ${y(v!).toFixed(1)}`)
-              .join(' ')} Z`}
-            fill="var(--series-1)"
-            fillOpacity={0.08}
-            stroke="var(--series-1)"
-            strokeOpacity={0.35}
-            strokeWidth={1}
-          />
-        )}
-        {avgBuy !== null && avgBuy > 0 && (() => {
-          const inRange = avgBuy >= min && avgBuy <= max;
-          const ay = inRange ? y(avgBuy) : avgBuy > max ? TOP - 2 : TOP + PRICE_H + 8;
-          return (
-            <g>
-              {inRange && <line x1={Y_AXIS} x2={width - RIGHT} y1={ay} y2={ay} stroke="var(--series-5)" strokeWidth={1.25} />}
-              <text x={inRange ? Y_AXIS + 4 : width - RIGHT - 2} y={inRange ? ay - 4 : ay} textAnchor={inRange ? 'start' : 'end'} fontSize={10} fill="var(--series-5)" stroke="var(--surface-1)" strokeWidth={3} paintOrder="stroke">
-                {inRange ? '' : avgBuy > max ? '↑ ' : '↓ '}내 평균 매수가 {fmtPrice(avgBuy, currency)}
-              </text>
-            </g>
-          );
-        })()}
-        {candles.map((c, i) => {
-          const bh = (c.volume / maxVol) * VOL_H;
-          return <rect key={c.date} x={x(i) - Math.max(0.5, step * 0.35)} width={Math.max(1, step * 0.7)} y={volTop + VOL_H - bh} height={bh} fill="var(--baseline)" />;
-        })}
-        {ma.map((m) => (
-          <path key={m.period} d={line(m.values)} fill="none" stroke={m.color} strokeWidth={1.25} />
-        ))}
-        {mode === 'candle' ? (
-          candles.map((c, i) => {
-            const up = c.close >= c.open;
-            const color = up ? 'var(--good)' : 'var(--critical)';
-            const bw = Math.max(1, step * 0.6);
-            const top = y(Math.max(c.open, c.close));
-            return (
-              <g key={c.date}>
-                {c.high > 0 && c.low > 0 && <line x1={x(i)} x2={x(i)} y1={y(c.high)} y2={y(c.low)} stroke={color} strokeWidth={1} />}
-                <rect x={x(i) - bw / 2} width={bw} y={top} height={Math.max(1, y(Math.min(c.open, c.close)) - top)} fill={color} stroke={color} strokeWidth={1} />
-              </g>
-            );
-          })
-        ) : (
-          <path d={line(candles.map((c) => c.close))} fill="none" stroke="var(--series-1)" strokeWidth={2} />
-        )}
-        {shownMarks.map((m, k) => {
-          const px = x(m.i);
-          const py = y(Math.min(max, Math.max(min, m.price)));
-          const up = m.side === 'BUY';
-          const d = up ? `M ${px} ${py + 3} l -5 9 l 10 0 Z` : `M ${px} ${py - 3} l -5 -9 l 10 0 Z`;
-          return <path key={k} d={d} fill={up ? 'var(--series-1)' : 'var(--series-2)'} stroke="var(--surface-1)" strokeWidth={1} />;
-        })}
-        {candles.map((c, i) =>
-          i % labelEvery === 0 ? (
-            <text key={c.date} x={x(i)} y={height - 4} textAnchor="middle" fontSize={10} fill="var(--text-muted)">
-              {c.date.slice(2).replace(/-/g, '.')}
-            </text>
-          ) : null
-        )}
+        {staticLayer}
         {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={TOP} y2={volTop + VOL_H} stroke="var(--text-muted)" strokeWidth={1} />}
         {hover !== null && <circle cx={x(hover)} cy={y(candles[hover].close)} r={3.5} fill="var(--series-1)" />}
         <rect

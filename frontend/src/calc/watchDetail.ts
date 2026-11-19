@@ -264,19 +264,27 @@ export function monthlyReturnGrid(candles: Pick<DailyCandle, 'date' | 'close'>[]
   });
 }
 
-/** 볼린저 밴드 — 20일 평균 ± 표준편차 × 2(모집단 표준편차, 흔한 기준). 앞쪽은 null. */
+/** 볼린저 밴드 — 20일 평균 ± 표준편차 × 2(모집단 표준편차, 흔한 기준). 앞쪽은 null. 누적합 창이라 O(n)(2026-11-19 성능 리뷰). */
 export function bollinger(candles: Pick<DailyCandle, 'close'>[], period = 20, k = 2): { upper: (number | null)[]; lower: (number | null)[] } {
   const upper: (number | null)[] = [];
   const lower: (number | null)[] = [];
-  candles.forEach((_, i) => {
+  let sum = 0;
+  let sumSq = 0;
+  candles.forEach((c, i) => {
+    sum += c.close;
+    sumSq += c.close * c.close;
+    if (i >= period) {
+      const old = candles[i - period].close;
+      sum -= old;
+      sumSq -= old * old;
+    }
     if (i < period - 1) {
       upper.push(null);
       lower.push(null);
       return;
     }
-    const win = candles.slice(i - period + 1, i + 1).map((c) => c.close);
-    const mean = win.reduce((s, v) => s + v, 0) / period;
-    const sd = Math.sqrt(win.reduce((s, v) => s + (v - mean) ** 2, 0) / period);
+    const mean = sum / period;
+    const sd = Math.sqrt(Math.max(0, sumSq / period - mean * mean)); // 부동소수 오차로 아주 작은 음수가 될 수 있다
     upper.push(mean + k * sd);
     lower.push(mean - k * sd);
   });
@@ -307,14 +315,31 @@ export function rsi(candles: Pick<DailyCandle, 'close'>[], period = 14): (number
   return out;
 }
 
-/** 변동성 — 최근 `period`거래일 일간 수익률의 표준편차를 연율화(× √252). 0.3 = 연 30%. 앞쪽은 null. */
+/** 변동성 — 최근 `period`거래일 일간 수익률의 표준편차(표본)를 연율화(× √252). 0.3 = 연 30%. 앞쪽은 null. 누적합 창이라 O(n). */
 export function rollingVolatility(candles: Pick<DailyCandle, 'close'>[], period = 20): (number | null)[] {
-  const r = candles.map((c, i) => (i === 0 ? null : c.close / candles[i - 1].close - 1));
-  return candles.map((_, i) => {
-    if (i < period) return null;
-    const win = r.slice(i - period + 1, i + 1) as number[];
-    const mean = win.reduce((s, v) => s + v, 0) / period;
-    const sd = Math.sqrt(win.reduce((s, v) => s + (v - mean) ** 2, 0) / (period - 1));
-    return sd * Math.sqrt(252);
-  });
+  const out: (number | null)[] = [];
+  let sum = 0;
+  let sumSq = 0;
+  for (let i = 0; i < candles.length; i++) {
+    if (i === 0) {
+      out.push(null);
+      continue;
+    }
+    const r = candles[i].close / candles[i - 1].close - 1;
+    sum += r;
+    sumSq += r * r;
+    if (i > period) {
+      const old = candles[i - period].close / candles[i - period - 1].close - 1;
+      sum -= old;
+      sumSq -= old * old;
+    }
+    if (i < period) {
+      out.push(null);
+      continue;
+    }
+    const mean = sum / period;
+    const variance = Math.max(0, (sumSq - period * mean * mean) / (period - 1));
+    out.push(Math.sqrt(variance) * Math.sqrt(252));
+  }
+  return out;
 }

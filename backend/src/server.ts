@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import { redactText } from './logRedact';
 import express from 'express';
 import cors from 'cors';
 import { settingsRouter } from './routes/settings';
@@ -100,7 +101,8 @@ export function createApp(options: { apiToken: string; requestRestart?: () => vo
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error('[server] Unhandled error:', err);
     if (res.headersSent) return;
-    res.status(500).json({ error: err instanceof Error ? err.message : '알 수 없는 서버 오류가 발생했습니다.' });
+    // 응답 문장도 로그처럼 긴 숫자열(계좌번호 등)을 가린다 — 화면·스크린샷에 증권사 오류 원문이 그대로 보이지 않게(2026-11-19 보안 리뷰)
+    res.status(500).json({ error: err instanceof Error ? redactText(err.message) : '알 수 없는 서버 오류가 발생했습니다.' });
   });
 
   return app;

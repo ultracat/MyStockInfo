@@ -13,7 +13,7 @@ export const stockInfoRouter = Router();
 // 넘어오면 이 정규식 없이는 매번 토스 API까지 나갔다가 400으로 거부되고
 // `[broker]` 에러 레벨로 로그만 채웠다(실사용자 리포트로 발견, 2026-09-23) —
 // 여기서 먼저 걸러 API 호출 자체를 생략한다.
-const TOSS_SYMBOL_PATTERN = /^[A-Za-z0-9.,-]+$/;
+const TOSS_SYMBOL_PATTERN = /^[A-Za-z0-9.,-]{1,20}$/; // 길이 제한 — routes/watchlist.ts와 같게(2026-11-19)
 
 // 종목명 자동조회 — 이미 조회한 심볼은 로컬 캐시(SQLite)에서 바로 돌려주고,
 // 처음 보는 심볼만 토스 종목 기본 정보 API를 호출한다. 국내/미국 심볼 둘 다

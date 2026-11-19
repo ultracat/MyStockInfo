@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  bollinger,
   closeOnOrAfter,
+  drawdownSeries,
+  monthlyReturnGrid,
+  rollingVolatility,
+  rsi,
+  totalReturnSeries,
   closeOnOrBefore,
   dividendYield,
   movingAverage,
@@ -88,4 +94,40 @@ test('배당수익률·주기', () => {
   assert.equal(y.yield, 0.04);
   assert.equal(y.cadence, '분기');
   assert.equal(shiftDate('2026-03-01', -1), '2026-02-28');
+});
+
+test('낙폭 — 최고 종가 대비', () => {
+  const d = drawdownSeries([c('2026-01-01', 100), c('2026-01-02', 120), c('2026-01-03', 90), c('2026-01-04', 130)]);
+  assert.deepEqual(d.points.map((p) => p.value), [0, 0, -0.25, 0]);
+  assert.equal(d.maxDrawdown, -0.25);
+});
+
+test('배당 포함 수익 — 기준일 다음 거래일부터 현금으로 더함', () => {
+  const rows = [c('2026-01-01', 100), c('2026-01-02', 98), c('2026-01-05', 99)];
+  const t = totalReturnSeries(rows, [{ recordDate: '2026-01-02', payDate: null, perShare: 2 }, { recordDate: '2025-12-01', payDate: null, perShare: 5 }], '2026-01-01');
+  assert.deepEqual(t.price.map((p) => Math.round(p.rate * 1000)), [0, -20, -10]);
+  assert.deepEqual(t.total.map((p) => Math.round(p.rate * 1000)), [0, -20, 10]);
+  assert.equal(t.dividendSum, 2);
+});
+
+test('월별 등락률 표', () => {
+  const g = monthlyReturnGrid([c('2025-12-30', 100), c('2026-01-30', 110), c('2026-02-27', 99)]);
+  assert.equal(g[0].year, '2026');
+  assert.ok(Math.abs(g[0].months[0]! - 0.1) < 1e-9);
+  assert.ok(Math.abs(g[0].months[1]! + 0.1) < 1e-9);
+  assert.equal(g[1].months[11], null); // 첫 달은 전달이 없다
+  assert.ok(Math.abs(g[0].total! - (1.1 * 0.9 - 1)) < 1e-9);
+});
+
+test('볼린저·RSI·변동성', () => {
+  const flat = Array.from({ length: 25 }, () => ({ close: 100 }));
+  const b = bollinger(flat);
+  assert.equal(b.upper[18], null);
+  assert.equal(b.upper[24], 100);
+  const up = Array.from({ length: 20 }, (_, i) => ({ close: 100 + i }));
+  assert.equal(rsi(up)[14], 100);
+  assert.equal(rsi(up)[13], null);
+  const v = rollingVolatility(flat);
+  assert.equal(v[24], 0);
+  assert.equal(v[19], null);
 });

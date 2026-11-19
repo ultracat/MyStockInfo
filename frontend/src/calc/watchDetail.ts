@@ -205,3 +205,116 @@ export type DailyRangeKey = (typeof DAILY_RANGES)[number]['key'];
 export function benchmarkFor(currency: string | null): { symbol: string; name: string } {
   return currency === 'USD' ? { symbol: 'SPY', name: 'S&P 500 (SPY)' } : { symbol: '069500', name: '코스피 200 (KODEX 200)' };
 }
+
+// ---- 보조 그래프(2026-11-19 두 번째 묶음) — 전부 실제 거래 가격(실주가) 기준 ----------------------------------------
+
+/** 고점 대비 하락률 — 보기 기간 첫날부터의 최고 종가 대비(0 또는 음수). `maxDrawdown`은 그 기간 가장 깊었던 값. */
+export function drawdownSeries(candles: Pick<DailyCandle, 'date' | 'close'>[]): { points: Array<{ date: string; value: number }>; maxDrawdown: number } {
+  let peak = 0;
+  let worst = 0;
+  const points = candles.map((c) => {
+    peak = Math.max(peak, c.close);
+    const value = peak > 0 ? c.close / peak - 1 : 0;
+    worst = Math.min(worst, value);
+    return { date: c.date, value };
+  });
+  return { points, maxDrawdown: worst };
+}
+
+/**
+ * 가격만의 수익률과 배당 포함 수익률 — 첫날 종가를 기준으로, 기준일이 기간 안에 든 배당(주당, 세전)을 **재투자하지 않고** 현금으로 더한다
+ * ((종가 + 누적 배당) ÷ 첫날 종가 − 1). 수정주가를 쓰지 않고 "실제로 번 돈"을 보이려는 것(사용자 결정 2026-11-19 — 실주가 기준).
+ * 배당은 기준일 다음 거래일(배당락)부터 받은 것으로 친다.
+ */
+export function totalReturnSeries(
+  candles: DailyCandle[],
+  dividends: SymbolDividendEvent[],
+  from: string
+): { price: Array<{ date: string; rate: number }>; total: Array<{ date: string; rate: number }>; dividendSum: number } {
+  const rows = candles.filter((c) => c.date >= from);
+  const base = rows[0]?.close;
+  if (!base) return { price: [], total: [], dividendSum: 0 };
+  const divs = dividends.filter((d) => d.perShare > 0 && d.recordDate >= rows[0].date).sort((a, b) => (a.recordDate < b.recordDate ? -1 : 1));
+  let k = 0;
+  let cum = 0;
+  const price: Array<{ date: string; rate: number }> = [];
+  const total: Array<{ date: string; rate: number }> = [];
+  for (const c of rows) {
+    while (k < divs.length && divs[k].recordDate < c.date) cum += divs[k++].perShare;
+    price.push({ date: c.date, rate: c.close / base - 1 });
+    total.push({ date: c.date, rate: (c.close + cum) / base - 1 });
+  }
+  return { price, total, dividendSum: cum };
+}
+
+/** 월별 등락률 표(연 × 월) — 그 달 마지막 종가 ÷ 전달 마지막 종가 − 1. 일봉이 모자란 첫 달은 null. 최근 연도가 위. */
+export function monthlyReturnGrid(candles: Pick<DailyCandle, 'date' | 'close'>[]): Array<{ year: string; months: (number | null)[]; total: number | null }> {
+  const lastByMonth = new Map<string, number>();
+  for (const c of candles) lastByMonth.set(c.date.slice(0, 7), c.close);
+  const months = [...lastByMonth.keys()].sort();
+  const rate = new Map<string, number>();
+  months.forEach((m, i) => {
+    if (i > 0) rate.set(m, lastByMonth.get(m)! / lastByMonth.get(months[i - 1])! - 1);
+  });
+  const years = [...new Set(months.map((m) => m.slice(0, 4)))].sort().reverse();
+  return years.map((year) => {
+    const row = Array.from({ length: 12 }, (_, i) => rate.get(`${year}-${String(i + 1).padStart(2, '0')}`) ?? null);
+    const have = row.filter((v): v is number => v !== null);
+    return { year, months: row, total: have.length ? have.reduce((p, v) => p * (1 + v), 1) - 1 : null };
+  });
+}
+
+/** 볼린저 밴드 — 20일 평균 ± 표준편차 × 2(모집단 표준편차, 흔한 기준). 앞쪽은 null. */
+export function bollinger(candles: Pick<DailyCandle, 'close'>[], period = 20, k = 2): { upper: (number | null)[]; lower: (number | null)[] } {
+  const upper: (number | null)[] = [];
+  const lower: (number | null)[] = [];
+  candles.forEach((_, i) => {
+    if (i < period - 1) {
+      upper.push(null);
+      lower.push(null);
+      return;
+    }
+    const win = candles.slice(i - period + 1, i + 1).map((c) => c.close);
+    const mean = win.reduce((s, v) => s + v, 0) / period;
+    const sd = Math.sqrt(win.reduce((s, v) => s + (v - mean) ** 2, 0) / period);
+    upper.push(mean + k * sd);
+    lower.push(mean - k * sd);
+  });
+  return { upper, lower };
+}
+
+/** RSI(14, 와일더 평활) — 0~100. 앞쪽 `period`개는 null. 오르기만 했으면 100. */
+export function rsi(candles: Pick<DailyCandle, 'close'>[], period = 14): (number | null)[] {
+  const out: (number | null)[] = candles.map(() => null);
+  if (candles.length <= period) return out;
+  let gain = 0;
+  let loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = candles[i].close - candles[i - 1].close;
+    if (d > 0) gain += d;
+    else loss -= d;
+  }
+  gain /= period;
+  loss /= period;
+  const val = () => (loss === 0 ? 100 : 100 - 100 / (1 + gain / loss));
+  out[period] = val();
+  for (let i = period + 1; i < candles.length; i++) {
+    const d = candles[i].close - candles[i - 1].close;
+    gain = (gain * (period - 1) + Math.max(0, d)) / period;
+    loss = (loss * (period - 1) + Math.max(0, -d)) / period;
+    out[i] = val();
+  }
+  return out;
+}
+
+/** 변동성 — 최근 `period`거래일 일간 수익률의 표준편차를 연율화(× √252). 0.3 = 연 30%. 앞쪽은 null. */
+export function rollingVolatility(candles: Pick<DailyCandle, 'close'>[], period = 20): (number | null)[] {
+  const r = candles.map((c, i) => (i === 0 ? null : c.close / candles[i - 1].close - 1));
+  return candles.map((_, i) => {
+    if (i < period) return null;
+    const win = r.slice(i - period + 1, i + 1) as number[];
+    const mean = win.reduce((s, v) => s + v, 0) / period;
+    const sd = Math.sqrt(win.reduce((s, v) => s + (v - mean) ** 2, 0) / (period - 1));
+    return sd * Math.sqrt(252);
+  });
+}

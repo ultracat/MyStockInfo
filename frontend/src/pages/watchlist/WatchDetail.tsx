@@ -10,9 +10,17 @@ import PriceChart, { type PricePoint } from '../../components/PriceChart';
 import KisStockInsights from '../../components/KisStockInsights';
 import { WatchTargetEditor } from '../../components/WatchTargetEditor';
 import DailyPriceChart, { MA_LINES } from './DailyPriceChart';
+import IndicatorChart from './IndicatorChart';
+import DividendBars from './DividendBars';
 import CompareChart, { COMPARE_COLORS, type CompareSeries } from './CompareChart';
 import {
   DAILY_RANGES,
+  bollinger,
+  drawdownSeries,
+  monthlyReturnGrid,
+  rollingVolatility,
+  rsi,
+  totalReturnSeries,
   benchmarkFor,
   dividendYield,
   movingAverage,
@@ -33,6 +41,39 @@ const price = (v: number, currency: string | null) => (currency === 'USD' ? usdF
 const usdCap = (v: number) => (v >= 1e12 ? `$${(v / 1e12).toFixed(2)}T` : `$${(v / 1e9).toFixed(1)}B`);
 const pct = (v: number) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(2)}%`;
 const rateClass = (v: number | null | undefined) => (v == null ? undefined : v >= 0 ? 'text-good' : 'text-critical');
+
+const BANDS_HELP =
+  '볼린저 밴드 — 20일 이동평균 위아래로 최근 20일 가격 변동 폭(표준편차)의 2배만큼 띠를 그린 것입니다. 가격은 대개 이 띠 안에서 움직여서, ' +
+  '띠 위쪽에 닿으면 평소보다 많이 오른 상태, 아래쪽에 닿으면 많이 내린 상태로 봅니다. 띠가 좁아지면 움직임이 잦아든 것이고, 넓어지면 크게 흔들리는 중입니다.';
+const AVG_HELP =
+  '내 평균 매수가 — 매매내역에 있는 이 종목 매수의 평균 단가(수량 가중)입니다. 지금 가격이 이 선보다 위면 평균적으로 이익, 아래면 손해 구간입니다. ' +
+  '판 기록은 빼지 않은 단순 평균이라 보유 종목 화면의 평균가와 다를 수 있습니다.';
+const INDICATOR_HELP = {
+  drawdown:
+    '고점 대비 하락 — 보기 기간 안에서 그때까지의 최고 종가보다 몇 % 아래에 있는지입니다. 0%면 신고점, -20%면 최고점보다 20% 내려온 상태입니다. ' +
+    '얼마나 깊이 빠졌다가 얼마나 빨리 회복하는 종목인지 볼 수 있습니다.',
+  rsi:
+    'RSI(상대강도지수, 14일) — 최근 14거래일 동안 오른 폭과 내린 폭을 비교해 0~100으로 나타낸 값입니다. 오른 날의 힘이 셀수록 100에 가깝습니다. ' +
+    '보통 70 위면 짧은 기간에 많이 올라 "과열", 30 아래면 많이 내려 "침체"로 봅니다. 추세가 강하면 오래 머물 수 있어 참고용입니다.',
+  vol:
+    '변동성 — 최근 20거래일 하루 등락률이 얼마나 들쭉날쭉한지(표준편차)를 1년 기준으로 바꾼 값입니다. 30%면 1년에 대략 ±30% 안팎으로 움직일 만큼 흔들린다는 뜻입니다. ' +
+    '높을수록 위험(그리고 기회)이 큽니다.',
+} as const;
+
+/** 이동평균선 이름에 마우스를 올리면 보이는 설명. */
+function maHelp(period: number): string {
+  const span = period === 20 ? '약 한 달' : period === 60 ? '약 석 달' : '약 반년';
+  return (
+    `${period}일 이동평균선 — 최근 ${period}거래일(${span}) 종가의 평균을 날마다 이은 선입니다. ` +
+    '하루하루의 오르내림을 걸러 흐름(추세)을 보여 줍니다. 가격이 선 위에 있으면 최근 평균보다 비싸게, 아래면 싸게 거래되는 중입니다. ' +
+    (period === 20
+      ? '짧은 흐름이라 가격 변화에 빨리 따라갑니다. 20일선이 60일선을 아래에서 위로 뚫으면 "골든크로스", 위에서 아래로 내려가면 "데드크로스"라고 부릅니다.'
+      : period === 60
+        ? '중간 흐름이라 천천히 움직입니다.'
+        : '긴 흐름이라 가장 느리게 움직입니다.') +
+    ' 지난 가격의 평균이라 항상 한발 늦게 따라옵니다(실제 거래 가격 기준).'
+  );
+}
 
 /** 일봉을 받는 기간 — 1년 보기 + 120일 이동평균 + 1년 수익률이 다 되게(약 2년, 토스 3페이지 안). */
 const CANDLE_DAYS = 800;
@@ -115,6 +156,25 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
     () => MA_LINES.filter((m) => maOn[m.period]).map((m) => ({ ...m, values: movingAverage(candles, m.period).slice(startIdx) })),
     [candles, maOn, startIdx]
   );
+  // 봉/선, 볼린저 밴드, 내 평균 매수가, 보조 지표(낙폭·RSI·변동성) — 지표는 자르기 전 전체 일봉으로 계산해 첫날부터 값이 있게
+  const [priceMode, setPriceMode] = useState<'line' | 'candle'>('line');
+  const [showBands, setShowBands] = useState(false);
+  const [showAvgBuy, setShowAvgBuy] = useState(true);
+  const [indicator, setIndicator] = useState<'drawdown' | 'rsi' | 'vol'>('drawdown');
+  const bands = useMemo(() => {
+    if (!showBands) return null;
+    const b = bollinger(candles);
+    return { upper: b.upper.slice(startIdx), lower: b.lower.slice(startIdx) };
+  }, [candles, showBands, startIdx]);
+  const indicatorValues = useMemo(() => {
+    if (indicator === 'drawdown') return drawdownSeries(shown).points.map((p) => p.value);
+    if (indicator === 'rsi') return rsi(candles).slice(startIdx);
+    return rollingVolatility(candles).slice(startIdx);
+    // shown은 candles·startIdx에서 나온다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indicator, candles, startIdx]);
+  const maxDd = useMemo(() => drawdownSeries(shown).maxDrawdown, [shown]);
+  const grid = useMemo(() => monthlyReturnGrid(candles), [candles]);
 
   const returns = useMemo(() => periodReturns(candles, last, today), [candles, last, today]);
   const r52 = useMemo(() => range52w(candles, last, today), [candles, last, today]);
@@ -157,6 +217,10 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
     });
     return out.filter((s) => s.points.length > 1);
   }, [symbol, entry.name, candles, compareFrom, extraCandles, bench, compareWith, entries]);
+  const totalRet = useMemo(
+    () => totalReturnSeries(candles, divRes.state === 'ok' ? divRes.value.history : [], compareFrom),
+    [candles, divRes, compareFrom]
+  );
   const compareCandidates = entries.filter((e) => e.symbol !== symbol && e.currency === currency);
 
   // ---- 만약 샀다면
@@ -288,15 +352,35 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
         {chartMode === 'daily' ? (
           <>
             <Seg label="일봉 기간" value={range} onChange={setRange} options={DAILY_RANGES} />
+            <Seg label="차트 모양" value={priceMode} onChange={setPriceMode} options={[{ key: 'line', label: '선' }, { key: 'candle', label: '봉' }]} />
             {MA_LINES.map((m) => (
               <label key={m.period} style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                 <input type="checkbox" checked={!!maOn[m.period]} onChange={(e) => setMaOn((s) => ({ ...s, [m.period]: e.target.checked }))} />
                 <svg width={14} height={6} aria-hidden>
                   <line x1={0} x2={14} y1={3} y2={3} stroke={m.color} strokeWidth={2} />
                 </svg>
-                {m.period}일
+                <span className="name-tip name-tip-below help-tip" data-full={maHelp(m.period)} tabIndex={0} aria-label={maHelp(m.period)}>
+                  {m.period}일
+                </span>
               </label>
             ))}
+            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <input type="checkbox" checked={showBands} onChange={(e) => setShowBands(e.target.checked)} />
+              <span className="name-tip name-tip-below help-tip" data-full={BANDS_HELP} tabIndex={0} aria-label={BANDS_HELP}>
+                볼린저 밴드
+              </span>
+            </label>
+            {mine.avgBuyPrice !== null && (
+              <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                <input type="checkbox" checked={showAvgBuy} onChange={(e) => setShowAvgBuy(e.target.checked)} />
+                <svg width={14} height={6} aria-hidden>
+                  <line x1={0} x2={14} y1={3} y2={3} stroke="var(--series-5)" strokeWidth={2} />
+                </svg>
+                <span className="name-tip name-tip-below help-tip" data-full={AVG_HELP} tabIndex={0} aria-label={AVG_HELP}>
+                  내 평균 매수가
+                </span>
+              </label>
+            )}
           </>
         ) : (
           <select value={monthlyPeriod} aria-label="월별 종가 기간" onChange={(e) => setMonthlyPeriod(e.target.value)} disabled={!monthly?.length}>
@@ -323,10 +407,48 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
               currency={currency ?? 'KRW'}
               targets={{ above: target?.above ?? null, below: target?.below ?? null }}
               marks={mine.marks}
+              mode={priceMode}
+              bands={bands}
+              avgBuy={showAvgBuy ? mine.avgBuyPrice : null}
             />
             <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
               <span style={{ color: 'var(--series-1)' }}>▲</span> 내 매수 · <span style={{ color: 'var(--series-2)' }}>▼</span> 내 매도 · 점선은 목표가 · 아래 막대는 거래량
+              {priceMode === 'candle' && ' · 봉: 초록 = 시가보다 오름, 빨강 = 내림(가는 선은 고가·저가)'}
             </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', margin: '12px 0 4px' }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>보조 지표</span>
+              <Seg
+                label="보조 지표"
+                value={indicator}
+                onChange={setIndicator}
+                options={[
+                  { key: 'drawdown', label: '고점 대비 하락' },
+                  { key: 'rsi', label: 'RSI' },
+                  { key: 'vol', label: '변동성' },
+                ]}
+              />
+              <span className="name-tip name-tip-below help-tip" data-full={INDICATOR_HELP[indicator]} tabIndex={0} aria-label={INDICATOR_HELP[indicator]} style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                이게 뭔가요?
+              </span>
+              {indicator === 'drawdown' && <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>이 기간 최대 {(maxDd * 100).toFixed(1)}%</span>}
+            </div>
+            {indicator === 'drawdown' ? (
+              <IndicatorChart dates={shown.map((c) => c.date)} values={indicatorValues} area color="var(--critical)" refLines={[{ value: 0, label: '0%' }]} fmt={(v) => `${(v * 100).toFixed(1)}%`} label="고점 대비" />
+            ) : indicator === 'rsi' ? (
+              <IndicatorChart
+                dates={shown.map((c) => c.date)}
+                values={indicatorValues}
+                fixed={[0, 100]}
+                refLines={[
+                  { value: 70, label: '70 과열' },
+                  { value: 30, label: '30 침체' },
+                ]}
+                fmt={(v) => v.toFixed(0)}
+                label="RSI(14)"
+              />
+            ) : (
+              <IndicatorChart dates={shown.map((c) => c.date)} values={indicatorValues} fmt={(v) => `${(v * 100).toFixed(0)}%`} label="변동성(20일, 연환산)" />
+            )}
           </>
         )
       ) : monthly === null ? (
@@ -370,6 +492,66 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
         </>
       )}
 
+      {/* 배당 포함 수익 */}
+      {!candleError && divRes.state === 'ok' && totalRet.price.length > 1 && (
+        <>
+          <h4 style={{ margin: '20px 0 8px' }}>배당 포함 수익</h4>
+          <Hint>
+            비교 기간({DAILY_RANGES.find((r) => r.key === compareRange)!.label}) 첫날에 한 주를 샀다면 — 가격만의 수익과, 그동안 받은 배당(주당 세전 {price(totalRet.dividendSum, currency)}, 재투자 없이 현금)을
+            더한 수익입니다. 수정주가 대신 실제 거래 가격에 배당 기록을 더해 계산합니다. 배당은 기준일 다음 거래일부터 받은 것으로 칩니다.
+          </Hint>
+          <CompareChart
+            series={[
+              { key: 'total', label: '배당 포함', color: COMPARE_COLORS[0], points: totalRet.total },
+              { key: 'price', label: '가격만', color: COMPARE_COLORS[1], points: totalRet.price, dashed: true },
+            ]}
+          />
+        </>
+      )}
+
+      {/* 월별 등락률 */}
+      {!candleError && grid.length > 0 && (
+        <>
+          <h4 style={{ margin: '20px 0 8px' }}>월별 등락률</h4>
+          <div className="table-scroll">
+            <table style={{ fontSize: 12, textAlign: 'center' }}>
+              <thead>
+                <tr>
+                  <th />
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <th key={i} style={{ textAlign: 'center' }}>
+                      {i + 1}월
+                    </th>
+                  ))}
+                  <th style={{ textAlign: 'center' }}>합계</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grid.map((row) => (
+                  <tr key={row.year}>
+                    <th style={{ textAlign: 'left' }}>{row.year}</th>
+                    {[...row.months, row.total].map((v, i) => (
+                      <td
+                        key={i}
+                        style={{
+                          background: v == null ? undefined : `color-mix(in srgb, var(${v >= 0 ? '--good' : '--critical'}) ${Math.round(Math.min(1, Math.abs(v) / 0.15) * 35)}%, transparent)`,
+                          fontWeight: i === 12 ? 600 : undefined,
+                        }}
+                      >
+                        {v == null ? '' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}`}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            % · 그 달 마지막 종가 ÷ 전달 마지막 종가(배당 제외, 실제 거래 가격) · 색이 진할수록 크게 움직인 달 · 합계는 그해 받은 달들을 이어 곱한 값
+          </p>
+        </>
+      )}
+
       {/* 배당 */}
       <h4 style={{ margin: '20px 0 8px' }}>배당</h4>
       {divRes.state === 'loading' ? (
@@ -379,6 +561,8 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
       ) : divRes.value.history.length === 0 && divRes.value.upcoming.length === 0 ? (
         <p style={{ color: 'var(--text-muted)' }}>최근 1년여 동안 배당 기록이 없습니다.</p>
       ) : (
+        <>
+        <DividendBars history={divRes.value.history} upcoming={divRes.value.upcoming} fmt={(v) => price(v, currency)} />
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 260px' }}>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>지난 배당 (기준일 · 주당 세전)</div>
@@ -417,6 +601,7 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
             )}
           </div>
         </div>
+        </>
       )}
 
       {/* 내 매매 */}

@@ -1026,3 +1026,12 @@ a.stock-link:focus-visible {
   color: var(--text-primary);
   font-weight: 600;
 }
+
+/* 긴 설명 툴팁(관심종목 차트의 이동평균선 이름 등, 2026-11-19) — .name-tip과 같은 즉시 툴팁이되 여러 줄로 감싼다.
+   브라우저 title 툴팁은 Electron에서 늦게·안 보이게 떠서(물음표 커서만 보였다) CSS로 바로 띄운다. */
+.help-tip::after {
+  white-space: normal;
+  width: 320px;
+  line-height: 1.5;
+  text-align: left;
+}

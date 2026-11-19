@@ -28,6 +28,7 @@ MyStock은 여러 증권사 계좌의 보유 종목, 손익, 배당금, 매매�
   - [증권사 API 키](#증권사-api-키)
   - [Google API 키(OAuth 클라이언트) 설정하기](#google-api-키oauth-클라이언트-설정하기) — Google Sheets 연동용
   - [한국수출입은행 환율 인증키](#한국수출입은행-환율-인증키) — 달러 배당 환율용
+- [부록. 서명하지 않은 앱 처음 실행하기](#부록-서명하지-않은-앱-처음-실행하기) — macOS·Windows·Linux에서 막힐 때
 
 ---
 
@@ -43,7 +44,7 @@ GitHub 릴리스에서 OS에 맞는 파일을 받아 설치합니다.
 | Linux | `MyStock-<버전>.AppImage` | 64비트(x86_64) 배포판 |
 
 > ⚠ **MyStock 설치본은 OS별 코드 서명 인증서로 서명되어 있지 않습니다.** 그래서 처음 실행할 때 macOS·Windows가
-> 앱을 막는 것은 정상 동작입니다. 아래 [서명하지 않은 앱 처음 실행하기](#서명하지-않은-앱-처음-실행하기)를 따라 한 번만 허용해 주세요.
+> 앱을 막는 것은 정상 동작입니다. 아래 [처음 실행할 때 OS 경고 허용하기](#처음-실행할-때-os-경고-허용하기)를 따라 한 번만 허용해 주세요.
 > 단, **이 저장소의 GitHub 릴리스에서 직접 받은 파일일 때만** 허용하세요. 다른 곳에서 받은 같은 이름의 파일은 실행하지 마세요.
 
 ### 받은 파일 확인하기 (선택)
@@ -60,74 +61,16 @@ GitHub 릴리스에 올라간 그 파일이 맞습니다(받는 도중 바뀌거
 
 나온 값을 `SHA256SUMS.txt`의 같은 파일 줄과 비교합니다(대소문자는 상관없습니다). 다르면 설치하지 말고 다시 받으세요.
 
-### 서명하지 않은 앱 처음 실행하기
+### 처음 실행할 때 OS 경고 허용하기
 
-배포하는 앱은 보통 Apple Developer ID 인증서로 서명하고 Apple 공증(notarization)을 받거나, Windows 코드 서명
-인증서로 서명합니다. MyStock은 개인 프로젝트라 이 인증서들이 없습니다. macOS용은 인증서 없는 로컬 서명(ad-hoc)만 되어 있어
-"손상된 앱"으로 막히지는 않지만, "확인되지 않은 개발자"의 앱으로 처음 한 번은 막힙니다.
-아래 안내는 2026년 11월 기준입니다. OS가 업데이트되면 버튼 이름이나 위치가 바뀔 수 있으니, 다르면 각 절의 공식 안내를 확인하세요.
+서명이 없어서 처음 한 번은 OS가 앱을 막습니다. 아래처럼 허용하면 되고, 막히는 경우별 자세한 방법은
+[부록. 서명하지 않은 앱 처음 실행하기](#부록-서명하지-않은-앱-처음-실행하기)에 있습니다.
 
-#### macOS
-
-1. `.dmg`를 열고 **MyStock**을 **응용 프로그램(Applications)** 폴더로 끌어다 놓습니다.
-2. 응용 프로그램 폴더에서 MyStock을 엽니다. "'MyStock'을(를) 열지 않음" 창이 뜨면 **완료**를 누릅니다.
-   **휴지통으로 이동**은 누르지 마세요.
-3. **시스템 설정 → 개인정보 보호 및 보안**으로 가서 아래쪽 **보안** 항목을 봅니다.
-   "Mac을 보호하기 위해 'MyStock'을(를) 차단했습니다."라는 문구 옆의 **그래도 열기**를 누릅니다.
-   - 이 버튼은 앱을 열려고 시도한 뒤 **약 1시간 동안만** 보입니다. 안 보이면 2단계부터 다시 하세요.
-4. 다시 뜨는 창에서 **열기**를 누르고, Mac 암호나 Touch ID로 확인합니다. 이후에는 평소처럼 열립니다.
-
-- **macOS 15(Sequoia) 이후**: 예전 방식인 Finder에서 Control-클릭(우클릭) → **열기**로는 더 이상 열리지 않습니다. 위 순서를 따르세요.
-  macOS 14 이하는 Control-클릭 → 열기도 됩니다.
-- **"'MyStock'은(는) 손상되었기 때문에 열 수 없습니다"** 가 뜨면, 내려받을 때 붙은 격리 표시를 지웁니다.
-  터미널에서 다음을 실행한 뒤 다시 엽니다.
-
-  ```bash
-  xattr -dr com.apple.quarantine "/Applications/MyStock.app"
-  ```
-- **키체인 접근 허용 창**: API 키를 저장하거나 앱이 저장된 키를 처음 읽을 때, macOS가 키체인 접근을 허용할지 묻습니다.
-  **항상 허용**을 누르세요. 앱을 새 버전으로 바꾸면 이 창이 다시 뜰 수 있습니다. 서명이 버전마다 달라지기 때문입니다.
-  여기서 **거부**하면 저장된 키를 읽지 못해 증권사 조회가 실패합니다. 그때는 **설정 → API 키 등록**에서 키를 다시 저장하세요.
-- 공식 안내: [알 수 없는 개발자의 Mac 앱 열기](https://support.apple.com/ko-kr/guide/mac-help/mh40616/mac),
-  [Mac에서 앱 안전하게 열기](https://support.apple.com/ko-kr/102445)
-
-#### Windows
-
-1. `MyStock.Setup.<버전>.exe`를 실행합니다. **"Windows의 PC 보호"**(Microsoft Defender SmartScreen) 창이 뜨면
-   **추가 정보**를 누르고, 파일 이름이 `MyStock.Setup.<버전>.exe`인지 확인한 뒤 **실행**을 누릅니다.
-2. 설치는 확인 화면 없이 바로 진행되고, 지금 로그인한 사용자 계정에만 설치됩니다(관리자 권한 불필요). 끝나면 MyStock이 실행됩니다.
-
-- **추가 정보** 버튼이 없거나 실행이 계속 막히면, 받은 파일을 우클릭 → **속성** → 아래쪽 **차단 해제**에 체크한 뒤
-  **확인**을 누르고 다시 실행합니다. PowerShell에서는 다음과 같습니다.
-
-  ```powershell
-  Unblock-File -Path "$env:USERPROFILE\Downloads\MyStock.Setup.<버전>.exe"
-  ```
-- **스마트 앱 컨트롤, 회사 보안 정책(AppLocker, Microsoft Defender for Endpoint), 백신 프로그램**이 막는 경우에는
-  허용 버튼이 없습니다. 회사 PC라면 IT 담당자에게 예외를 요청하세요. 스마트 앱 컨트롤은 직접 끄지 않는 것을 권합니다.
-  최근 Windows는 다시 켤 수 있지만, 예전 버전은 끄면 PC를 초기화해야 다시 켤 수 있습니다.
-- 공식 안내: [Windows Defender SmartScreen 개요](https://learn.microsoft.com/ko-kr/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/),
-  [스마트 앱 컨트롤 자주 묻는 질문](https://support.microsoft.com/ko-kr/topic/285ea03d-fa88-4d56-882e-6698afdb7003)
-
-#### Linux
-
-1. 실행 권한을 주고 실행합니다.
-
-   ```bash
-   chmod +x MyStock-<버전>.AppImage
-   ./MyStock-<버전>.AppImage
-   ```
-
-- **FUSE 관련 오류**("dlopen(): error loading libfuse.so.2" 등)가 나면 FUSE 2 라이브러리를 설치합니다.
-  Ubuntu 22.04는 `sudo apt install libfuse2`, Ubuntu 24.04 이후는 `sudo apt install libfuse2t64`입니다.
-  설치할 수 없으면 `./MyStock-<버전>.AppImage --appimage-extract-and-run`으로 실행합니다.
-- **Ubuntu 24.04 이후 샌드박스 오류**("The SUID sandbox helper binary was found, but is not configured correctly" 등)는
-  배포판의 AppArmor 정책 때문입니다. 관리자에게 AppArmor 프로필 추가를 요청하세요.
-  `--no-sandbox` 옵션으로도 실행은 되지만 보안 격리가 꺼지므로 잠깐 시험할 때만 쓰세요.
-- **키링이 없는 환경**(GNOME 키링·KWallet 미설치)에서는 API 키를 안전하게 암호화할 수 없어서,
-  MyStock은 키를 평문으로 저장하지 않고 **저장 자체를 거부**합니다. 이때 **설정 → API 키 등록** 위에 빨간 안내가 뜹니다.
-  `gnome-keyring`이나 KWallet을 설치·실행한 뒤 앱을 다시 켜고 키를 저장하세요. CSV로만 관리하는 증권사는 키가 필요 없어 그대로 쓸 수 있습니다.
-- 공식 안내: [AppImage — FUSE 관련 오류](https://docs.appimage.org/user-guide/troubleshooting/fuse.html)
+| OS | 허용하는 방법 |
+|---|---|
+| macOS | 응용 프로그램 폴더로 옮긴 뒤 열기 → "열지 않음" 창에서 **완료** → **시스템 설정 → 개인정보 보호 및 보안 → 그래도 열기**. 키체인 접근 창은 **항상 허용** |
+| Windows | "Windows의 PC 보호" 창에서 **추가 정보 → 실행** |
+| Linux | `chmod +x MyStock-<버전>.AppImage` 후 실행 |
 
 ### 새 버전으로 업데이트
 앱에는 자동 설치가 없습니다. 새 버전이 나오면 사이드바 아래에 **새 버전 알림**이 뜨고([앱 정보](#앱-정보)에서 끌 수 있음),
@@ -139,7 +82,7 @@ GitHub 릴리스에 올라간 그 파일이 맞습니다(받는 도중 바뀌거
    - **macOS**: `.dmg`를 열어 `MyStock`을 응용 프로그램 폴더로 끌어 놓고, 기존 앱을 **대치**합니다.
    - **Windows**: 새 `MyStock.Setup.<버전>.exe`를 실행합니다. 기존 설치 위에 덮어씁니다.
    - **Linux**: 새 `.AppImage`에 실행 권한(`chmod +x`)을 주고 실행합니다. 예전 파일은 지워도 됩니다.
-3. 처음 실행할 때 OS 경고가 다시 뜰 수 있습니다. [서명하지 않은 앱 처음 실행하기](#서명하지-않은-앱-처음-실행하기)와 같은 방법으로 허용하세요.
+3. 처음 실행할 때 OS 경고가 다시 뜰 수 있습니다. [처음 실행할 때 OS 경고 허용하기](#처음-실행할-때-os-경고-허용하기)와 같은 방법으로 허용하세요.
    macOS는 키체인 접근을 다시 물을 수 있는데, 이때도 **항상 허용**을 누릅니다.
 
 보유 종목·매매내역·배당 기록, 저장한 API 키와 설정은 앱 밖의 사용자 데이터 폴더에 있어서 **업데이트해도 그대로 남습니다.**
@@ -631,7 +574,7 @@ MyStock의 데이터는 이 컴퓨터에만 저장됩니다. PC를 바꾸거나 
 #### PC를 옮길 때
 
 1. 쓰던 PC에서 **백업 비밀번호를 정해** 백업을 받습니다.
-2. 새 PC에 MyStock을 설치하고 한 번 실행합니다([서명하지 않은 앱 처음 실행하기](#서명하지-않은-앱-처음-실행하기) 참고).
+2. 새 PC에 MyStock을 설치하고 한 번 실행합니다([처음 실행할 때 OS 경고 허용하기](#처음-실행할-때-os-경고-허용하기) 참고).
 3. **설정 → 데이터 백업/복원**에서 백업 파일과 비밀번호로 복원합니다. 앱이 다시 시작되면 API 키와 데이터가 그대로 보입니다.
 4. macOS는 다시 시작한 뒤 키체인 접근을 물을 수 있습니다. **항상 허용**을 누르세요.
 
@@ -847,3 +790,74 @@ Google Cloud Console 화면 이름은 자주 바뀌니, 아래 이름이 안 보
 
 > ⚠ API 키(Client Secret, 앱시크릿, appSecret)는 비밀번호와 같습니다. 다른 사람에게 보내거나 화면을 공유하지 마세요.
 > MyStock은 키를 이 PC의 OS 키체인 기반 암호화로만 저장하고 외부로 보내지 않습니다.
+
+---
+
+## 부록. 서명하지 않은 앱 처음 실행하기
+
+배포하는 앱은 보통 Apple Developer ID 인증서로 서명하고 Apple 공증(notarization)을 받거나, Windows 코드 서명
+인증서로 서명합니다. MyStock은 개인 프로젝트라 이 인증서들이 없습니다. macOS용은 인증서 없는 로컬 서명(ad-hoc)만 되어 있어
+"손상된 앱"으로 막히지는 않지만, "확인되지 않은 개발자"의 앱으로 처음 한 번은 막힙니다.
+아래 안내는 2026년 11월 기준입니다. OS가 업데이트되면 버튼 이름이나 위치가 바뀔 수 있으니, 다르면 각 절의 공식 안내를 확인하세요.
+
+### macOS
+
+1. `.dmg`를 열고 **MyStock**을 **응용 프로그램(Applications)** 폴더로 끌어다 놓습니다.
+2. 응용 프로그램 폴더에서 MyStock을 엽니다. "'MyStock'을(를) 열지 않음" 창이 뜨면 **완료**를 누릅니다.
+   **휴지통으로 이동**은 누르지 마세요.
+3. **시스템 설정 → 개인정보 보호 및 보안**으로 가서 아래쪽 **보안** 항목을 봅니다.
+   "Mac을 보호하기 위해 'MyStock'을(를) 차단했습니다."라는 문구 옆의 **그래도 열기**를 누릅니다.
+   - 이 버튼은 앱을 열려고 시도한 뒤 **약 1시간 동안만** 보입니다. 안 보이면 2단계부터 다시 하세요.
+4. 다시 뜨는 창에서 **열기**를 누르고, Mac 암호나 Touch ID로 확인합니다. 이후에는 평소처럼 열립니다.
+
+- **macOS 15(Sequoia) 이후**: 예전 방식인 Finder에서 Control-클릭(우클릭) → **열기**로는 더 이상 열리지 않습니다. 위 순서를 따르세요.
+  macOS 14 이하는 Control-클릭 → 열기도 됩니다.
+- **"'MyStock'은(는) 손상되었기 때문에 열 수 없습니다"** 가 뜨면, 내려받을 때 붙은 격리 표시를 지웁니다.
+  터미널에서 다음을 실행한 뒤 다시 엽니다.
+
+  ```bash
+  xattr -dr com.apple.quarantine "/Applications/MyStock.app"
+  ```
+- **키체인 접근 허용 창**: API 키를 저장하거나 앱이 저장된 키를 처음 읽을 때, macOS가 키체인 접근을 허용할지 묻습니다.
+  **항상 허용**을 누르세요. 앱을 새 버전으로 바꾸면 이 창이 다시 뜰 수 있습니다. 서명이 버전마다 달라지기 때문입니다.
+  여기서 **거부**하면 저장된 키를 읽지 못해 증권사 조회가 실패합니다. 그때는 **설정 → API 키 등록**에서 키를 다시 저장하세요.
+- 공식 안내: [알 수 없는 개발자의 Mac 앱 열기](https://support.apple.com/ko-kr/guide/mac-help/mh40616/mac),
+  [Mac에서 앱 안전하게 열기](https://support.apple.com/ko-kr/102445)
+
+### Windows
+
+1. `MyStock.Setup.<버전>.exe`를 실행합니다. **"Windows의 PC 보호"**(Microsoft Defender SmartScreen) 창이 뜨면
+   **추가 정보**를 누르고, 파일 이름이 `MyStock.Setup.<버전>.exe`인지 확인한 뒤 **실행**을 누릅니다.
+2. 설치는 확인 화면 없이 바로 진행되고, 지금 로그인한 사용자 계정에만 설치됩니다(관리자 권한 불필요). 끝나면 MyStock이 실행됩니다.
+
+- **추가 정보** 버튼이 없거나 실행이 계속 막히면, 받은 파일을 우클릭 → **속성** → 아래쪽 **차단 해제**에 체크한 뒤
+  **확인**을 누르고 다시 실행합니다. PowerShell에서는 다음과 같습니다.
+
+  ```powershell
+  Unblock-File -Path "$env:USERPROFILE\Downloads\MyStock.Setup.<버전>.exe"
+  ```
+- **스마트 앱 컨트롤, 회사 보안 정책(AppLocker, Microsoft Defender for Endpoint), 백신 프로그램**이 막는 경우에는
+  허용 버튼이 없습니다. 회사 PC라면 IT 담당자에게 예외를 요청하세요. 스마트 앱 컨트롤은 직접 끄지 않는 것을 권합니다.
+  최근 Windows는 다시 켤 수 있지만, 예전 버전은 끄면 PC를 초기화해야 다시 켤 수 있습니다.
+- 공식 안내: [Windows Defender SmartScreen 개요](https://learn.microsoft.com/ko-kr/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/),
+  [스마트 앱 컨트롤 자주 묻는 질문](https://support.microsoft.com/ko-kr/topic/285ea03d-fa88-4d56-882e-6698afdb7003)
+
+### Linux
+
+1. 실행 권한을 주고 실행합니다.
+
+   ```bash
+   chmod +x MyStock-<버전>.AppImage
+   ./MyStock-<버전>.AppImage
+   ```
+
+- **FUSE 관련 오류**("dlopen(): error loading libfuse.so.2" 등)가 나면 FUSE 2 라이브러리를 설치합니다.
+  Ubuntu 22.04는 `sudo apt install libfuse2`, Ubuntu 24.04 이후는 `sudo apt install libfuse2t64`입니다.
+  설치할 수 없으면 `./MyStock-<버전>.AppImage --appimage-extract-and-run`으로 실행합니다.
+- **Ubuntu 24.04 이후 샌드박스 오류**("The SUID sandbox helper binary was found, but is not configured correctly" 등)는
+  배포판의 AppArmor 정책 때문입니다. 관리자에게 AppArmor 프로필 추가를 요청하세요.
+  `--no-sandbox` 옵션으로도 실행은 되지만 보안 격리가 꺼지므로 잠깐 시험할 때만 쓰세요.
+- **키링이 없는 환경**(GNOME 키링·KWallet 미설치)에서는 API 키를 안전하게 암호화할 수 없어서,
+  MyStock은 키를 평문으로 저장하지 않고 **저장 자체를 거부**합니다. 이때 **설정 → API 키 등록** 위에 빨간 안내가 뜹니다.
+  `gnome-keyring`이나 KWallet을 설치·실행한 뒤 앱을 다시 켜고 키를 저장하세요. CSV로만 관리하는 증권사는 키가 필요 없어 그대로 쓸 수 있습니다.
+- 공식 안내: [AppImage — FUSE 관련 오류](https://docs.appimage.org/user-guide/troubleshooting/fuse.html)

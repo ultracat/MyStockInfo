@@ -775,6 +775,9 @@ ISA/연금저축/IRP 계좌를 표시해두는 작은 `JsonStore`(`account-tax-t
   순서로 현재가가 있는 것, 10분 캐시). PER·PBR·EPS·BPS·시가총액(`tomv` — **달러 단위**, 실측)·상장주수·52주 고저(날짜 포함)·업종(`e_icod`)·ETP 분류(`etyp_nm`).
   **ETF는 PER·PBR·EPS·BPS가 0으로 와서**(실측 SPY) null로 바꾼다. KIS 52주 고저는 일봉 실제 가격으로 계산한 화면 요약과 다를 수 있다(실측: 분배금 많은 미국
   ETF에서 KIS 최고가가 일봉 최고가보다 20%가량 낮았다 — 분배금 조정 추정).
+- `GET /api/watchlist?prices=0` — 저장된 목록만(시세·등락률 조회 없이). 종목코드 형식 `SYMBOL_PATTERN`은 **1~20자**(종목별 메모리 캐시 키가 끝없이 늘지 않게,
+  `routes/stockInfo.ts`도 같게), 메모·삭제 경로도 검사한다. 502·마지막 오류 처리기(`server.ts`)의 응답 문장은 `redactText`로 긴 숫자열(계좌번호 등)을 가린다
+  (2026-11-19 보안 리뷰 — 날짜 같은 7자리 이상 숫자도 가려진다).
 - `PUT /api/watchlist/:symbol/memo` `{memo}`(2000자, 빈 값이면 지움 — 화면의 `BACKGROUND_WRITES`). 저장소 항목에 `memo`·`addedPrice`(추가할 때 현재가,
   "넣은 뒤 수익률" 기준 — 그 전에 넣은 종목은 없어서 화면이 추가한 날 이후 첫 종가로 대신)가 생겼다. 같은 종목을 다시 추가해도 추가일·그때 가격·메모는 그대로.
 

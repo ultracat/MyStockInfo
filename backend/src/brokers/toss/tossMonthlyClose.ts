@@ -145,7 +145,7 @@ export async function fetchTossMonthlyClosePrices(
 
   try {
     if (cached && cached.coveredFrom <= requiredFrom) {
-      const { candles } = await fetchTossDailyCandlesPage(symbol, undefined, opts);
+      const { candles } = await fetchTossDailyCandlesPage(symbol, undefined, opts, false);
       mergePage(candles);
       const merged = new Map<string, { closePrice: number; currency: string }>(Object.entries(cached.months));
       for (const [month, c] of byMonth) merged.set(month, c);
@@ -163,7 +163,7 @@ export async function fetchTossMonthlyClosePrices(
     // 캐시 경로(최신 1페이지)만 탄다.
     const maxPages = Math.min(80, Math.max(5, Math.ceil(months / 9) + 2));
     for (let page = 0; page < maxPages; page++) {
-      const { candles, nextBefore } = await fetchTossDailyCandlesPage(symbol, before, opts);
+      const { candles, nextBefore } = await fetchTossDailyCandlesPage(symbol, before, opts, false);
       if (candles.length === 0) {
         reachedStart = page > 0;
         break;
@@ -224,7 +224,7 @@ export function previousCloseFrom(
 export async function fetchTossPreviousClose(symbol: string, priceTimeIso: string | null): Promise<number | null> {
   if (!isTossConfigured()) return null;
   try {
-    const { candles } = await fetchTossDailyCandlesPage(symbol, undefined);
+    const { candles } = await fetchTossDailyCandlesPage(symbol, undefined, {}, false);
     return previousCloseFrom(candles, priceTimeIso ? new Date(priceTimeIso) : new Date());
   } catch {
     return null;

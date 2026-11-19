@@ -41,7 +41,8 @@ export default function CompareChart({ series }: { series: CompareSeries[] }) {
   const idx = new Map(dates.map((d, i) => [d, i]));
   const x = (i: number) => Y_AXIS + (i / (dates.length - 1)) * plotW;
   const y = (v: number) => TOP + H - ((v - min) / (max - min)) * H;
-  const ticks = [min + pad, 0, max - pad].filter((v, i, a) => a.indexOf(v) === i);
+  // 0%와 너무 가까운 끝 눈금은 뺀다(글자가 겹친다)
+  const ticks = [min + pad, 0, max - pad].filter((v, i, a) => a.indexOf(v) === i && (v === 0 || Math.abs(v) > (max - min) * 0.12));
   const labelEvery = Math.max(1, Math.ceil(dates.length / 6));
 
   return (

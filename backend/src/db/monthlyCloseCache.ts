@@ -1,8 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { getDataDir } from '../paths';
 import { JsonStore } from '../jsonStore';
 
 /**
- * 종목별 "이미 확정된 달"의 월별 종가 영구 캐시(`monthly-close-cache.json`) —
+ * 종목별 "이미 확정된 달"의 월별 종가 영구 캐시(`monthly-close-cache-v2.json` — 실제 가격) —
  * `tossClient.ts`의 `fetchTossMonthlyClosePrices` 전용. 지나간 달의 마지막
  * 거래일 종가는 다시 바뀌지 않으므로(fx/eximbankCache.ts의 과거 날짜 환율과 같은
  * 논리) 한 번 받아두면 앱을 재시작해도 과거 페이지를 다시 페이지네이션하지 않고
@@ -21,8 +23,21 @@ export interface CachedSymbolCloses {
 
 type MonthlyCloseCacheFile = Record<string, CachedSymbolCloses>;
 
+// v2(2026-11-19): **실제 가격(`adjusted=false`)** 종가. 예전 `monthly-close-cache.json`은 토스 기본값(수정주가)이라 분배금 많은 ETF의 지난 달
+// 종가가 낮게 들어 있다 — 새 파일로 다시 받고 옛 파일은 처음 열 때 지운다(그대로 두면 백업에 쓸모없는 사본이 따라간다).
+const LEGACY_FILE = 'monthly-close-cache.json';
+let legacyRemoved = false;
+
 function store() {
-  return new JsonStore<MonthlyCloseCacheFile>('monthly-close-cache.json', getDataDir(), {});
+  if (!legacyRemoved) {
+    legacyRemoved = true;
+    try {
+      fs.rmSync(path.join(getDataDir(), LEGACY_FILE), { force: true });
+    } catch {
+      // 못 지워도 안 읽으니 상관없다
+    }
+  }
+  return new JsonStore<MonthlyCloseCacheFile>('monthly-close-cache-v2.json', getDataDir(), {});
 }
 
 // 아직 디스크에 안 쓴 새 캐시 항목 — fx/eximbankCache.ts와 같은 이유로 둔다.

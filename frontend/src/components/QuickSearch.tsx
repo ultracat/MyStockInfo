@@ -38,7 +38,7 @@ export function QuickSearch({ open, onClose, onNavigate }: { open: boolean; onCl
     setCursor(0);
     setTimeout(() => inputRef.current?.focus(), 0);
     let alive = true;
-    Promise.all([api.listHoldingsStore(), api.listWatchlist().catch(() => []), api.listDividends(), api.listTradesStore()])
+    Promise.all([api.listHoldingsStore(), api.listWatchlistEntries().catch(() => []), api.listDividends(), api.listTradesStore()])
       .then(([h, w, d, t]) => alive && setIndex(buildStockIndex(h, w, d, t)))
       .catch(() => alive && setIndex([]));
     return () => {
@@ -136,6 +136,20 @@ function StockSummary({ entry, onNavigate, onBack }: { entry: StockIndexEntry; o
   const today = localToday();
   const yearAgo = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`;
   const div12 = entry.dividends.filter((d) => d.paidDate > yearAgo && d.paidDate <= today);
+  // 관심종목의 현재가는 그 종목을 골랐을 때만 받는다 — 창을 열 때 목록 전체 시세를 받으면 열 때마다 증권사 호출이 나갔다(2026-11-19 성능 리뷰).
+  const watchSymbol = entry.watch ? entry.symbol : null;
+  const [watchPrice, setWatchPrice] = useState<number | null>(null);
+  useEffect(() => {
+    if (!watchSymbol) return;
+    let alive = true;
+    api
+      .listWatchlist()
+      .then((list) => alive && setWatchPrice(list.find((w) => w.symbol === watchSymbol)?.lastPrice ?? null))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [watchSymbol]);
   const divByCur = div12.reduce<Record<string, number>>((m, d) => ({ ...m, [d.currency]: (m[d.currency] ?? 0) + d.amount }), {});
   const recentTrades = [...entry.trades].sort((a, b) => (a.executedAt < b.executedAt ? 1 : -1)).slice(0, 5);
   const qty = entry.held.reduce((s, h) => s + h.quantity, 0);
@@ -179,7 +193,7 @@ function StockSummary({ entry, onNavigate, onBack }: { entry: StockIndexEntry; o
       )}
       <p style={{ fontSize: 13 }}>
         최근 12개월 배당(세후): {Object.keys(divByCur).length ? Object.entries(divByCur).map(([c, v]) => money(v, c)).join(' · ') : '없음'} ({div12.length}건)
-        {entry.watch?.lastPrice ? ` · 현재가 ${money(entry.watch.lastPrice, entry.watch.currency)}` : ''}
+        {entry.watch && watchPrice ? ` · 현재가 ${money(watchPrice, entry.watch.currency)}` : ''}
       </p>
       {recentTrades.length > 0 && (
         <p style={{ fontSize: 13, margin: '4px 0' }}>

@@ -391,6 +391,8 @@ export const api = {
     request<void>(`/stock-links/${encodeURIComponent(symbol)}`, { method: 'DELETE' }),
 
   listWatchlist: () => request<WatchlistEntry[]>('/watchlist'),
+  /** 저장된 관심종목만(시세·등락률 없이 — 코드·이름만 쓰는 곳). */
+  listWatchlistEntries: () => request<WatchlistEntry[]>('/watchlist?prices=0'),
   addWatchlist: (symbol: string) =>
     request<WatchlistEntry>('/watchlist', { method: 'POST', body: JSON.stringify({ symbol }) }),
   removeWatchlist: (symbol: string) =>

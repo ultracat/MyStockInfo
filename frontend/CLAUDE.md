@@ -968,6 +968,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   쓰지 않는다는 사용자 결정의 대안), **월별 등락률 표**(`monthlyReturnGrid`, 일봉 약 2년에서 — 월별 종가 API를 따로 부르지 않음, 칸 색은 `color-mix`로 손익 색 0~35%),
   **주당 배당 막대** `DividendBars`(지난 = 진한, 다음 = 같은 색 흐리게 — DividendsChart 규칙). 이름 설명은 `.name-tip.help-tip`(즉시 CSS 툴팁, 여러 줄) —
   ⚠ `title` 속성 툴팁은 Electron에서 물음표 커서만 보이고 설명이 안 떠서(사용자 지적) 쓰지 않는다.
+  **성능(2026-11-19 리뷰)**: `DailyPriceChart`는 축·선·봉·거래량을 `geo`·`staticLayer` 두 `useMemo`로 만들어 두고 마우스 이동 땐 세로선·점·툴팁만 다시 그린다
+  (예전엔 봉 경계를 넘을 때마다 요소 천여 개를 새로 만들었다 — 새 요소를 넣을 땐 `staticLayer`에, hover에 따라 바뀌는 것만 밖에). 비교 차트의 일봉 요청은
+  `requested` ref로 한 번만(응답 Map을 effect 의존성에 넣으면 진행 중인 요청이 다시 나갔다). 볼린저·변동성은 누적합 창(O(n)). 종목 검색 창·종목 링크는
+  `listWatchlistEntries()`(`?prices=0`, 시세 없이) — 검색 창은 관심종목을 골랐을 때만 현재가를 받는다.
 
 ## 개발
 

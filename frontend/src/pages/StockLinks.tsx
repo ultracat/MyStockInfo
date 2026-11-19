@@ -55,7 +55,7 @@ export default function StockLinks() {
           api.listTradesStore(),
           // 관심종목은 현재가를 매번 라이브 조회하는 엔드포인트라 실패해도 목록 전체를
           // 막지 않는다.
-          api.listWatchlist().catch(() => []),
+          api.listWatchlistEntries().catch(() => []),
           api.listStockLinks(),
         ]);
         const bySymbol = new Map<string, KnownStock>();

@@ -131,3 +131,20 @@ test('볼린저·RSI·변동성', () => {
   assert.equal(v[24], 0);
   assert.equal(v[19], null);
 });
+
+test('볼린저·변동성 누적합 창 = 직접 계산', () => {
+  const rows = Array.from({ length: 60 }, (_, i) => ({ close: 100 + Math.sin(i / 3) * 10 + i * 0.5 }));
+  const b = bollinger(rows);
+  const v = rollingVolatility(rows);
+  for (const i of [19, 30, 59]) {
+    const win = rows.slice(i - 19, i + 1).map((r) => r.close);
+    const mean = win.reduce((s, x) => s + x, 0) / 20;
+    const sd = Math.sqrt(win.reduce((s, x) => s + (x - mean) ** 2, 0) / 20);
+    assert.ok(Math.abs(b.upper[i]! - (mean + 2 * sd)) < 1e-6);
+    if (i < 20) continue;
+    const r = rows.slice(i - 19, i + 1).map((row, k) => row.close / rows[i - 19 + k - 1].close - 1);
+    const m = r.reduce((s, x) => s + x, 0) / 20;
+    const sdr = Math.sqrt(r.reduce((s, x) => s + (x - m) ** 2, 0) / 19) * Math.sqrt(252);
+    assert.ok(Math.abs(v[i]! - sdr) < 1e-9);
+  }
+});

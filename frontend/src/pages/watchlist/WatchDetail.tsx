@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api';
 import { krw, krw2dp, qtyFmt, usdFmt, localToday } from '../../format';
 import { effectiveRate, toKrw } from '../../fx';
@@ -151,7 +151,7 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
   const rangeDays = DAILY_RANGES.find((r) => r.key === range)!.days;
   const from = shiftDate(today, -rangeDays);
   const startIdx = Math.max(0, candles.findIndex((c) => c.date >= from));
-  const shown = candles.slice(startIdx);
+  const shown = useMemo(() => candles.slice(startIdx), [candles, startIdx]);
   const maLines = useMemo(
     () => MA_LINES.filter((m) => maOn[m.period]).map((m) => ({ ...m, values: movingAverage(candles, m.period).slice(startIdx) })),
     [candles, maOn, startIdx]
@@ -170,9 +170,7 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
     if (indicator === 'drawdown') return drawdownSeries(shown).points.map((p) => p.value);
     if (indicator === 'rsi') return rsi(candles).slice(startIdx);
     return rollingVolatility(candles).slice(startIdx);
-    // shown은 candles·startIdx에서 나온다
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indicator, candles, startIdx]);
+  }, [indicator, candles, startIdx, shown]);
   const maxDd = useMemo(() => drawdownSeries(shown).maxDrawdown, [shown]);
   const grid = useMemo(() => monthlyReturnGrid(candles), [candles]);
 
@@ -196,15 +194,18 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
   const [compareRange, setCompareRange] = useState<DailyRangeKey>('1y');
   const [compareWith, setCompareWith] = useState<string[]>([]);
   const [extraCandles, setExtraCandles] = useState<Record<string, DailyCandle[] | 'error'>>({});
+  // 이미 요청한 종목 — 응답이 올 때마다 effect가 다시 돌아도 진행 중인 요청을 또 보내지 않게(2026-11-19 성능 리뷰)
+  const requested = useRef(new Set<string>());
   useEffect(() => {
-    const need = [bench.symbol, ...compareWith].filter((s) => s !== symbol && !(s in extraCandles));
-    if (!need.length) return;
-    for (const s of need)
+    for (const s of [bench.symbol, ...compareWith]) {
+      if (s === symbol || requested.current.has(s)) continue;
+      requested.current.add(s);
       api
         .getDailyCandles(s, 400)
         .then((r) => setExtraCandles((m) => ({ ...m, [s]: r.candles })))
         .catch(() => setExtraCandles((m) => ({ ...m, [s]: 'error' })));
-  }, [bench.symbol, compareWith, symbol, extraCandles]);
+    }
+  }, [bench.symbol, compareWith, symbol]);
   const compareFrom = shiftDate(today, -DAILY_RANGES.find((r) => r.key === compareRange)!.days);
   const compareSeries = useMemo<CompareSeries[]>(() => {
     const out: CompareSeries[] = [{ key: symbol, label: entry.name, color: COMPARE_COLORS[0], points: normalizedSeries(candles, compareFrom) }];

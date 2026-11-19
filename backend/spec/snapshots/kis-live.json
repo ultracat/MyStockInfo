@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-11-17",
+  "recordedAt": "2026-11-19",
   "trs": {
     "CTCA0903R": {
       "output": {
@@ -344,7 +344,7 @@
           "data_tm": "number",
           "dorg": "text",
           "hts_pbnt_titl_cntt": "text",
-          "iscd1": "number",
+          "iscd1": "text",
           "iscd10": "empty",
           "iscd2": "empty",
           "iscd3": "empty",
@@ -498,6 +498,55 @@
           "stck_sspr": "number",
           "trc_errt": "number",
           "vi_cls_code": "text"
+        },
+        "kind": "object",
+        "seenRows": true
+      }
+    },
+    "HHDFS76200200": {
+      "output": {
+        "fields": {
+          "base": "number",
+          "bpsx": "number",
+          "curr": "text",
+          "dnlp": "number",
+          "e_hogau": "number",
+          "e_icod": "text",
+          "e_ordyn": "text",
+          "e_parp": "number",
+          "epsx": "number",
+          "etyp_nm": "empty",
+          "h52d": "number",
+          "h52p": "number",
+          "high": "number",
+          "l52d": "number",
+          "l52p": "number",
+          "last": "number",
+          "low": "number",
+          "mcap": "number",
+          "open": "number",
+          "p_rate": "empty",
+          "p_xdif": "number",
+          "p_xprc": "number",
+          "p_xrat": "number",
+          "p_xsng": "number",
+          "pamt": "number",
+          "pbrx": "number",
+          "perx": "number",
+          "pvol": "number",
+          "rsym": "text",
+          "shar": "number",
+          "t_rate": "number",
+          "t_xdif": "number",
+          "t_xprc": "number",
+          "t_xrat": "number",
+          "t_xsgn": "number",
+          "tamt": "number",
+          "tomv": "number",
+          "tvol": "number",
+          "uplp": "number",
+          "vnit": "number",
+          "zdiv": "number"
         },
         "kind": "object",
         "seenRows": true

@@ -354,6 +354,49 @@ export interface WatchlistEntry {
   lastPrice: number | null;
   /** 직전 거래일 종가 대비 등락률(0.012 = +1.2%) — 토스 미연동·조회 실패면 null(백엔드 routes/watchlist.ts). */
   changeRate?: number | null;
+  /** 추가할 때의 현재가(2026-11-19부터 저장 — 그 전에 넣은 종목은 없음). */
+  addedPrice?: number | null;
+  memo?: string | null;
+}
+
+/** 일봉 한 줄(관심종목 상세, `GET /watchlist/candles/:symbol`). */
+export interface DailyCandle {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  currency: string;
+}
+
+export interface SymbolDividendEvent {
+  recordDate: string;
+  payDate: string | null;
+  perShare: number;
+}
+
+/** 종목 하나의 배당 이력·앞으로 12개월(`GET /watchlist/:symbol/dividends`). 금액은 주당 세전. */
+export interface SymbolDividends {
+  currency: 'KRW' | 'USD';
+  history: SymbolDividendEvent[];
+  upcoming: Array<SymbolDividendEvent & { status: 'estimated' | 'projected' }>;
+}
+
+/** 미국 종목 정보(한국투자증권 해외주식 현재가상세). 값이 없으면 null. */
+export interface OverseasStockDetail {
+  per: number | null;
+  pbr: number | null;
+  eps: number | null;
+  bps: number | null;
+  marketCap: number | null;
+  shares: number | null;
+  high52: number | null;
+  high52Date: string | null;
+  low52: number | null;
+  low52Date: string | null;
+  sector: string | null;
+  etpType: string | null;
 }
 
 /** 하루 한 번(앱 진입 시) 기록되는 전체 브로커/계좌 합산 KRW 환산 총액 — 이

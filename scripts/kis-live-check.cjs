@@ -145,6 +145,7 @@ runLiveCheck(`한국투자증권 Open API 실서버 점검 (조회 TR만, 개인
   const ahead = new Date(Date.now() + 120 * 864e5).toISOString().slice(0, 10);
   await check.step('해외 권리종합 HHDFS78330900', () => kis.fetchKisOverseasIceRights('AAPL', daysAgo(120), ahead));
   await check.step('해외 기간별권리 CTRGT011R', () => kis.fetchKisOverseasDividendRights('AAPL', daysAgo(400), todayKst()));
+  await check.step('해외 현재가상세 HHDFS76200200', () => kis.fetchKisOverseasPriceDetail('AAPL'));
 
   // 9) 모양 저장(값 없음) — scripts/lib/live-check.cjs shapeRecorder. KIS는 타입도 이 기록으로 만든다(npm run kis:types).
   recorder.save();

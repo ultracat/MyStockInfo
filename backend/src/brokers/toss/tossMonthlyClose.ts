@@ -13,6 +13,10 @@ interface TossCandle {
   timestamp: string;
   closePrice: number;
   currency: string;
+  openPrice: number;
+  highPrice: number;
+  lowPrice: number;
+  volume: number;
 }
 
 /**
@@ -36,12 +40,16 @@ const CANDLE_CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4시간
 async function fetchTossDailyCandlesPage(
   symbol: string,
   before: string | undefined,
-  opts: FetchOpts = {}
+  opts: FetchOpts = {},
+  /** 수정주가 여부 — 안 주면 토스 기본(**수정주가**, 2026-11-19 실측: 분배금 많은 국내 ETF는 과거 종가가 분배금만큼 낮게 온다. SPY·삼성전자는 같음).
+   *  `false`는 실제 체결 가격(관심종목 상세 — 내 매매가·52주 범위와 맞춰야 해서). */
+  adjusted?: boolean
 ): Promise<{ candles: TossCandle[]; nextBefore: string | null }> {
   const params = new URLSearchParams({ symbol, interval: '1d', count: '200' });
   if (before) params.set('before', before);
+  if (adjusted !== undefined) params.set('adjusted', String(adjusted));
   return withCache(
-    `toss:candles:${symbol}:${before ?? 'latest'}`,
+    `toss:candles:${symbol}:${before ?? 'latest'}${adjusted === undefined ? '' : `:adj=${adjusted}`}`,
     CANDLE_CACHE_TTL_MS,
     async () => {
       const raw = await tossFetch<any>(`/api/v1/candles?${params}`, 'MARKET_DATA_CHART');
@@ -57,6 +65,10 @@ async function fetchTossDailyCandlesPage(
           timestamp: c.timestamp,
           closePrice: toNum(c.closePrice),
           currency: c.currency,
+          openPrice: toNum(c.openPrice),
+          highPrice: toNum(c.highPrice),
+          lowPrice: toNum(c.lowPrice),
+          volume: toNum(c.volume),
         })),
         nextBefore: data.nextBefore ?? null,
       };
@@ -217,4 +229,50 @@ export async function fetchTossPreviousClose(symbol: string, priceTimeIso: strin
   } catch {
     return null;
   }
+}
+
+/** 일봉 한 줄(관심종목 상세 차트, 2026-11-19). `date`는 그 거래일(YYYY-MM-DD). */
+export interface DailyCandle {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  currency: string;
+}
+
+/**
+ * 일봉 `timestamp` → 거래일. 봉 시각은 국내 00:00 KST(= 전날 15:00 UTC), 미국 00:00 ET(= 04~05:00 UTC)라(2026-11-18 실측)
+ * 12시간을 더한 UTC 날짜가 두 시장 모두 그 거래일이다(순수 함수, 테스트 있음).
+ */
+export function candleTradingDate(timestamp: string): string | null {
+  const t = Date.parse(timestamp);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t + 12 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * 최근 `days`일(달력 기준)의 일봉 — 한 페이지 200봉(약 9개월)씩 과거로 넘긴다(최대 3페이지 ≈ 2년 반). 페이지마다 4시간 캐시.
+ * **실제 가격(`adjusted=false`)** — 토스 기본은 수정주가라 분배금 많은 ETF의 과거 가격이 내 매수가·52주 고저와 어긋났다(2026-11-19).
+ * 날짜 오름차순, 종가 0인 봉은 뺀다. 토스 미연동·실패면 예외(호출부가 409/502로 알린다).
+ */
+export async function fetchTossDailyCandles(symbol: string, days: number): Promise<DailyCandle[]> {
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const byDate = new Map<string, DailyCandle>();
+  let before: string | undefined;
+  for (let page = 0; page < 3; page++) {
+    const { candles, nextBefore } = await fetchTossDailyCandlesPage(symbol, before, {}, false);
+    let oldest: string | null = null;
+    for (const c of candles) {
+      const date = candleTradingDate(c.timestamp);
+      if (!date || !(c.closePrice > 0)) continue;
+      if (!oldest || date < oldest) oldest = date;
+      if (date < since) continue;
+      byDate.set(date, { date, open: c.openPrice, high: c.highPrice, low: c.lowPrice, close: c.closePrice, volume: c.volume, currency: c.currency });
+    }
+    if (!nextBefore || !oldest || oldest < since) break;
+    before = nextBefore;
+  }
+  return [...byDate.values()].sort((a, b) => (a.date < b.date ? -1 : 1));
 }

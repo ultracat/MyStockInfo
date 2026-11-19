@@ -278,3 +278,19 @@ export async function fetchKisOverseasDividendRights(symbol: string, from: strin
   remember(null);
   return [];
 }
+
+/** 해외주식 현재가상세(`HHDFS76200200`, `overseas-price/v1/quotations/price-detail`, 공식 예제 `examples_llm/overseas_stock/price_detail`)
+ *  한 행 — 관심종목 상세의 미국 종목 정보(PER·PBR·EPS·BPS·시가총액·52주 고저, 2026-11-19). 계좌 무관 시세 TR. */
+export type KisOverseasPriceDetail = KisRow<'HHDFS76200200', 'output'>;
+
+/** 거래소 코드는 종목코드만으로 모르니 나스닥 → 뉴욕 → 아멕스 순서로 시도한다(현재가가 비어 있으면 다음 거래소). 10분 캐시. 못 찾으면 null. */
+export async function fetchKisOverseasPriceDetail(symbol: string): Promise<KisOverseasPriceDetail | null> {
+  return withCache(`kis:overseasDetail:${symbol}`, 10 * 60 * 1000, async () => {
+    for (const EXCD of ['NAS', 'NYS', 'AMS']) {
+      const res = await kisGet('/uapi/overseas-price/v1/quotations/price-detail', 'HHDFS76200200', { AUTH: '', EXCD, SYMB: symbol });
+      const row = asRows(res.output)[0];
+      if (row && Number(row.last) > 0) return row;
+    }
+    return null;
+  });
+}

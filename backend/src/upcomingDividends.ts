@@ -16,6 +16,7 @@ import { todayKst } from './marketInsights';
 import type { BrokerId } from './brokers/types';
 import type { KisOverseasIceRight, KisOverseasPeriodRight } from './brokers/kis/kisClient';
 import { krMarketClosedDays } from './krMarketCalendar';
+import { withCache } from './brokers/responseCache';
 
 // 다가오는 배당 — 한국투자증권 API로 만든다(토스는 지급 예정 정보를 주지 않는다). 네 종류:
 // 확정은 앞으로 120일, 예상·추정은 **이번 달 지급분까지만** 보여 준다(사용자 결정 — 줄이 너무 많아서).
@@ -536,4 +537,48 @@ export async function getUpcomingDividends(opts: { refresh?: boolean; horizonMon
     builtAt: snap?.builtAt ?? null,
     refreshing: rebuildJob !== null,
   };
+}
+
+// ---- 관심종목 상세: 종목 하나의 배당 이력·다음 배당(2026-11-19) -----------------------------------------------------------
+// 보유와 무관하게 종목코드 하나로 같은 원본(국내 예탁원 일정 / 미국 ICE + 기간별권리)을 받아, 지난 1년여의 배당과
+// 앞으로 12개월의 예상·추정(`planSymbolDividends`, 같은 규칙)을 준다. 6시간 캐시(일정은 하루에 몇 번 안 바뀐다).
+
+export interface SymbolDividendEvent {
+  recordDate: string;
+  payDate: string | null;
+  /** 주당 세전 금액(그 종목 통화). 예탁원에 금액 미정이면 0. */
+  perShare: number;
+}
+
+export interface SymbolDividends {
+  currency: 'KRW' | 'USD';
+  /** 오늘 이전 기준일의 배당(오래된 순). */
+  history: SymbolDividendEvent[];
+  /** 앞으로 12개월 — estimated = 발표된 금액, projected = 지난 일정으로 추정. */
+  upcoming: PlannedDividend[];
+}
+
+export async function getSymbolDividends(symbol: string, currency: 'KRW' | 'USD'): Promise<SymbolDividends> {
+  return withCache(`symbolDividends:${currency}:${symbol}`, 6 * 60 * 60 * 1000, async () => {
+    const today = todayKst();
+    const until = addDays(today, 366);
+    const usd = currency === 'USD';
+    const rowsBySymbol = usd ? await fetchUsRows([symbol], today) : await fetchKrRows([symbol], today);
+    const rows = rowsBySymbol[symbol];
+    if (!rows) throw new Error('배당 일정을 받지 못했습니다.');
+    const cal: BusinessDays = usd
+      ? usMarketClosedDays(addDays(today, -420), addDays(until, 30))
+      : krMarketClosedDays(addDays(today, -420), addDays(until, 30));
+    const seen = new Map<string, SymbolDividendEvent>();
+    for (const r of rows) {
+      const recordDate = parseKsdDate(r.record_date);
+      if (!recordDate || recordDate >= today) continue;
+      const per = Number(r.per_sto_divi_amt);
+      const ev = { recordDate, payDate: parseKsdDate(r.divi_pay_dt), perShare: Number.isFinite(per) && per > 0 ? per : 0 };
+      const prev = seen.get(recordDate);
+      if (!prev || (!prev.perShare && ev.perShare)) seen.set(recordDate, ev);
+    }
+    const history = [...seen.values()].sort((a, b) => (a.recordDate < b.recordDate ? -1 : 1));
+    return { currency, history, upcoming: planSymbolDividends(rows, today, until, cal) };
+  });
 }

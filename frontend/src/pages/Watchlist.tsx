@@ -3,12 +3,10 @@ import { api } from '../api';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { WatchlistEntry } from '../types';
 import { krw2dp, usdFmt } from '../format';
-import PriceChart, { type PricePoint } from '../components/PriceChart';
-import KisStockInsights from '../components/KisStockInsights';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
 import WarningBadges from '../components/WarningBadges';
 import { useStockWarnings } from '../marketInsights';
-import { WatchTargetEditor } from '../components/WatchTargetEditor';
+import WatchDetail from './watchlist/WatchDetail';
 import { usePlanner } from '../usePlanner';
 
 function formatPrice(entry: WatchlistEntry): string {
@@ -36,13 +34,8 @@ export default function Watchlist() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // 선택된 종목의 상세(월별 종가 차트) — 표에서 행을 누르면 그 종목으로 바뀐다.
+  // 선택된 종목의 상세 — 표에서 행을 누르면 그 종목으로 바뀐다(내용은 watchlist/WatchDetail.tsx).
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
-  const [pricePoints, setPricePoints] = useState<PricePoint[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
-  // 차트 기간 — 'RECENT'(최근 12개월, 기본) / 'ALL'(받은 전체) / 'YYYY'(그 해만).
-  // 데이터는 종목을 고를 때 전체 기간을 한 번 받아두고 여기선 화면에서만 거른다.
-  const [period, setPeriod] = useState<string>('RECENT');
 
   async function refresh() {
     setLoading(true);
@@ -62,38 +55,6 @@ export default function Watchlist() {
 
   // 메뉴를 옮겼다 돌아오면 목록(현재가)을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패하면 이전 값 유지.
   useResumeRefresh(() => api.listWatchlist().then(setEntries).catch(() => {}), RESUME_REFRESH_MS);
-
-  // 선택된 종목이 바뀔 때마다 월별 종가를 **상장 초기까지 전체** 받아온다
-  // (months='all') — 기간 선택(최근 12개월/연도/전체)은 이 데이터를 화면에서
-  // 거르기만 해서, 기간을 바꿀 때마다 다시 요청하지 않는다. 처음 보는 종목은
-  // 일봉 수십 페이지를 받아 몇 초 걸릴 수 있지만, 백엔드가 확정된 달을 디스크에
-  // 캐시해 두 번째부터는 최신 1페이지만 받는다(backend/CLAUDE.md의 "월별 종가
-  // 조회" 절 참고). 새로고침을 연타해도 오래된 응답이 최신 선택을 덮어쓰지
-  // 않도록 선택이 바뀌면 그 즉시 이전 데이터를 비운다.
-  useEffect(() => {
-    if (!selectedSymbol) {
-      setPricePoints([]);
-      return;
-    }
-    let cancelled = false;
-    setDetailLoading(true);
-    setPricePoints([]);
-    setPeriod('RECENT');
-    api
-      .getMonthlyClosePrices([selectedSymbol], 'all')
-      .then((result) => {
-        if (!cancelled) setPricePoints(result[selectedSymbol] ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setPricePoints([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedSymbol]);
 
   async function onAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -123,24 +84,6 @@ export default function Watchlist() {
   }
 
   const selectedEntry = entries.find((e) => e.symbol === selectedSymbol) ?? null;
-
-  const yearOptions = useMemo(
-    () => [...new Set(pricePoints.map((p) => p.month.slice(0, 4)))].sort().reverse(),
-    [pricePoints]
-  );
-  const shownPoints = useMemo(() => {
-    if (period === 'ALL') return pricePoints;
-    if (period === 'RECENT') return pricePoints.slice(-12);
-    return pricePoints.filter((p) => p.month.startsWith(period));
-  }, [pricePoints, period]);
-  const periodTitle =
-    period === 'RECENT'
-      ? '최근 12개월'
-      : period === 'ALL'
-        ? pricePoints.length > 0
-          ? `전체 기간 · ${pricePoints[0].month} ~ ${pricePoints[pricePoints.length - 1].month}`
-          : '전체 기간'
-        : `${period}년`;
 
   return (
     <div>
@@ -196,6 +139,11 @@ export default function Watchlist() {
                       <StockNameLink name={e.name} url={stockLinkFor(e.symbol, e.currency)} />{' '}
                       <span style={{ color: 'var(--text-muted)' }}>({e.symbol})</span>
                       <WarningBadges warnings={warningsBySymbol[e.symbol]} />
+                      {e.memo && (
+                        <span className="cell-sub" title={e.memo} style={{ display: 'block' }}>
+                          {e.memo.split('\n')[0].slice(0, 40)}
+                        </span>
+                      )}
                     </td>
                     <td>{e.market ?? '-'}</td>
                     <td>{formatPrice(e)}</td>
@@ -238,55 +186,12 @@ export default function Watchlist() {
       </div>
 
       {selectedEntry && (
-        <div className="card">
-          <h3 style={{ marginTop: 0 }}>
-            {selectedEntry.name} <span style={{ color: 'var(--text-muted)' }}>({selectedEntry.symbol})</span>
-          </h3>
-          <div className="summary-row">
-            <div className="stat-tile">
-              <div className="label">현재가</div>
-              <div className="value">{formatPrice(selectedEntry)}</div>
-            </div>
-            <div className="stat-tile">
-              <div className="label">시장</div>
-              <div className="value">{selectedEntry.market ?? '-'}</div>
-            </div>
-            <div className="stat-tile">
-              <div className="label">통화</div>
-              <div className="value">{selectedEntry.currency ?? '-'}</div>
-            </div>
-          </div>
-          <div
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
-          >
-            <h4 style={{ margin: '8px 0' }}>월별 종가({periodTitle})</h4>
-            <div className="form-row" style={{ margin: 0 }}>
-              <select
-                value={period}
-                aria-label="차트 기간"
-                disabled={detailLoading || pricePoints.length === 0}
-                onChange={(e) => setPeriod(e.target.value)}
-              >
-                <option value="RECENT">최근 12개월</option>
-                <option value="ALL">전체 기간</option>
-                {yearOptions.map((y) => (
-                  <option key={y} value={y}>
-                    {y}년
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <WatchTargetEditor symbol={selectedEntry.symbol} currency={selectedEntry.currency} />
-          {detailLoading ? (
-            <p style={{ color: 'var(--text-muted)' }}>
-              불러오는 중... (처음 보는 종목은 상장 이후 전체 시세를 받느라 몇 초 걸릴 수 있습니다)
-            </p>
-          ) : (
-            <PriceChart points={shownPoints} />
-          )}
-          {selectedEntry.currency === 'KRW' && <KisStockInsights symbol={selectedEntry.symbol} />}
-        </div>
+        <WatchDetail
+          key={selectedEntry.symbol}
+          entry={selectedEntry}
+          entries={entries}
+          onEntryChange={(next) => setEntries((list) => list.map((x) => (x.symbol === next.symbol ? { ...x, memo: next.memo } : x)))}
+        />
       )}
     </div>
   );

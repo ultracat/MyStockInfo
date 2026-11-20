@@ -66,7 +66,9 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   UTF-8로 안 열림). 배당금/보유종목/매매내역 세 화면이 공용으로 쓴다.
 - `src/components/CollapseToggle.tsx` — 카드 헤더 우측 접기/펼치기 토글(공용, 처음엔
   Dividends.tsx 안에 있다가 Trades.tsx도 필요해져서 공용 컴포넌트로 뺌).
-- `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트.
+- `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트. **표 열 정렬**(2026-11-20): `HoldingsTable`(보유 종목)과
+  종목별 수익 표가 같은 `components/SortButton.tsx`를 쓴다(누르면 큰 순서 ▼, 다시 누르면 ▲, 비활성 열은 흐린 ↕). 보유 종목은 정렬 상태를 표 안에 두고
+  (기본 평가금액 큰 순서) `calc/portfolio.ts`의 `sortHoldingRows`로 원화·달러를 `fxRate`로 환산해 비교한다 — 환산 못 한 행은 방향과 상관없이 맨 뒤.
   `DividendsChart`의 `fxRate` prop은 고정 숫자(`number|null`)뿐 아니라
   `(month: string) => number|null` 형태의 함수도 받는다 — Dividends.tsx/
   Overview.tsx 둘 다 이제 함수를 넘겨서, 막대 하나(= 한 달)마다 그 달의

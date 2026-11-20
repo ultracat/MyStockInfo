@@ -1,4 +1,5 @@
 import type { BrokerId, StoredTrade } from '../types';
+import { sortByText, sortByValue } from './sort';
 
 // 실현손익 계산(순수 함수) — RealizedGains.tsx에서 옮겼다(2026-11-17, 테스트: frontend/test/realizedGains.test.ts).
 // 계산 방식·과세 범위에 대한 긴 설명은 RealizedGains.tsx 상단 주석을 본다.
@@ -110,4 +111,33 @@ export function computeRealizedSales(
 
   results.sort((a, b) => (a.date < b.date ? 1 : -1));
   return { sales: results, excludedSymbols: excluded.sort() };
+}
+
+export type RealizedSortKey = 'date' | 'name' | 'proceeds' | 'gain' | 'gainRate';
+
+/** 매도 내역 표 정렬(2026-11-20) — 금액은 이미 원화 환산값. 수익률은 취득금액이 0이면 맨 뒤(calc/sort.ts). */
+export function sortRealizedSales(rows: RealizedSale[], key: RealizedSortKey, asc: boolean): RealizedSale[] {
+  switch (key) {
+    case 'name':
+      return sortByText(rows, (s) => s.name || s.symbol, asc);
+    case 'proceeds':
+      return sortByValue(rows, (s) => s.proceedsKrw, asc);
+    case 'gain':
+      return sortByValue(rows, (s) => s.gainKrw, asc);
+    case 'gainRate':
+      return sortByValue(rows, (s) => (s.costKrw > 0 ? s.gainKrw / s.costKrw : null), asc);
+    case 'date':
+    default:
+      return sortByText(rows, (s) => s.date, asc);
+  }
+}
+
+/** 표 합계 줄 — 매도·취득·손익 합과 손익률(취득 0이면 null). */
+export function realizedTotals(rows: RealizedSale[]): { proceedsKrw: number; costKrw: number; gainKrw: number; rate: number | null } {
+  const t = rows.reduce((a, s) => ({ proceedsKrw: a.proceedsKrw + s.proceedsKrw, costKrw: a.costKrw + s.costKrw, gainKrw: a.gainKrw + s.gainKrw }), {
+    proceedsKrw: 0,
+    costKrw: 0,
+    gainKrw: 0,
+  });
+  return { ...t, rate: t.costKrw > 0 ? t.gainKrw / t.costKrw : null };
 }

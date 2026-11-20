@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import PurchaseMarketTile from '../components/PurchaseMarketTile';
-import { formatKrwValue } from '../format';
+import { formatKrwValue, formatRatePct, ratioOf } from '../format';
 import {
   dividendMonthlyRows as dividendMonthlyRowsOf,
   heldDividendTotal,
@@ -70,6 +70,11 @@ export default function Overview() {
   const { totalPurchaseKrw, totalMarketKrw } = data;
   const totalPl = totalMarketKrw - totalPurchaseKrw;
   const totalPlWithDividends = totalPl + heldDividends.totalKrw;
+  // 맨 위 카드의 % — 전부 **총 매입금액(지금 보유 종목의 투자금) 대비**(2026-11-20 사용자 요청). 종목별 수익 화면의 손익률·배당수익률과 같은 기준.
+  const plRate = ratioOf(totalPl, totalPurchaseKrw);
+  const plWithDividendsRate = ratioOf(totalPlWithDividends, totalPurchaseKrw);
+  const yearDividendRate = ratioOf(yearDividends.totalKrw, totalPurchaseKrw);
+  const tileNote = { fontSize: 12, color: 'var(--text-muted)', marginTop: 2 } as const;
 
   return (
     <div>
@@ -95,13 +100,17 @@ export default function Overview() {
       )}
 
       <div className="summary-row">
-        <PurchaseMarketTile purchase={{ krw: totalPurchaseKrw }} market={{ krw: totalMarketKrw }} />
+        <PurchaseMarketTile
+          purchase={{ krw: totalPurchaseKrw }}
+          market={{ krw: totalMarketKrw, note: plRate === null ? undefined : `매입 대비 ${formatRatePct(plRate)}` }}
+        />
         <div className="stat-tile">
           <div className="label">총 손익금액 (배당 제외)</div>
           <div className="value" style={{ color: totalPl >= 0 ? 'var(--good)' : 'var(--critical)' }}>
             {totalPl >= 0 ? '+' : ''}
             {formatKrwValue(totalPl)}
           </div>
+          <div style={tileNote}>수익률 {formatRatePct(plRate)}</div>
         </div>
         <div className="stat-tile">
           <div className="label">총 손익금액 (배당 포함)</div>
@@ -113,6 +122,10 @@ export default function Overview() {
             {totalPlWithDividends >= 0 ? '+' : ''}
             {formatKrwValue(totalPlWithDividends)}
           </div>
+          <div style={tileNote}>
+            수익률 {formatRatePct(plWithDividendsRate)}
+            {heldDividends.totalKrw > 0 && ` · 배당 ${formatRatePct(ratioOf(heldDividends.totalKrw, totalPurchaseKrw), false)}`}
+          </div>
           {heldDividends.unconverted && (
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>일부 배당은 환율이 없어 빠짐</div>
           )}
@@ -120,6 +133,7 @@ export default function Overview() {
         <div className="stat-tile">
           <div className="label">{year}년 총 배당금</div>
           <div className="value">{formatKrwValue(yearDividends.totalKrw)}</div>
+          <div style={tileNote}>투자금 대비 {formatRatePct(yearDividendRate, false)}</div>
         </div>
       </div>
 

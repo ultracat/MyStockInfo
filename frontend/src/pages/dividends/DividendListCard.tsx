@@ -1,9 +1,14 @@
 import { useMemo, useState } from 'react';
 import { api } from '../../api';
-import { accountLabelKey } from '../../accountLabels';
+import { findAccountLabel, resolveDividendAccountId } from '../../accountLabels';
+import AccountCell from '../../components/AccountCell';
+import SortButton, { ariaSort } from '../../components/SortButton';
+import Hint from '../../components/Hint';
+import { sortDividendRecords, type DividendSortKey } from '../../calc/dividends';
 import { BROKER_LABELS, BROKER_ORDER } from '../../brokers';
 import type { BrokerFilter, YearFilter } from '../../calc/dividends';
-import StockNameLink, { useStockLinkResolver } from '../../components/StockNameLink';
+import { useStockLinkResolver } from '../../components/StockNameLink';
+import StockCell from '../../components/StockCell';
 import { krw, usdFmt } from '../../format';
 import type { AccountLabel, BrokerId, DividendCurrency, DividendRecord } from '../../types';
 import { DividendTransferBar } from './DividendTransferBar';
@@ -24,6 +29,7 @@ export function DividendListCard({
   accountLabels,
   sync,
   refresh,
+  fxRateFor,
 }: {
   year: YearFilter;
   visibleRecords: DividendRecord[];
@@ -31,6 +37,8 @@ export function DividendListCard({
   accountLabels: AccountLabel[];
   sync: ReturnType<typeof useDividendSync>;
   refresh: () => Promise<void>;
+  /** 금액 정렬용 — 달러 배당을 지급월 평균 환율로 원화 환산해 비교한다(없으면 그 행은 맨 뒤). */
+  fxRateFor: (month: string) => number | null;
 }) {
   const { syncOwnedBrokers, dividendSyncing, dividendSyncNotice, runDividendSync, isRowSyncOwned } = sync;
   const [listBroker, setListBroker] = useState<BrokerFilter>('ALL');
@@ -49,18 +57,12 @@ export function DividendListCard({
   // 종목명 클릭 시 열 외부 링크 — "종목 링크" 화면에서 관리, 여기선 읽기만.
   const stockLinkFor = useStockLinkResolver();
 
-  // 계좌 별칭 — 관리는 Settings.tsx에서만 하고 여기선 읽기만 한다.
-  const accountLabelMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const l of accountLabels) {
-      const text = l.label || l.accountNumber;
-      if (text) m.set(accountLabelKey(l.broker, l.accountId), text);
-    }
-    return m;
-  }, [accountLabels]);
-  function displayAccountId(recordBroker: BrokerId, accountId: string | null): string {
-    if (!accountId) return '-';
-    return accountLabelMap.get(accountLabelKey(recordBroker, accountId)) ?? accountId;
+  // 계좌 별칭 — 관리는 Settings.tsx에서만 하고 여기선 읽기만 한다. 배당 기록의 계좌는 토스처럼 표시용 번호로 적혀 있을 수 있어
+  // 내부 accountId로 되돌려 별칭을 찾는다(없으면 적힌 값 그대로).
+  function accountCell(recordBroker: BrokerId, accountId: string | null) {
+    if (!accountId) return <span className="cell-account">{BROKER_LABELS[recordBroker]}</span>;
+    const id = resolveDividendAccountId(accountLabels, recordBroker, accountId) ?? accountId;
+    return <AccountCell accountId={id} entry={findAccountLabel(accountLabels, recordBroker, id)} sub={BROKER_LABELS[recordBroker]} />;
   }
 
   async function onDelete(id: string) {
@@ -176,13 +178,36 @@ export function DividendListCard({
   // 벗어나도(예: 마지막 페이지 항목을 지운 경우) 별도 effect로 되돌리지 않고
   // 매 렌더마다 pageCount 안으로 clamp해서 쓴다 — 그래서 슬라이스에도, "현재
   // 페이지" 표시에도 항상 이 clamp된 값 하나만 쓴다.
-  const pageCount = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(listFilteredRecords.length / pageSize));
+  // 표 정렬(2026-11-20) — 기본은 지급일 최근 순서. 금액(세후)은 달러를 지급월 평균 환율로 원화 환산해 비교한다.
+  const [sortKey, setSortKey] = useState<DividendSortKey>('date');
+  const [sortAsc, setSortAsc] = useState(false);
+  const sortedRecords = useMemo(
+    () => sortDividendRecords(listFilteredRecords, sortKey, sortAsc, fxRateFor),
+    [listFilteredRecords, sortKey, sortAsc, fxRateFor]
+  );
+  const sortButton = (key: DividendSortKey, label: string, opts?: { text?: boolean }) => (
+    <SortButton
+      sortKey={key}
+      label={label}
+      current={sortKey}
+      asc={sortAsc}
+      onChange={(k, asc) => {
+        setSortKey(k);
+        setSortAsc(asc);
+        setPage(1);
+      }}
+      {...opts}
+    />
+  );
+  const money = (v: number, currency: DividendCurrency) => (currency === 'USD' ? usdFmt.format(v) : `${krw.format(v)}원`);
+
+  const pageCount = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(sortedRecords.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pagedRecords = useMemo(() => {
-    if (pageSize === 'ALL') return listFilteredRecords;
+    if (pageSize === 'ALL') return sortedRecords;
     const start = (currentPage - 1) * pageSize;
-    return listFilteredRecords.slice(start, start + pageSize);
-  }, [listFilteredRecords, pageSize, currentPage]);
+    return sortedRecords.slice(start, start + pageSize);
+  }, [sortedRecords, pageSize, currentPage]);
 
   // 페이지 번호 버튼은 한 번에 10개(PAGE_GROUP_SIZE) 그룹 단위로만 보여준다 —
   // pageCount가 크면(예: "표시 개수"를 10개로 두고 기록이 몇 백 건이면) 버튼이
@@ -272,25 +297,27 @@ export function DividendListCard({
             </select>
           </div>
         </div>
+        <Hint>
+          배당금은 <b>세후 실수령액</b>이고 아래 작은 글씨가 원천징수 세금입니다(세전 = 배당금 + 세금). 증권사 API로 동기화되는 기록(토스·한국투자·NH·키움·LS·DB의
+          원화 배당 등)은 다음 동기화 때 API 내용으로 바뀌어 여기서 고치거나 지울 수 없습니다 — 수정·삭제 버튼은 직접 입력한 기록에만 있습니다.
+        </Hint>
         <div className="table-scroll">
+        {/* 2026-11-20 표 정리: 증권사는 계좌 칸 아래 줄, 세금은 배당금 아래 작은 글씨(8열 → 6열). 수정 행도 같은 칸에 입력칸을 쌓는다. */}
         <table>
           <thead>
             <tr>
-              <th>지급일</th>
-              <th>증권사</th>
+              <th aria-sort={ariaSort(sortKey, sortAsc, 'date')}>{sortButton('date', '지급일')}</th>
               <th>계좌</th>
-              <th>종목코드</th>
-              <th>종목명</th>
-              <th title="세후 실수령액">배당금</th>
-              <th title="원천징수 세금 — 세전 = 배당금 + 세금">세금</th>
-              <th>메모</th>
+              <th className="text" aria-sort={ariaSort(sortKey, sortAsc, 'name')}>{sortButton('name', '종목', { text: true })}</th>
+              <th aria-sort={ariaSort(sortKey, sortAsc, 'amount')}>{sortButton('amount', '배당금')}</th>
+              <th className="text">메모</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {listFilteredRecords.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {year === 'ALL' ? '배당 기록이 없습니다.' : `${year}년 배당 기록이 없습니다.`}
                   {listBroker !== 'ALL' ? ` (${BROKER_LABELS[listBroker]} 기준)` : ''}
                 </td>
@@ -307,74 +334,87 @@ export function DividendListCard({
                     />
                   </td>
                   <td>
-                    <select
-                      value={editDraft.broker}
-                      onChange={(e) => setEditDraft({ ...editDraft, broker: e.target.value as BrokerId })}
-                    >
-                      {BROKER_ORDER.map((id) => (
-                        <option key={id} value={id}>
-                          {BROKER_LABELS[id]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      value={editDraft.accountId}
-                      onChange={(e) => setEditDraft({ ...editDraft, accountId: e.target.value })}
-                      style={{ width: 100 }}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={editDraft.symbol}
-                      onChange={(e) => setEditDraft({ ...editDraft, symbol: e.target.value })}
-                      style={{ width: 80 }}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={editDraft.name}
-                      onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
-                    />
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <select
-                        value={editDraft.currency}
-                        onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value as DividendCurrency })}
-                      >
-                        <option value="KRW">원</option>
-                        <option value="USD">USD</option>
-                      </select>
+                    <div className="stack-inputs">
                       <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={editDraft.amount}
-                        onChange={(e) => setEditDraft({ ...editDraft, amount: e.target.value })}
-                        style={{ width: 90 }}
+                        value={editDraft.accountId}
+                        onChange={(e) => setEditDraft({ ...editDraft, accountId: e.target.value })}
+                        placeholder="계좌 (선택)"
+                        aria-label="계좌"
+                        style={{ width: 120 }}
+                      />
+                      <select
+                        value={editDraft.broker}
+                        onChange={(e) => setEditDraft({ ...editDraft, broker: e.target.value as BrokerId })}
+                        aria-label="증권사"
+                      >
+                        {BROKER_ORDER.map((id) => (
+                          <option key={id} value={id}>
+                            {BROKER_LABELS[id]}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </td>
+                  <td className="text">
+                    {/* 종목코드 위, 종목명 아래 — 보기 칸(StockCell)과 같은 순서로 한 칸에 쌓는다(매매내역 수정 행과 같은 방식). */}
+                    <div className="stack-inputs">
+                      <input
+                        value={editDraft.symbol}
+                        onChange={(e) => setEditDraft({ ...editDraft, symbol: e.target.value })}
+                        placeholder="종목코드"
+                        aria-label="종목코드"
+                        style={{ width: 80 }}
+                      />
+                      <input
+                        value={editDraft.name}
+                        onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                        placeholder="종목명"
+                        aria-label="종목명"
                       />
                     </div>
                   </td>
                   <td>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={editDraft.tax}
-                      onChange={(e) => setEditDraft({ ...editDraft, tax: e.target.value })}
-                      style={{ width: 80 }}
-                    />
+                    <div className="stack-inputs">
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <select
+                          value={editDraft.currency}
+                          onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value as DividendCurrency })}
+                          aria-label="통화"
+                        >
+                          <option value="KRW">원</option>
+                          <option value="USD">USD</option>
+                        </select>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editDraft.amount}
+                          onChange={(e) => setEditDraft({ ...editDraft, amount: e.target.value })}
+                          placeholder="배당금(세후)"
+                          aria-label="배당금(세후)"
+                          style={{ width: 100 }}
+                        />
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={editDraft.tax}
+                        onChange={(e) => setEditDraft({ ...editDraft, tax: e.target.value })}
+                        placeholder="세금 (선택)"
+                        aria-label="세금"
+                        style={{ width: 100 }}
+                      />
+                    </div>
                   </td>
-                  <td>
+                  <td className="text">
                     <input
                       value={editDraft.memo}
                       onChange={(e) => setEditDraft({ ...editDraft, memo: e.target.value })}
                     />
                   </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 4 }}>
+                    <div className="row-actions">
                       <button className="ghost" onClick={() => saveEdit(r.id)} disabled={editSaving}>
                         {editSaving ? '저장 중...' : '저장'}
                       </button>
@@ -392,24 +432,21 @@ export function DividendListCard({
               ) : (
                 <tr key={r.id}>
                   <td>{r.paidDate}</td>
-                  <td>{BROKER_LABELS[r.broker]}</td>
-                  <td>{displayAccountId(r.broker, r.accountId)}</td>
-                  <td>{r.symbol}</td>
+                  <td>{accountCell(r.broker, r.accountId)}</td>
+                  <td className="text">
+                    <StockCell symbol={r.symbol} name={r.name} url={stockLinkFor(r.symbol, r.currency)} />
+                  </td>
                   <td>
-                    <StockNameLink name={r.name} url={stockLinkFor(r.symbol, r.currency)} />
+                    {money(r.amount, r.currency)}
+                    {r.tax !== null && r.tax > 0 && <span className="cell-sub">세금 {money(r.tax, r.currency)}</span>}
                   </td>
-                  <td>{r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>
-                    {r.tax === null ? '-' : r.currency === 'USD' ? usdFmt.format(r.tax) : `${krw.format(r.tax)}원`}
-                  </td>
-                  <td>{r.memo ?? '-'}</td>
+                  {/* 긴 메모가 표를 넓히지 않게 — 이 폭에서 줄을 바꾼다 */}
+                  <td className="text cell-memo">{r.memo ?? '-'}</td>
                   <td>
                     {isRowSyncOwned(r.broker, r.currency) ? (
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }} title="API 동기화로만 관리됩니다">
-                        API 연동
-                      </span>
+                      <span className="cell-sub" style={{ textAlign: 'right' }}>API 연동</span>
                     ) : (
-                      <div style={{ display: 'flex', gap: 4 }}>
+                      <div className="row-actions">
                         <button className="ghost" onClick={() => startEdit(r)}>
                           수정
                         </button>

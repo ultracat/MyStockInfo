@@ -1,7 +1,7 @@
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { ALL_ACCOUNTS, dividendTotals as dividendTotalsOf, holdingRows } from '../calc/portfolio';
 import type { BrokerId } from '../types';
-import HoldingsTable from '../components/HoldingsTable';
+import HoldingsTable, { type HoldingSort } from '../components/HoldingsTable';
 import PurchaseMarketTile from '../components/PurchaseMarketTile';
 import PrincipalCard from '../components/PrincipalCard';
 import { krw } from '../format';
@@ -55,6 +55,8 @@ export default function Dashboard() {
   const hasUsdCash = !!portfolio?.cashBalanceUsd;
 
   // 보유 종목의 매수 유의사항(토스) — 종목 목록이 바뀔 때만 다시 묻는다.
+  // 표 정렬 — 표가 아니라 여기 둔다(증권사를 바꾸면 표가 다시 생겨 정렬이 초기화되던 것). 기본은 평가금액 큰 순서.
+  const [holdingSort, setHoldingSort] = useState<HoldingSort>({ key: 'market', asc: false });
   const warningsBySymbol = useStockWarnings(portfolio?.positions.map((p) => p.symbol) ?? []);
 
   const rows = useMemo(() => {
@@ -322,7 +324,7 @@ export default function Dashboard() {
           )}
 
           <div className="card">
-            <HoldingsTable rows={rows} fxRate={effectiveFxRate} />
+            <HoldingsTable rows={rows} fxRate={effectiveFxRate} sort={holdingSort} onSortChange={setHoldingSort} />
           </div>
         </>
       )}

@@ -4,6 +4,7 @@ import type { KisRealizedRow } from '../types';
 import { krw } from '../format';
 import CollapseToggle from './CollapseToggle';
 import Hint from './Hint';
+import StockCell from './StockCell';
 
 // 증권사가 직접 계산한 매도 실현손익과 이 앱의 이동평균 추정치를 종목별로 나란히 보여준다.
 // - 한국투자증권: 국내 기간별매매손익현황(TTTC8715R, 매도 건별), 해외 기간손익(TTTS3039R, 원화 기준)
@@ -153,7 +154,7 @@ export default function OfficialRealizedCompare({
             <p style={{ color: 'var(--text-muted)' }}>{year}년 {brokerName} 계좌의 {overseas ? '해외' : '국내'} 매도 기록이 없습니다.</p>
           ) : (
             <div className="table-scroll">
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th>종목</th>
@@ -167,9 +168,7 @@ export default function OfficialRealizedCompare({
                   {lines.map((l) => (
                     <tr key={l.symbol}>
                       <td style={{ textAlign: 'left' }}>
-                        <span className="cell-name-truncate">
-                          {l.name} <span style={{ color: 'var(--text-muted)' }}>{l.symbol}</span>
-                        </span>
+                        <StockCell symbol={l.symbol} name={l.name} url={null} />
                       </td>
                       <td>
                         {krw.format(l.officialQty)} / {krw.format(l.appQty)}

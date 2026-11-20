@@ -5,10 +5,12 @@ import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { BrokerId, DividendRecord } from '../types';
 import { API_BROKER_IDS } from '../brokers';
-import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
-import { formatKrwValue, formatSignedKrw, qtyFmt } from '../format';
+import { useStockLinkResolver } from '../components/StockNameLink';
+import StockCell from '../components/StockCell';
+import { formatKrwValue, formatRatePct, formatSignedKrw, qtyFmt } from '../format';
 import Hint from '../components/Hint';
-import SortButton from '../components/SortButton';
+import SortButton, { ariaSort } from '../components/SortButton';
+import { sortStockReturnRows, type StockReturnSortKey, type SymbolRow } from '../calc/stockReturns';
 
 /** 전체 브로커/계좌의 보유종목 한 줄 — 종목별로 합치기 전의 원본(통화 기준 금액). */
 interface FlatHolding {
@@ -21,28 +23,7 @@ interface FlatHolding {
   marketValue: number;
 }
 
-/** 표 한 줄 — 전부 KRW 환산 후의 값. */
-interface SymbolRow {
-  symbol: string;
-  name: string;
-  /** 보유종목이 있으면 그 통화, 배당 기록만 있으면 그 기록의 통화. */
-  currency: string | null;
-  quantity: number;
-  purchaseKrw: number;
-  marketKrw: number;
-  dividendKrw: number;
-  /** 지금 보유 중인가(수량 > 0) — 전량 매도했지만 배당 기록만 남은 종목 구분용. */
-  held: boolean;
-  /** 환율을 못 구해 이 종목의 달러 금액 일부/전부가 빠졌는가. */
-  unconverted: boolean;
-}
 
-type SortKey = 'market' | 'purchase' | 'valuation' | 'dividend' | 'totalReturn' | 'symbol';
-
-function formatRate(rate: number | null) {
-  if (rate === null) return '-';
-  return `${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(2)}%`;
-}
 
 function toneOf(v: number) {
   return v >= 0 ? 'text-good' : 'text-critical';
@@ -70,7 +51,7 @@ export default function StockReturns() {
   const [monthlyAvgFxRates, setMonthlyAvgFxRates] = useState<
     Record<string, { rate: number; sampleCount: number } | null>
   >({});
-  const [sortKey, setSortKey] = useState<SortKey>('market');
+  const [sortKey, setSortKey] = useState<StockReturnSortKey>('market');
   const [sortAsc, setSortAsc] = useState(false);
   const [includeSoldOut, setIncludeSoldOut] = useState(true);
   const [soldOpen, setSoldOpen] = useState(false);
@@ -263,27 +244,7 @@ export default function StockReturns() {
 
   const shownRows = useMemo(() => {
     const filtered = includeSoldOut ? rows : rows.filter((r) => r.held);
-    const sorted = [...filtered].sort((a, b) => {
-      const dir = sortAsc ? 1 : -1;
-      switch (sortKey) {
-        case 'symbol':
-          return a.symbol.localeCompare(b.symbol) * dir;
-        case 'purchase':
-          return (a.purchaseKrw - b.purchaseKrw) * dir;
-        case 'valuation':
-          return (a.marketKrw - a.purchaseKrw - (b.marketKrw - b.purchaseKrw)) * dir;
-        case 'dividend':
-          return (a.dividendKrw - b.dividendKrw) * dir;
-        case 'totalReturn':
-          return (
-            (a.marketKrw - a.purchaseKrw + a.dividendKrw - (b.marketKrw - b.purchaseKrw + b.dividendKrw)) * dir
-          );
-        case 'market':
-        default:
-          return (a.marketKrw - b.marketKrw) * dir;
-      }
-    });
-    return sorted;
+    return sortStockReturnRows(filtered, sortKey, sortAsc);
   }, [rows, includeSoldOut, sortKey, sortAsc]);
 
   const totals = useMemo(() => {
@@ -316,13 +277,14 @@ export default function StockReturns() {
     </tr>
   );
 
-  function sortButton(key: SortKey, label: string) {
+  function sortButton(key: StockReturnSortKey, label: string, opts?: { text?: boolean; small?: boolean }) {
     return (
       <SortButton
         sortKey={key}
         label={label}
         current={sortKey}
         asc={sortAsc}
+        {...opts}
         onChange={(k, asc) => {
           setSortKey(k);
           setSortAsc(asc);
@@ -367,21 +329,21 @@ export default function StockReturns() {
               <div className="label">평가손익</div>
               <div className={`value ${toneOf(totalValuationGain)}`}>
                 {formatSignedKrw(totalValuationGain)}
-                <span style={{ fontSize: 13 }}> ({formatRate(totalValuationRate)})</span>
+                <span style={{ fontSize: 13 }}> ({formatRatePct(totalValuationRate)})</span>
               </div>
             </div>
             <div className="stat-tile">
               <div className="label">총 누적배당금</div>
               <div className="value">
                 {formatKrwValue(totals.dividendKrw)}
-                <span style={{ fontSize: 13 }}> ({formatRate(totalDividendRate)})</span>
+                <span style={{ fontSize: 13 }}> ({formatRatePct(totalDividendRate, false)})</span>
               </div>
             </div>
             <div className="stat-tile">
               <div className="label">총 수익(평가손익 + 배당)</div>
               <div className={`value ${toneOf(totalReturn)}`}>
                 {formatSignedKrw(totalReturn)}
-                <span style={{ fontSize: 13 }}> ({formatRate(totalReturnRate)})</span>
+                <span style={{ fontSize: 13 }}> ({formatRatePct(totalReturnRate)})</span>
               </div>
             </div>
           </div>
@@ -413,16 +375,25 @@ export default function StockReturns() {
               <p style={{ color: 'var(--text-muted)' }}>보여줄 종목이 없습니다.</p>
             ) : (
               <div className="table-scroll">
-                <table>
+                <table className="num2">
                   <thead>
                     <tr>
-                      <th>{sortButton('symbol', '종목')}</th>
+                      <th aria-sort={ariaSort(sortKey, sortAsc, 'name')}>{sortButton('name', '종목', { text: true })}</th>
                       <th>수량</th>
-                      <th>{sortButton('purchase', '투자금')}</th>
-                      <th>{sortButton('market', '현재평가금')}</th>
-                      <th title="위: 평가손익, 아래: 손익률">{sortButton('valuation', '평가손익')}</th>
-                      <th title="위: 누적배당금, 아래: 투자금 대비 배당수익률">{sortButton('dividend', '누적배당금')}</th>
-                      <th title="위: 평가손익 + 배당, 아래: 총 수익률">{sortButton('totalReturn', '총 수익')}</th>
+                      <th aria-sort={ariaSort(sortKey, sortAsc, 'purchase')}>{sortButton('purchase', '매입금액')}</th>
+                      <th aria-sort={ariaSort(sortKey, sortAsc, 'market')}>{sortButton('market', '평가금액')}</th>
+                      <th aria-sort={ariaSort(sortKey, sortAsc, 'valuation', 'valuationRate')}>
+                        {sortButton('valuation', '평가손익')}
+                        {sortButton('valuationRate', '손익률', { small: true })}
+                      </th>
+                      <th aria-sort={ariaSort(sortKey, sortAsc, 'dividend', 'dividendRate')}>
+                        {sortButton('dividend', '누적배당금')}
+                        {sortButton('dividendRate', '배당수익률', { small: true })}
+                      </th>
+                      <th aria-sort={ariaSort(sortKey, sortAsc, 'totalReturn', 'totalReturnRate')}>
+                        {sortButton('totalReturn', '총 수익')}
+                        {sortButton('totalReturnRate', '총 수익률', { small: true })}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -437,27 +408,27 @@ export default function StockReturns() {
                         {i === heldShown.length && soldShown.length > 0 && soldToggle}
                         <tr>
                           <td>
-                            <StockNameLink name={r.name} url={stockLinkFor(r.symbol, r.currency)} />{' '}
-                            <span style={{ color: 'var(--text-muted)' }}>({r.symbol})</span>
-                            {!r.held && <span style={{ color: 'var(--text-muted)' }}> · 보유 없음</span>}
-                            {r.unconverted && <span className="text-critical"> · 환율 미적용</span>}
+                            <StockCell symbol={r.symbol} name={r.name} url={stockLinkFor(r.symbol, r.currency)}>
+                              {!r.held && <span style={{ color: 'var(--text-muted)' }}> · 보유 없음</span>}
+                              {r.unconverted && <span className="text-critical"> · 환율 미적용</span>}
+                            </StockCell>
                           </td>
                           <td>{qtyFmt.format(r.quantity)}</td>
                           <td>{formatKrwValue(r.purchaseKrw)}</td>
                           <td>{formatKrwValue(r.marketKrw)}</td>
                           <td className={toneOf(valuationGain)}>
                             {formatSignedKrw(valuationGain)}
-                            <span className="cell-sub">{formatRate(valuationRate)}</span>
+                            <span className="cell-sub">{formatRatePct(valuationRate)}</span>
                           </td>
                           <td>
                             {formatKrwValue(r.dividendKrw)}
                             <span className="cell-sub">
-                              {dividendRate === null ? '-' : `${(dividendRate * 100).toFixed(2)}%`}
+                              {formatRatePct(dividendRate, false)}
                             </span>
                           </td>
                           <td className={toneOf(rowReturn)}>
                             {formatSignedKrw(rowReturn)}
-                            <span className="cell-sub">{formatRate(returnRate)}</span>
+                            <span className="cell-sub">{formatRatePct(returnRate)}</span>
                           </td>
                         </tr>
                         </Fragment>
@@ -473,17 +444,17 @@ export default function StockReturns() {
                       <td style={{ fontWeight: 600 }}>{formatKrwValue(totals.marketKrw)}</td>
                       <td className={toneOf(totalValuationGain)} style={{ fontWeight: 600 }}>
                         {formatSignedKrw(totalValuationGain)}
-                        <span className="cell-sub">{formatRate(totalValuationRate)}</span>
+                        <span className="cell-sub">{formatRatePct(totalValuationRate)}</span>
                       </td>
                       <td style={{ fontWeight: 600 }}>
                         {formatKrwValue(totals.dividendKrw)}
                         <span className="cell-sub">
-                          {totalDividendRate === null ? '-' : `${(totalDividendRate * 100).toFixed(2)}%`}
+                          {formatRatePct(totalDividendRate, false)}
                         </span>
                       </td>
                       <td className={toneOf(totalReturn)} style={{ fontWeight: 600 }}>
                         {formatSignedKrw(totalReturn)}
-                        <span className="cell-sub">{formatRate(totalReturnRate)}</span>
+                        <span className="cell-sub">{formatRatePct(totalReturnRate)}</span>
                       </td>
                     </tr>
                   </tfoot>

@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { WatchlistEntry } from '../types';
-import { krw2dp, usdFmt } from '../format';
-import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
+import { formatRatePct, krw2dp, usdFmt } from '../format';
+import { useStockLinkResolver } from '../components/StockNameLink';
 import WarningBadges from '../components/WarningBadges';
 import { useStockWarnings } from '../marketInsights';
 import WatchDetail from './watchlist/WatchDetail';
 import { usePlanner } from '../usePlanner';
+import StockCell from '../components/StockCell';
+import SortButton, { ariaSort } from '../components/SortButton';
+import Hint from '../components/Hint';
+import { sortWatchRows, targetGap, type WatchSortKey } from '../calc/watchlist';
 
 function formatPrice(entry: WatchlistEntry): string {
   if (entry.lastPrice === null) return '-';
@@ -33,6 +37,27 @@ export default function Watchlist() {
   const [symbol, setSymbol] = useState('');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  // 표 정렬(2026-11-20) — 기본은 등록 순서. 목표가 열은 "가장 가까운 목표까지 남은 %"로, 처음 누르면 가까운 순서.
+  const [sortKey, setSortKey] = useState<WatchSortKey>('added');
+  const [sortAsc, setSortAsc] = useState(false);
+  const shownEntries = useMemo(
+    () => sortWatchRows(entries, sortKey, sortAsc, (s) => targetBySymbol.get(s)),
+    [entries, sortKey, sortAsc, targetBySymbol]
+  );
+  const sortButton = (key: WatchSortKey, label: string, opts?: { text?: boolean }) => (
+    <SortButton
+      sortKey={key}
+      label={label}
+      current={sortKey}
+      asc={sortAsc}
+      onChange={(k, asc) => {
+        setSortKey(k);
+        setSortAsc(asc);
+      }}
+      {...opts}
+    />
+  );
 
   // 선택된 종목의 상세 — 표에서 행을 누르면 그 종목으로 바뀐다(내용은 watchlist/WatchDetail.tsx).
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
@@ -113,42 +138,63 @@ export default function Watchlist() {
         ) : entries.length === 0 ? (
           <p style={{ color: 'var(--text-muted)' }}>등록된 관심종목이 없습니다.</p>
         ) : (
+          <>
+          <Hint>
+            행을 누르면(또는 Tab으로 옮겨 Enter) 아래에 상세가 열립니다. 등락률은 직전 거래일 종가 대비(토스증권 키 필요), 목표가는 상세에서 정한 값으로
+            지금 가격이 닿으면 굵게 "도달"이 붙고 알림을 보냅니다(설정 → 알림). 목표가 열로 정렬하면 가장 가까운 목표까지 남은 비율 순서입니다.
+          </Hint>
           <div className="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>종목</th>
-                  <th>시장</th>
-                  <th>현재가</th>
-                  <th title="직전 거래일 종가 대비(토스증권 키 필요)">등락률</th>
-                  <th title="상세에서 정한 목표가 — 이상/이하가 되면 알림(설정 → 알림)">목표가</th>
+                  <th aria-sort={ariaSort(sortKey, sortAsc, 'name')}>{sortButton('name', '종목', { text: true })}</th>
+                  <th>
+                    현재가<span className="cell-sub">시장</span>
+                  </th>
+                  <th aria-sort={ariaSort(sortKey, sortAsc, 'change')}>{sortButton('change', '등락률')}</th>
+                  <th aria-sort={ariaSort(sortKey, sortAsc, 'target')}>{sortButton('target', '목표가', { text: true })}</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {entries.map((e) => (
+                {shownEntries.map((e) => (
                   <tr
                     key={e.symbol}
                     onClick={() => setSelectedSymbol(e.symbol)}
+                    // 키보드로도 고를 수 있게(예전엔 마우스로만 상세가 열렸다)
+                    tabIndex={0}
+                    aria-selected={selectedSymbol === e.symbol}
+                    onKeyDown={(ev) => {
+                      if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
+                        ev.preventDefault();
+                        setSelectedSymbol(e.symbol);
+                      }
+                    }}
                     style={{
                       cursor: 'pointer',
                       background: selectedSymbol === e.symbol ? 'var(--surface-2, var(--gridline))' : undefined,
                     }}
                   >
                     <td>
-                      <StockNameLink name={e.name} url={stockLinkFor(e.symbol, e.currency)} />{' '}
-                      <span style={{ color: 'var(--text-muted)' }}>({e.symbol})</span>
-                      <WarningBadges warnings={warningsBySymbol[e.symbol]} />
+                      <StockCell symbol={e.symbol} name={e.name} url={stockLinkFor(e.symbol, e.currency)}>
+                        <WarningBadges warnings={warningsBySymbol[e.symbol]} />
+                      </StockCell>
                       {e.memo && (
-                        <span className="cell-sub" title={e.memo} style={{ display: 'block' }}>
-                          {e.memo.split('\n')[0].slice(0, 40)}
+                        // 메모 첫 줄(긴 것은 줄임) — 전체는 상세의 메모 칸
+                        <span className="cell-sub cell-fullname">
+                          {(() => {
+                            const first = e.memo.split('\n')[0];
+                            return first.length > 40 || e.memo.includes('\n') ? `${first.slice(0, 40)}…` : first;
+                          })()}
                         </span>
                       )}
                     </td>
-                    <td>{e.market ?? '-'}</td>
-                    <td>{formatPrice(e)}</td>
+                    <td>
+                      {formatPrice(e)}
+                      {e.market && <span className="cell-sub">{e.market}</span>}
+                    </td>
                     <td className={e.changeRate == null ? undefined : e.changeRate >= 0 ? 'text-good' : 'text-critical'}>
-                      {e.changeRate == null ? '-' : `${e.changeRate >= 0 ? '+' : ''}${(e.changeRate * 100).toFixed(2)}%`}
+                      {e.changeRate == null ? '-' : formatRatePct(e.changeRate)}
                     </td>
                     <td>
                       {(() => {
@@ -157,31 +203,39 @@ export default function Watchlist() {
                         const p = e.lastPrice;
                         const hit = p !== null && ((t.above !== null && p >= t.above) || (t.below !== null && p <= t.below));
                         return (
-                          <span style={{ fontWeight: hit ? 700 : undefined }} title={hit ? '지금 가격이 목표에 닿았습니다' : undefined}>
-                            {[t.above !== null && `≥ ${priceIn(t.above, e.currency)}`, t.below !== null && `≤ ${priceIn(t.below, e.currency)}`]
-                              .filter(Boolean)
-                              .join(' · ')}
-                            {hit && ' · 도달'}
-                          </span>
+                          <>
+                            <span style={{ fontWeight: hit ? 700 : undefined }}>
+                              {[t.above !== null && `≥ ${priceIn(t.above, e.currency)}`, t.below !== null && `≤ ${priceIn(t.below, e.currency)}`]
+                                .filter(Boolean)
+                                .join(' · ')}
+                              {hit && ' · 도달'}
+                            </span>
+                            {!hit && targetGap(p, t) !== null && (
+                              <span className="cell-sub">{formatRatePct(targetGap(p, t), false)} 남음</span>
+                            )}
+                          </>
                         );
                       })()}
                     </td>
                     <td>
-                      <button
-                        className="ghost"
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          void onRemove(e.symbol);
-                        }}
-                      >
-                        삭제
-                      </button>
+                      <div className="row-actions">
+                        <button
+                          className="ghost"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            void onRemove(e.symbol);
+                          }}
+                        >
+                          삭제
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
 

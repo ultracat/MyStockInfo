@@ -72,6 +72,8 @@ test('배당 종목별/계좌별: 달러는 지급월 환율, 표시용 계좌�
   const acc = accountDividendRows(divs, labels, '2026', rateFor);
   assert.equal(acc.length, 1);
   assert.equal(acc[0].count, 3);
+  // 계좌 행 제목: 번호(보통 글씨) + 아래 증권사·별칭 — 별칭이 비었으면 증권사만
+  assert.deepEqual([acc[0].label, acc[0].sub], ['123-45-678901', '토스증권']);
   assert.equal(acc[0].details.find((d) => d.label.startsWith('A'))?.label, 'A (A) · 배당 2건');
 });
 

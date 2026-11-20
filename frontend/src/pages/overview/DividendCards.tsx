@@ -18,6 +18,7 @@ function accountDividendView(rows: ReturnType<typeof accountDividendRows>): Donu
       symbol: r.key,
       name: r.label,
       label: r.label,
+      sub: r.sub,
       valueKrw: r.valueKrw,
       meta: `배당 ${r.count}건 · ${r.details.length}개 종목`,
       details: r.details,

@@ -568,7 +568,7 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
           <div style={{ flex: '1 1 260px' }}>
             <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>지난 배당 (기준일 · 주당 세전)</div>
             <div className="table-scroll">
-              <table>
+              <table className="num2">
                 <tbody>
                   {[...divRes.value.history].reverse().slice(0, 8).map((e) => (
                     <tr key={e.recordDate}>
@@ -587,7 +587,7 @@ export default function WatchDetail({ entry, entries, onEntryChange }: { entry: 
               <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>예정이나 추정할 수 있는 배당이 없습니다.</p>
             ) : (
               <div className="table-scroll">
-                <table>
+                <table className="num2">
                   <tbody>
                     {divRes.value.upcoming.slice(0, 6).map((e) => (
                       <tr key={e.recordDate}>

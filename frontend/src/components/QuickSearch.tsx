@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { api } from '../api';
 import { BROKER_LABELS } from '../brokers';
 import { buildStockIndex, searchStocks, type StockIndexEntry } from '../calc/stockSearch';
-import { krw, localToday, usdFmt } from '../format';
+import { formatRatePct, krw, localToday, ratioOf, usdFmt } from '../format';
 
 type Target = 'dashboard' | 'dividends' | 'trades' | 'watchlist' | 'stockReturns';
 const money = (v: number, currency: string | null) => (currency === 'USD' ? usdFmt.format(v) : `${krw.format(Math.round(v))}원`);
@@ -170,10 +170,10 @@ function StockSummary({ entry, onNavigate, onBack }: { entry: StockIndexEntry; o
           <p style={{ margin: '8px 0 4px' }}>
             보유 {krw.format(qty)}주 · 평가 {money(value, entry.currency)} · 손익{' '}
             <span className={value - cost >= 0 ? 'text-good' : 'text-critical'}>
-              {money(value - cost, entry.currency)} ({cost > 0 ? (((value - cost) / cost) * 100).toFixed(1) : '0'}%)
+              {money(value - cost, entry.currency)} ({formatRatePct(ratioOf(value - cost, cost))})
             </span>
           </p>
-          <table>
+          <table className="num2">
             <tbody>
               {entry.held.map((h, i) => (
                 <tr key={i}>

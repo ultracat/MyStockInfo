@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import type { KisStockDetail, StockNewsItem } from '../types';
 import { krw } from '../format';
+import StockCell from './StockCell';
 
 // 관심종목 상세 아래 — 국내 종목의 한국투자증권 시세 참조 정보(백엔드 routes/kisReports.ts의 /stock-detail).
 // ETF면 NAV·괴리율·구성 종목, 주식이면 재무비율·증권사 투자의견, 둘 다 최근 뉴스·공시 제목.
@@ -114,7 +115,7 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
           ) : (
             <>
               <div className="table-scroll">
-                <table>
+                <table className="num2">
                   <thead>
                     <tr>
                       <th>종목</th>
@@ -126,9 +127,7 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
                     {detail.etf.components.map((c) => (
                       <tr key={c.symbol || c.name}>
                         <td style={{ textAlign: 'left' }}>
-                          <span className="cell-name-truncate">
-                            {c.name} <span style={{ color: 'var(--text-muted)' }}>{c.symbol}</span>
-                          </span>
+                          <StockCell symbol={c.symbol || c.name} name={c.symbol ? c.name : null} url={null} />
                         </td>
                         <td>{pct(c.weight)}</td>
                         <td
@@ -162,7 +161,7 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
             <p style={muted}>불러오지 못했습니다.</p>
           ) : (
             <div className="table-scroll">
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th>PER</th>
@@ -197,7 +196,7 @@ export default function KisStockInsights({ symbol }: { symbol: string }) {
             <p style={muted}>재무 정보가 없습니다.</p>
           ) : (
             <div className="table-scroll">
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th>결산</th>

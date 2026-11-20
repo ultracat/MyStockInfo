@@ -213,7 +213,7 @@ export function SimulationCard({
           )}
           <p style={{ color: 'var(--text-muted)', fontSize: 12, margin: 0 }}>파란 선 = 보통, 옅은 영역 = 비관~낙관, 점선 = 넣은 돈 누계.</p>
           <div className="table-scroll" style={{ marginTop: 8 }}>
-            <table>
+            <table className="num2">
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>연차</th>

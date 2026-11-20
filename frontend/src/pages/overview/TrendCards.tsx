@@ -41,7 +41,7 @@ export function TrendCards({
               같은 월말 기준). 지수는 토스증권 시장 지표의 월말 종가 대비이며, 미국 지수는 토스 API가 제공하지 않습니다.
             </Hint>
             <div className="table-scroll">
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th>월</th>

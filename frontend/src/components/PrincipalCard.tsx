@@ -133,7 +133,7 @@ export default function PrincipalCard({
           </Hint>
           {!collapsed && (
             <div className="table-scroll" style={{ marginTop: 12 }}>
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th>연도</th>

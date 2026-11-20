@@ -60,7 +60,7 @@ test('보유 표 행: 원화 기준 비중, 이 계좌의 이 종목 배당만, 
     ['A', '회사', 100 / 1400, 10],
     ['U', null, 1000 / 1400, 1], // 원화 배당 1000원 → 달러 종목이라 1000/1000 = $1
   ]);
-  assert.equal(rows[0].accountLabel, undefined); // 개별 계좌 모드엔 계좌 열 없음
+  assert.equal(rows[0].account, undefined); // 개별 계좌 모드엔 계좌 열 없음
 
   const noFx = holdingRows(pf, { ...base, fxRate: null });
   assert.equal(noFx[2].weight, null);
@@ -70,7 +70,7 @@ test('보유 표 행: 원화 기준 비중, 이 계좌의 이 종목 배당만, 
 
 test('보유 종목 정렬: 달러는 원화로 환산해 비교하고, 환산 못 한 행은 방향과 상관없이 맨 뒤', () => {
   const row = (symbol: string, currency: string, marketValue: number, dividendAmount: number | null = 0) => ({
-    symbol, currency, purchaseAmount: 0, marketValue, profitLossAmount: marketValue, dividendAmount,
+    symbol, name: symbol, currency, purchaseAmount: 0, marketValue, profitLossAmount: marketValue, profitLossRate: 0, dividendAmount,
   });
   const rows = [row('A', 'KRW', 100_000), row('B', 'USD', 100), row('C', 'KRW', 200_000)];
   const order = (r: { symbol: string }[]) => r.map((x) => x.symbol).join('');
@@ -81,5 +81,13 @@ test('보유 종목 정렬: 달러는 원화로 환산해 비교하고, 환산 �
   // 배당 포함 손익이 "환율 미적용"(null)인 행도 맨 뒤
   const withDiv = [row('A', 'KRW', 100, null), row('B', 'KRW', 50, 10)];
   assert.equal(order(sortHoldingRows(withDiv, 'profitWithDividend', false, null)), 'BA');
-  assert.equal(order(sortHoldingRows(rows, 'symbol', true, null)), 'ABC');
+  assert.equal(order(sortHoldingRows(rows, 'name', true, null)), 'ABC');
+  // 계좌 열: 계좌번호 순서, 계좌 표시가 없는 행은 맨 뒤
+  const acc = [
+    { ...row('A', 'KRW', 1), account: { number: '222' } },
+    { ...row('B', 'KRW', 1) },
+    { ...row('C', 'KRW', 1), account: { number: '111', label: '연금' } },
+  ];
+  assert.equal(order(sortHoldingRows(acc, 'account', true, null)), 'CAB');
+  assert.equal(order(sortHoldingRows(acc, 'account', false, null)), 'ACB');
 });

@@ -4,6 +4,7 @@ import { FINANCIAL_INCOME_THRESHOLD_KRW, TAX_FREE_ALLOWANCE_KRW } from '../../ca
 import { krw } from '../../format';
 import type { StoredHolding } from '../../types';
 import Hint from '../../components/Hint';
+import StockCell from '../../components/StockCell';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 
@@ -66,12 +67,12 @@ export function YearEndTaxCard({
           {plan.losers.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>없습니다.</p>
           ) : (
-            <table>
+            <table className="num2">
               <tbody>
                 {plan.losers.slice(0, 10).map((x) => (
                   <tr key={x.symbol}>
                     <td style={{ textAlign: 'left' }}>
-                      {x.name} <span style={{ color: 'var(--text-muted)' }}>{x.symbol}</span>
+                      <StockCell symbol={x.symbol} name={x.name} url={null} />
                     </td>
                     <td className="text-critical">−{won(x.lossKrw)}</td>
                   </tr>
@@ -87,12 +88,12 @@ export function YearEndTaxCard({
           ) : plan.gainers.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>없습니다.</p>
           ) : (
-            <table>
+            <table className="num2">
               <tbody>
                 {plan.gainers.slice(0, 10).map((x) => (
                   <tr key={x.symbol}>
                     <td style={{ textAlign: 'left' }}>
-                      {x.name} <span style={{ color: 'var(--text-muted)' }}>{x.symbol}</span>
+                      <StockCell symbol={x.symbol} name={x.name} url={null} />
                     </td>
                     <td className="text-good">+{won(x.gainKrw)}</td>
                   </tr>

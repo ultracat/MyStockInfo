@@ -5,6 +5,7 @@ import { dividendYields } from '../../calc/insights';
 import { krw, localToday } from '../../format';
 import type { DividendRecord } from '../../types';
 import Hint from '../../components/Hint';
+import StockCell from '../../components/StockCell';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 const pct = (v: number | null) => (v === null ? '-' : `${v.toFixed(2)}%`);
@@ -56,7 +57,7 @@ export function DividendYieldCard({ records, rateFor }: { records: DividendRecor
             <p style={{ color: 'var(--text-muted)' }}>최근 2년 안에 배당을 받은 보유 종목이 없습니다.</p>
           ) : (
             <div className="table-scroll">
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th style={{ textAlign: 'left' }}>종목</th>
@@ -70,9 +71,7 @@ export function DividendYieldCard({ records, rateFor }: { records: DividendRecor
                   {rows.map((r) => (
                     <tr key={r.symbol}>
                       <td style={{ textAlign: 'left' }}>
-                        <span className="upcoming-cell-truncate" title={`${r.name} ${r.symbol}`}>
-                          {r.name} <span style={{ color: 'var(--text-muted)' }}>{r.symbol}</span>
-                        </span>
+                        <StockCell symbol={r.symbol} name={r.name} url={null} />
                       </td>
                       <td>{won(r.trailingKrw)}</td>
                       <td>{pct(r.yoc)}</td>

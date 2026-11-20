@@ -21,8 +21,7 @@ export interface KnownAccount {
  * 수 있고, 반대로 라벨이 없어도 실제 데이터/계좌가 있으면 목록에 뜬다.
  * **API 브로커(토스/KIS)도 포함한다** — 계좌번호 자체는 이미 읽을 수 있는 값이라
  * 별칭은 잘 안 쓰지만, 세금 유형(ISA 등)은 API 브로커 계좌에도 똑같이 필요하다
- * (실사용자의 한국투자증권 ISA 계좌가 실제 사례 — backend/CLAUDE.md의
- * "계좌별 세금 유형" 절 참고).
+ * (API 증권사에도 ISA 계좌가 있다 — backend/CLAUDE.md의 "계좌별 세금 유형" 절 참고).
  */
 export function useSettingsAccounts() {
   const [knownAccounts, setKnownAccounts] = useState<KnownAccount[]>([]);

@@ -51,6 +51,15 @@ export function formatSignedKrw(v: number): string {
   return `${v >= 0 ? '+' : ''}${krw.format(Math.round(v))}원`;
 }
 
+/** 기준 금액 대비 비율 — "+12.34%"(`signed`면 양수에 +). 기준이 0 이하이면 null(비율 없음). */
+export function ratioOf(amount: number, base: number): number | null {
+  return base > 0 ? amount / base : null;
+}
+export function formatRatePct(rate: number | null, signed = true): string {
+  if (rate === null || !Number.isFinite(rate)) return '-';
+  return `${signed && rate >= 0 ? '+' : ''}${(rate * 100).toFixed(2)}%`;
+}
+
 /** 배당내역 팝업의 종목별 행 meta — 지금 보유 중이 아닌 종목(전량 매도 등)은 수량 정보가 없어 배당 건수만 보여준다. */
 export function formatDividendMeta(count: number, quantity: number | undefined): string {
   return quantity ? `배당 ${count}건 · 보유 ${quantity}주` : `배당 ${count}건`;

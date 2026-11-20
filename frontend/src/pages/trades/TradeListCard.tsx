@@ -1,9 +1,14 @@
 import { useMemo, useState } from 'react';
 import { api } from '../../api';
-import { findAccountLabel, formatAccountOption } from '../../accountLabels';
+import { findAccountLabel } from '../../accountLabels';
+import AccountCell from '../../components/AccountCell';
 import { BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../../brokers';
-import { computeAmount, formatTradeAmount as formatAmount, netTradeAmount, tradeKey, type DisplayTrade } from '../../calc/trades';
-import StockNameLink, { useStockLinkResolver } from '../../components/StockNameLink';
+import { computeAmount, formatTradeAmount as formatAmount, netTradeAmount, sortTrades, tradeKey, type DisplayTrade, type TradeSortKey } from '../../calc/trades';
+import SortButton, { ariaSort } from '../../components/SortButton';
+import Hint from '../../components/Hint';
+import { qtyFmt } from '../../format';
+import { useStockLinkResolver } from '../../components/StockNameLink';
+import StockCell from '../../components/StockCell';
 import { singleRowImportError } from '../../importResult';
 import type { AccountLabel } from '../../types';
 
@@ -22,6 +27,7 @@ export function TradeListCard({
   periodKey,
   periodLabel,
   kbLinkedAccountId,
+  fxRate,
   onEdited,
   onDeleted,
 }: {
@@ -33,6 +39,8 @@ export function TradeListCard({
   periodLabel: string;
   /** KB 연동 계좌(설정됐을 때만) — CSV 전용 브로커여도 동기화가 주인이라 수정 불가. */
   kbLinkedAccountId: string | null;
+  /** 체결금액 정렬용 — 달러 거래를 원화로 환산해 비교한다. */
+  fxRate: number | null;
   onEdited: (t: DisplayTrade) => Promise<void>;
   onDeleted: (t: DisplayTrade) => Promise<void>;
 }) {
@@ -155,13 +163,32 @@ export function TradeListCard({
   // Dividends.tsx의 배당 기록 목록과 같은 페이지네이션 패턴 — `page`를 effect로
   // 되돌리지 않고 매 렌더마다 pageCount 안으로 clamp해서 쓴다. 페이지 번호 버튼도
   // 동일하게 10개(PAGE_GROUP_SIZE) 그룹 단위로만 그린다.
+  // 표 정렬 — 기본은 일자 최근 순서(예전과 같음). 체결금액은 달러를 원화로 환산해 비교한다.
+  const [sortKey, setSortKey] = useState<TradeSortKey>('date');
+  const [sortAsc, setSortAsc] = useState(false);
+  const rows = useMemo(() => sortTrades(sortedTrades, sortKey, sortAsc, fxRate), [sortedTrades, sortKey, sortAsc, fxRate]);
+  const sortButton = (key: TradeSortKey, label: string, opts?: { text?: boolean }) => (
+    <SortButton
+      sortKey={key}
+      label={label}
+      current={sortKey}
+      asc={sortAsc}
+      onChange={(k, asc) => {
+        setSortKey(k);
+        setSortAsc(asc);
+        setPage(1);
+      }}
+      {...opts}
+    />
+  );
+
   const pageCount = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(sortedTrades.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pagedTrades = useMemo(() => {
-    if (pageSize === 'ALL') return sortedTrades;
+    if (pageSize === 'ALL') return rows;
     const start = (currentPage - 1) * pageSize;
-    return sortedTrades.slice(start, start + pageSize);
-  }, [sortedTrades, pageSize, currentPage]);
+    return rows.slice(start, start + pageSize);
+  }, [rows, pageSize, currentPage]);
   const pageGroupStart = Math.floor((currentPage - 1) / PAGE_GROUP_SIZE) * PAGE_GROUP_SIZE + 1;
   const pageGroupEnd = Math.min(pageGroupStart + PAGE_GROUP_SIZE - 1, pageCount);
 
@@ -211,27 +238,29 @@ export function TradeListCard({
             </select>
           </div>
         </div>
+        <Hint>
+          수정·삭제는 직접 입력하는 계좌(CSV 전용 증권사) 행에만 있습니다 — 증권사 API·KB 연동 행은 다음 조회 때 증권사 기록으로 되돌아가서 고칠 수 없습니다.
+          체결금액은 수량 × 단가에 수수료·세금을 더한 값입니다.
+        </Hint>
         <div className="table-scroll">
+        {/* 2026-11-20 표 정리: 증권사는 계좌 칸 아래 줄, 수량 × 단가는 한 칸, 수수료·세금은 체결금액 아래 작은 글씨 — 11열이 1280px 창에서 넘쳤다.
+            수정 행도 같은 칸 배치에 입력칸을 위아래로 쌓는다. */}
         <table>
           <thead>
             <tr>
-              <th>일자</th>
-              {isAllMode && <th>증권사</th>}
+              <th aria-sort={ariaSort(sortKey, sortAsc, 'date')}>{sortButton('date', '일자')}</th>
               {isAllMode && <th>계좌</th>}
-              <th>종목</th>
+              <th className="text" aria-sort={ariaSort(sortKey, sortAsc, 'name')}>{sortButton('name', '종목', { text: true })}</th>
               <th>구분</th>
-              <th>수량</th>
-              <th>단가</th>
-              <th>수수료</th>
-              <th>세금</th>
-              <th title="체결금액에 수수료·세금을 더한 값입니다.">체결금액</th>
+              <th>수량 × 단가</th>
+              <th aria-sort={ariaSort(sortKey, sortAsc, 'amount')}>{sortButton('amount', '체결금액')}</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
             {sortedTrades.length === 0 ? (
               <tr>
-                <td colSpan={isAllMode ? 11 : 9} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={isAllMode ? 7 : 6} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
                   {periodLabel} 거래 내역이 없습니다.
                 </td>
               </tr>
@@ -243,6 +272,11 @@ export function TradeListCard({
                   CSV_ONLY_BROKER_IDS.includes(t.broker) &&
                   !(t.broker === 'kb' && kbLinkedAccountId !== null && t.accountId === kbLinkedAccountId);
                 const key = tradeKey(t);
+                const accountCell = isAllMode && (
+                  <td>
+                    <AccountCell accountId={t.accountId} entry={findAccountLabel(accountLabels, t.broker, t.accountId)} sub={BROKER_LABELS[t.broker]} />
+                  </td>
+                );
                 if (editingKey === key && editDraft) {
                   return (
                     <tr key={key}>
@@ -253,28 +287,22 @@ export function TradeListCard({
                           onChange={(e) => setEditDraft({ ...editDraft, executedAt: e.target.value })}
                         />
                       </td>
-                      {isAllMode && <td>{BROKER_LABELS[t.broker]}</td>}
-                      {isAllMode && (
-                        <td>
-                          {formatAccountOption(
-                            { id: t.accountId },
-                            findAccountLabel(accountLabels, t.broker, t.accountId)
-                          )}
-                        </td>
-                      )}
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {accountCell}
+                      <td className="text">
+                        <div className="stack-inputs">
                           <input
                             value={editDraft.symbol}
                             onChange={(e) => setEditDraft({ ...editDraft, symbol: e.target.value })}
-                            style={{ width: 80 }}
+                            style={{ width: 90 }}
                             placeholder="종목코드"
+                            aria-label="종목코드"
                           />
                           <input
                             value={editDraft.name}
                             onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
-                            style={{ width: 80 }}
+                            style={{ width: 90 }}
                             placeholder="종목명 (선택)"
+                            aria-label="종목명"
                           />
                         </div>
                       </td>
@@ -282,76 +310,82 @@ export function TradeListCard({
                         <select
                           value={editDraft.side}
                           onChange={(e) => setEditDraft({ ...editDraft, side: e.target.value as 'BUY' | 'SELL' })}
+                          aria-label="구분"
                         >
                           <option value="BUY">매수</option>
                           <option value="SELL">매도</option>
                         </select>
                       </td>
                       <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={editDraft.quantity}
-                          onChange={(e) => setEditDraft({ ...editDraft, quantity: e.target.value })}
-                          style={{ width: 70 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={editDraft.price}
-                          onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
-                          style={{ width: 90 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={editDraft.commission}
-                          onChange={(e) => setEditDraft({ ...editDraft, commission: e.target.value })}
-                          placeholder="선택"
-                          style={{ width: 70 }}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min="0"
-                          step="any"
-                          value={editDraft.tax}
-                          onChange={(e) => setEditDraft({ ...editDraft, tax: e.target.value })}
-                          placeholder="선택"
-                          style={{ width: 70 }}
-                        />
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                          <select
-                            value={editDraft.currency}
-                            onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value })}
-                          >
-                            <option value="KRW">원</option>
-                            <option value="USD">USD</option>
-                          </select>
-                          <span style={{ color: 'var(--text-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>
-                            {formatAmount(
-                              netTradeAmount(
-                                computeAmount(editDraft.quantity, editDraft.price),
-                                editDraft.commission.trim() ? Number(editDraft.commission) : null,
-                                editDraft.tax.trim() ? Number(editDraft.tax) : null
-                              ),
-                              editDraft.currency
-                            )}
-                          </span>
+                        <div className="stack-inputs">
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={editDraft.quantity}
+                            onChange={(e) => setEditDraft({ ...editDraft, quantity: e.target.value })}
+                            placeholder="수량"
+                            aria-label="수량"
+                            style={{ width: 90 }}
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={editDraft.price}
+                            onChange={(e) => setEditDraft({ ...editDraft, price: e.target.value })}
+                            placeholder="단가"
+                            aria-label="단가"
+                            style={{ width: 90 }}
+                          />
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div className="stack-inputs">
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <select
+                              value={editDraft.currency}
+                              onChange={(e) => setEditDraft({ ...editDraft, currency: e.target.value })}
+                              aria-label="통화"
+                            >
+                              <option value="KRW">원</option>
+                              <option value="USD">USD</option>
+                            </select>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                              {formatAmount(
+                                netTradeAmount(
+                                  computeAmount(editDraft.quantity, editDraft.price),
+                                  editDraft.commission.trim() ? Number(editDraft.commission) : null,
+                                  editDraft.tax.trim() ? Number(editDraft.tax) : null
+                                ),
+                                editDraft.currency
+                              )}
+                            </span>
+                          </div>
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={editDraft.commission}
+                            onChange={(e) => setEditDraft({ ...editDraft, commission: e.target.value })}
+                            placeholder="수수료 (선택)"
+                            aria-label="수수료"
+                            style={{ width: 110 }}
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            step="any"
+                            value={editDraft.tax}
+                            onChange={(e) => setEditDraft({ ...editDraft, tax: e.target.value })}
+                            placeholder="세금 (선택)"
+                            aria-label="세금"
+                            style={{ width: 110 }}
+                          />
+                        </div>
+                      </td>
+                      <td>
+                        <div className="row-actions">
                           <button className="ghost" onClick={() => saveEditTrade(t)} disabled={editSaving}>
                             {editSaving ? '저장 중...' : '저장'}
                           </button>
@@ -369,27 +403,16 @@ export function TradeListCard({
                   );
                 }
 
+                const fees = [
+                  t.commission ? `수수료 ${formatAmount(t.commission, t.currency)}` : null,
+                  t.tax ? `세금 ${formatAmount(t.tax, t.currency)}` : null,
+                ].filter(Boolean);
                 return (
                   <tr key={key}>
                     <td>{t.executedAt}</td>
-                    {isAllMode && <td>{BROKER_LABELS[t.broker]}</td>}
-                    {isAllMode && (
-                      <td>
-                        {formatAccountOption(
-                          { id: t.accountId },
-                          findAccountLabel(accountLabels, t.broker, t.accountId)
-                        )}
-                      </td>
-                    )}
-                    <td>
-                      {t.name ? (
-                        <>
-                          <StockNameLink name={t.name} url={stockLinkFor(t.symbol, t.currency)} />{' '}
-                          <span style={{ color: 'var(--text-muted)' }}>({t.symbol})</span>
-                        </>
-                      ) : (
-                        <StockNameLink name={t.symbol} url={stockLinkFor(t.symbol, t.currency)} />
-                      )}
+                    {accountCell}
+                    <td className="text">
+                      <StockCell symbol={t.symbol} name={t.name} url={stockLinkFor(t.symbol, t.currency)} />
                     </td>
                     <td>
                       <span
@@ -404,16 +427,18 @@ export function TradeListCard({
                       />
                       {t.side === 'BUY' ? '매수' : '매도'}
                     </td>
-                    <td>{t.quantity}</td>
-                    <td>{formatAmount(t.price, t.currency)}</td>
-                    <td>{t.commission === null ? '-' : formatAmount(t.commission, t.currency)}</td>
-                    <td>{t.tax === null ? '-' : formatAmount(t.tax, t.currency)}</td>
-                    <td title={`체결금액 ${formatAmount(t.amount, t.currency)}${t.commission ? ` + 수수료 ${formatAmount(t.commission, t.currency)}` : ''}${t.tax ? ` + 세금 ${formatAmount(t.tax, t.currency)}` : ''}`}>
-                      {formatAmount(netTradeAmount(t.amount, t.commission, t.tax), t.currency)}
+                    <td>
+                      {qtyFmt.format(t.quantity)}주
+                      <span className="cell-sub">× {formatAmount(t.price, t.currency)}</span>
                     </td>
                     <td>
-                      {editable ? (
-                        <div style={{ display: 'flex', gap: 4 }}>
+                      {formatAmount(netTradeAmount(t.amount, t.commission, t.tax), t.currency)}
+                      {/* 화면 금액 = 수량×단가 + 수수료 + 세금(저장값은 수량×단가 그대로 — frontend/CLAUDE.md 매매내역 절) */}
+                      {fees.length > 0 && <span className="cell-sub">{fees.join(' · ')} 포함</span>}
+                    </td>
+                    <td>
+                      {editable && (
+                        <div className="row-actions">
                           <button className="ghost" onClick={() => startEditTrade(t)}>
                             수정
                           </button>
@@ -421,8 +446,6 @@ export function TradeListCard({
                             삭제
                           </button>
                         </div>
-                      ) : (
-                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>실시간 연동</span>
                       )}
                     </td>
                   </tr>

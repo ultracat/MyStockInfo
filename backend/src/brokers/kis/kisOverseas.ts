@@ -203,7 +203,7 @@ export async function fetchKisOverseasIceRights(symbol: string, from: string, to
 export type KisOverseasPeriodRight = KisRow<'CTRGT011R', 'output'>;
 
 /** 미국 거래소 상품유형코드 — `CTRGT011R`은 `PDNO`만 주면 "조회된 자료가 없습니다"(`KIER2520`)이고 이 코드를 같이 줘야
- *  한다(2026-11-16 실측: AAPL 512, O 513, NVDY·MSTY 529 — NYSE Arca ETF가 아멕스 코드로 나온다). */
+ *  한다(2026-11-16 실측: 나스닥 종목 512, 뉴욕 513, NYSE Arca ETF 529 — Arca ETF가 아멕스 코드로 나온다). */
 export const US_PRODUCT_TYPE_CODES = ['512', '513', '529'] as const; // 나스닥 · 뉴욕 · 아멕스
 
 async function fetchKisOverseasPeriodRightsFor(

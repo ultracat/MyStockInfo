@@ -1,6 +1,6 @@
 // 대시보드(Overview.tsx) 계산 — 화면 파일에서 순수 함수로 뺐다(2026-11-17). 환율은 함수로 받는다:
 // `toKrw`(오늘/수동 환율, USD인데 환율이 없으면 null), `rateFor(month)`(배당 지급월 평균 환율, 없으면 오늘 환율 대체).
-import { findAccountLabel, formatAccountOption } from '../accountLabels';
+import { accountParts, findAccountLabel } from '../accountLabels';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { dividendKey, groupDividendsByAccountSymbol } from '../dividendMatch';
 import { formatKrwValue } from '../format';
@@ -135,10 +135,12 @@ export function holdingDetailRows(holdings: FlatHolding[], toKrw: ToKrw) {
     .sort((a, b) => b.valueKrw - a.valueKrw);
 }
 
-const accountTitle = (labels: AccountLabel[], broker: BrokerId, accountId: string | null) =>
-  `${BROKER_LABELS[broker]} · ${
-    accountId ? formatAccountOption({ id: accountId }, findAccountLabel(labels, broker, accountId)) : '계좌 미지정'
-  }`;
+/** 팝업의 계좌 행 제목 — 계좌번호를 보통 글씨(`label`)로, 증권사·별칭을 아래 작은 글씨(`sub`)로(표의 AccountCell과 같은 모양, 2026-11-20). */
+const accountTitle = (labels: AccountLabel[], broker: BrokerId, accountId: string | null): { label: string; sub: string } => {
+  if (!accountId) return { label: '계좌 미지정', sub: BROKER_LABELS[broker] };
+  const { number, label } = accountParts({ id: accountId }, findAccountLabel(labels, broker, accountId));
+  return { label: number, sub: [BROKER_LABELS[broker], label].filter(Boolean).join(' · ') };
+};
 
 /**
  * 보유종목 상세 팝업 "계좌별" — (증권사, 계좌)로 묶어 계좌마다 평가금액·매입금액·손익률과 그 아래 종목별
@@ -174,7 +176,7 @@ export function holdingAccountRows(holdings: FlatHolding[], labels: AccountLabel
       const rate = e.purchaseKrw > 0 ? (e.valueKrw - e.purchaseKrw) / e.purchaseKrw : null;
       return {
         key,
-        label: accountTitle(labels, e.broker, e.accountId),
+        ...accountTitle(labels, e.broker, e.accountId),
         valueKrw: e.valueKrw,
         meta: `${e.bySymbol.size}개 종목 · 매입 ${formatKrwValue(e.purchaseKrw)}${
           rate === null ? '' : ` · 손익 ${rate >= 0 ? '+' : ''}${(rate * 100).toFixed(2)}%`
@@ -272,7 +274,7 @@ export function accountDividendRows(dividends: DividendRecord[], labels: Account
   return Array.from(byAccount.entries())
     .map(([key, e]) => ({
       key,
-      label: accountTitle(labels, e.broker, e.accountId),
+      ...accountTitle(labels, e.broker, e.accountId),
       valueKrw: e.valueKrw,
       count: e.count,
       brokerOrder: BROKER_ORDER.indexOf(e.broker),

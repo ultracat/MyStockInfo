@@ -144,6 +144,7 @@ export function HoldingsCards({
                 symbol: r.key,
                 name: r.label,
                 label: r.label,
+                sub: r.sub,
                 valueKrw: r.valueKrw,
                 meta: r.meta,
                 details: r.details,

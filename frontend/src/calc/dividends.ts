@@ -1,5 +1,7 @@
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { krw, usdFmt } from '../format';
+import { toKrw } from '../fx';
+import { sortByText, sortByValue } from './sort';
 import type { BrokerId, DividendRecord, MonthlySummaryRow, StoredTrade, UpcomingDividend } from '../types';
 
 // 배당금 화면의 투자금 계산(순수 함수) — Dividends.tsx에서 옮겼다(2026-11-17, 테스트: frontend/test/dividends.test.ts).
@@ -309,4 +311,18 @@ export function grandTotal(
         ? `${((dividendKrwTotal / investedTotal) * 100).toFixed(2)}%`
         : '-',
   };
+}
+
+export type DividendSortKey = 'date' | 'name' | 'amount';
+
+/** 배당 기록 표 정렬(2026-11-20) — 지급일, 종목(이름 가나다), 금액(세후 — 달러는 지급월 환율로 원화 환산, 환율이 없으면 맨 뒤). */
+export function sortDividendRecords(
+  rows: DividendRecord[],
+  key: DividendSortKey,
+  asc: boolean,
+  rateFor: (month: string) => number | null
+): DividendRecord[] {
+  if (key === 'name') return sortByText(rows, (r) => r.name || r.symbol, asc);
+  if (key === 'amount') return sortByValue(rows, (r) => toKrw(r.amount, r.currency, rateFor(r.paidDate.slice(0, 7))), asc);
+  return sortByText(rows, (r) => r.paidDate, asc);
 }

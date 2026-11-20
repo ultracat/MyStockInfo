@@ -373,6 +373,23 @@ td {
    가로 스크롤이 필요해지는 폭을 키운다 — 종목코드(숫자/티커, 항상 짧음)는 그대로
    보여주고 이름만 말줄임표로 줄인다. 전체 이름은 title 툴팁으로 여전히 볼 수
    있다. 컨테이너(`.table-scroll`) 폭이 700px 밑이면 아래 컨테이너 쿼리가 더 짧게 줄인다. */
+/* 보유 종목 표의 종목 칸 아래 전체 이름(HoldingsTable.tsx) — 자르지 않고 이 폭에서 줄바꿈. */
+.cell-sub.cell-fullname {
+  max-width: 240px;
+  white-space: normal;
+}
+
+/* 표의 계좌 칸(components/AccountCell.tsx) — 위 계좌번호, 아래 작은 별칭. 줄바꿈 없이, 긴 별칭만 줄인다. */
+.cell-account {
+  display: block;
+  white-space: nowrap;
+}
+.cell-sub.cell-account {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cell-name-truncate {
   display: inline-block;
   vertical-align: bottom;
@@ -422,6 +439,72 @@ td:first-child,
 th:nth-child(2),
 td:nth-child(2) {
   text-align: left;
+}
+/* 셋째 열 이후의 글자 칸(종목·계좌 등)은 `className="text"`로 왼쪽에(2026-11-20 — 매매내역·배당 기록·실현손익의 종목이 오른쪽에 붙어 있었다). */
+th.text,
+td.text {
+  text-align: left;
+}
+
+/* 표 수정 행 — 입력칸을 한 칸 안에 위아래로 쌓는다(칸 정렬을 따라 오른쪽/왼쪽 끝에 맞춤). */
+.stack-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-end;
+}
+td.text .stack-inputs,
+td:first-child .stack-inputs,
+td:nth-child(2) .stack-inputs {
+  align-items: flex-start;
+}
+
+/* 메모 칸 — 긴 메모가 표 폭을 끌어올리지 않게 이 폭에서 줄바꿈. */
+td.cell-memo {
+  white-space: normal;
+  max-width: 200px;
+  min-width: 80px;
+  overflow-wrap: anywhere;
+}
+
+/* 키보드로 고를 수 있는 표 행(관심종목) */
+tr[tabindex]:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
+}
+
+/* 칸 첫 줄에 덧붙이는 작은 회색 글씨(보유 종목의 시장 등) */
+.cell-inline-muted {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 표 안의 긴 주소(종목 링크) — 자르지 않고 이 폭에서 줄바꿈 */
+.cell-url {
+  display: inline-block;
+  max-width: 280px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 표 행 끝의 수정·삭제 — 작은 버튼 둘을 붙여 열 폭을 줄인다. */
+.row-actions {
+  display: flex;
+  gap: 2px;
+  justify-content: flex-end;
+}
+.row-actions button {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+/* 두 번째 열이 숫자인 표(종목·월 다음 바로 금액·수량) — 위 규칙이 두 번째 열을 왼쪽에 붙여 숫자가 어긋났다(2026-11-20).
+   두 번째 열이 글자(증권사·종목 등)인 표는 그대로 두고, 숫자인 표만 `<table className="num2">`. */
+table.num2 th:nth-child(2),
+table.num2 td:nth-child(2) {
+  text-align: right;
 }
 
 th {

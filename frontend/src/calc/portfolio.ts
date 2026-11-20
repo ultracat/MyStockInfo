@@ -1,7 +1,8 @@
 // 보유종목 합산(순수 함수) — Dashboard.tsx에서 옮겼다(2026-11-17, 테스트: frontend/test/portfolio.test.ts).
-import { findAccountLabel, formatAccountOption } from '../accountLabels';
+import { accountParts, findAccountLabel } from '../accountLabels';
 import { groupDividendsByAccountSymbol } from '../dividendMatch';
 import { toKrw } from '../fx';
+import { sortByText, sortByValue } from './sort';
 import type { AccountLabel, BrokerId, DividendRecord, HoldingPosition, PortfolioOverview, StoredHolding } from '../types';
 
 /** 계좌 select의 특수값 — "이 브로커의 계좌를 전부 합쳐서 한 화면에 보여준다"는
@@ -120,7 +121,7 @@ export function mergePortfolios(
 // ---------------------------------------------------------------- 보유 종목 표 행(2026-11-17 Dashboard.tsx에서 뺐다)
 
 /**
- * 보유 종목 표의 행 — 포지션에 비중(weight), 배당 포함 손익용 배당(dividendAmount), "전체 계좌" 모드의 계좌 이름(accountLabel)을
+ * 보유 종목 표의 행 — 포지션에 비중(weight), 배당 포함 손익용 배당(dividendAmount), "전체 계좌" 모드의 계좌 표시(account — 번호와 별칭)를
  * 붙인다. 비중은 원화 기준(달러는 fxRate, 환율이 없으면 null — 조용히 틀린 숫자를 보여주지 않는다).
  *
  * 배당은 **이 계좌의 이 종목**에서 받은 것만(다른 계좌의 같은 종목은 "종목별 수익" 화면 몫). 포지션의 계좌는 "전체 계좌"
@@ -192,8 +193,8 @@ export function holdingRows(
     dividendAmount: dividendFor(p),
     weight: convertedValues[i] === null || total === 0 ? null : (convertedValues[i] as number) / total,
     // "전체 계좌" 모드(mergePortfolios가 채운 p.accountId)에서만 값이 붙는다 — HoldingsTable이 이 필드가 하나라도 있으면 "계좌" 열을 보여준다.
-    accountLabel: p.accountId
-      ? formatAccountOption({ id: p.accountId }, broker ? findAccountLabel(accountLabels, broker, p.accountId) : undefined)
+    account: p.accountId
+      ? accountParts({ id: p.accountId }, broker ? findAccountLabel(accountLabels, broker, p.accountId) : undefined)
       : undefined,
   }));
 }
@@ -211,37 +212,37 @@ export function dividendTotals(rows: { currency: string | null; dividendAmount: 
   return { krw: krwSum, usd: usdSum, unconverted };
 }
 
-export type HoldingSortKey = 'symbol' | 'purchase' | 'market' | 'profit' | 'profitWithDividend';
+export type HoldingSortKey = 'name' | 'account' | 'purchase' | 'market' | 'profit' | 'profitRate' | 'profitWithDividend';
 
-type SortableHolding = Pick<HoldingPosition, 'symbol' | 'currency' | 'purchaseAmount' | 'marketValue' | 'profitLossAmount'> & {
+type SortableHolding = Pick<
+  HoldingPosition,
+  'symbol' | 'name' | 'currency' | 'purchaseAmount' | 'marketValue' | 'profitLossAmount' | 'profitLossRate'
+> & {
   dividendAmount: number | null;
+  account?: { number: string; label?: string };
 };
 
 /**
  * 보유 종목 표 정렬 — 원화·달러 종목이 한 표에 섞이므로 금액은 원화로 환산해 비교한다(`fxRate`).
- * 환율이 없어 환산 못 한 달러 종목(배당 포함 손익은 "환율 미적용" 행도)은 순서 방향과 상관없이 맨 뒤에 둔다.
- * 값이 같으면 원래(증권사가 준) 순서를 유지한다.
+ * 환율이 없어 환산 못 한 달러 종목(배당 포함 손익은 "환율 미적용" 행도)은 순서 방향과 상관없이 맨 뒤(calc/sort.ts).
+ * 종목은 이름(없으면 코드) 가나다순, 계좌는 계좌번호 순서(같은 계좌 안에선 원래 순서).
  */
 export function sortHoldingRows<T extends SortableHolding>(rows: T[], key: HoldingSortKey, asc: boolean, fxRate: number | null): T[] {
-  const dir = asc ? 1 : -1;
-  if (key === 'symbol') return [...rows].sort((a, b) => a.symbol.localeCompare(b.symbol) * dir);
-  const valueOf = (r: T): number | null => {
-    switch (key) {
-      case 'purchase':
-        return toKrw(r.purchaseAmount, r.currency, fxRate);
-      case 'profit':
-        return toKrw(r.profitLossAmount, r.currency, fxRate);
-      case 'profitWithDividend':
-        return r.dividendAmount === null ? null : toKrw(r.profitLossAmount + r.dividendAmount, r.currency, fxRate);
-      case 'market':
-      default:
-        return toKrw(r.marketValue, r.currency, fxRate);
-    }
-  };
-  const keyed = rows.map((r) => ({ r, v: valueOf(r) }));
-  keyed.sort((a, b) => {
-    if (a.v === null || b.v === null) return a.v === null ? (b.v === null ? 0 : 1) : -1;
-    return (a.v - b.v) * dir;
-  });
-  return keyed.map((k) => k.r);
+  switch (key) {
+    case 'name':
+      return sortByText(rows, (r) => r.name || r.symbol, asc);
+    case 'account':
+      return sortByText(rows, (r) => r.account?.number, asc);
+    case 'purchase':
+      return sortByValue(rows, (r) => toKrw(r.purchaseAmount, r.currency, fxRate), asc);
+    case 'profit':
+      return sortByValue(rows, (r) => toKrw(r.profitLossAmount, r.currency, fxRate), asc);
+    case 'profitRate':
+      return sortByValue(rows, (r) => (Number.isFinite(r.profitLossRate) ? r.profitLossRate : null), asc);
+    case 'profitWithDividend':
+      return sortByValue(rows, (r) => (r.dividendAmount === null ? null : toKrw(r.profitLossAmount + r.dividendAmount, r.currency, fxRate)), asc);
+    case 'market':
+    default:
+      return sortByValue(rows, (r) => toKrw(r.marketValue, r.currency, fxRate), asc);
+  }
 }

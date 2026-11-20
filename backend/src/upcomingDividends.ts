@@ -25,9 +25,10 @@ import { withCache } from './brokers/responseCache';
 //    **보유 종목마다 종목코드로** 지난 400일~앞으로 120일을 조회한다 — 시장 전체 조회는 앞으로의 일정이 기준일 직전에야
 //    등록돼 듬성듬성했다(2026-11-10 실측: 120일 57건, 그중 27건 금액 미정, 매달 분배 ETF는 기준일 3일 전에도 없음).
 //    조회 기간은 기준일 기준이라, 기준일은 지났고 지급만 남은 건은 지급일(> 오늘)로 거른다.
-// 3) **추정(지난 일정)**: 예탁원에 아직 없는 다음 배당을 지난 일정으로 만든다 — 기준일 간격이 매달·분기·반기·연 단위로
-//    일정하면 마지막 기준일에 그 주기를 더하고, 주당 금액은 **최근 12회의 중간값**(사용자 결정 — 가끔 두 배로 나오는
-//    달이 있어 최근 1회는 튄다). 예탁원에 일정은 있는데 금액이 미정(0)인 건도 같은 중간값으로 추정한다.
+// 3) **추정(지난 일정)**: 예탁원에 아직 없는 다음 배당을 지난 일정으로 만든다 — 기준일 간격이 매주·매달·분기·반기·연 단위로
+//    일정하면 마지막 기준일에 그 주기를 더하고(매주는 7일씩), 주당 금액은 **최근 3회의 중간값**(사용자 결정 2026-11-20 — 가끔 두 배로
+//    나오는 달은 중간값이 거르고, 분배금이 한 단계 오르면 2회 뒤부터 따라간다; 예전 12회 중간값은 오른 분배금을 몇 달씩 옛 금액으로 잡았다).
+//    예탁원에 일정은 있는데 금액이 미정(0)인 건도 같은 중간값으로 추정한다.
 //    **휴일 반영**(국내휴장일조회 `CTCA0903R`, 하루 1회 저장): 기준일은 그 종목의 "매달 며칠"(지난 기준일의 일자 중간값,
 //    전부 말일 무렵이면 말일)이 휴일이면 **직전 영업일**(실측: 15일이 토요일이면 14일), 지급일은 기준일에서 지난 일정의
 //    **영업일 간격 중간값**만큼 뒤(실측: 매달 분배 ETF는 2영업일 — 설 연휴엔 달력상 7일). 휴장일 정보가 없는 날짜(과거·
@@ -36,7 +37,7 @@ import { withCache } from './brokers/responseCache';
 // 4) **해외(미국, 달러)**: 모든 증권사의 USD 보유 종목마다 두 TR을 합친다(2026-11-16 실측).
 //    - 날짜 = 해외주식 권리종합(`HHDFS78330900`, ICE) — 발표된 미래 배당의 기준일·지급일이 미리 들어온다. 금액은 없다.
 //    - 주당 금액 = 해외 기간별권리(`CTRGT011R`) — **상품유형코드(512/513/529)를 같이 줘야** 종목별로 나온다(예전엔 PDNO만 줘서
-//      "자료 없음"이었다). 배당이 기준일 무렵에야 등록돼, 발표만 된 건은 금액이 없다 → 최근 12회 중간값(추정).
+//      "자료 없음"이었다). 배당이 기준일 무렵에야 등록돼, 발표만 된 건은 금액이 없다 → 최근 3회 중간값(추정).
 //    - 둘을 예탁원 일정과 같은 모양으로 바꿔 `planSymbolDividends`에 넣는다(주기 추정까지 같은 규칙). 휴일은 NYSE 정기
 //      휴장일 규칙(`usMarketCalendar.ts`)으로 반영한다 — 임시 휴장은 모른다. 금액은 세전(미국 원천징수 15% 전).
 // 보유 수량은 로컬 보유종목 저장소(토스·KIS는 실시간 조회 때 write-through, CSV 증권사는 가져온 값) 기준이다.
@@ -130,8 +131,14 @@ function median(xs: number[]): number | null {
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
-/** 기준일 간격(일)의 중간값 → 주기(개월). 일정하지 않으면 null. */
-function cadenceMonths(gapDays: number): number | null {
+/** 주당 금액 추정에 쓰는 최근 회차 수 — 중간값이라 한 번만 튄 분배(두 배 등)는 걸러지고, 분배금이 한 단계 오르거나 내리면
+ *  2회 뒤부터 따라간다(2026-11-20 사용자 결정 — 예전 12회 중간값은 분배금이 한 단계 오른 ETF를 몇 달씩 옛 금액으로 잡아 12개월 예상이 낮았다). */
+const PER_SHARE_RECENT = 3;
+
+/** 기준일 간격(일)의 중간값 → 주기. 매주는 `'weekly'`(2026-11-20 — 주간 분배 ETF가 이번 달 뒤로 통째로 빠졌다), 그 밖은 개월 수.
+ *  일정하지 않으면 null. */
+function cadenceOf(gapDays: number): number | 'weekly' | null {
+  if (gapDays >= 6 && gapDays <= 8) return 'weekly';
   if (gapDays >= 25 && gapDays <= 35) return 1;
   if (gapDays >= 80 && gapDays <= 100) return 3;
   if (gapDays >= 170 && gapDays <= 200) return 6;
@@ -168,7 +175,7 @@ export function planSymbolDividends(
   }
   const events = [...byRecord.values()].sort((a, b) => (a.recordDate < b.recordDate ? -1 : 1));
   const known = events.filter((e) => e.perShare > 0);
-  const medianPer = median(known.slice(-12).map((e) => e.perShare));
+  const medianPer = median(known.slice(-PER_SHARE_RECENT).map((e) => e.perShare));
   const payGapRaw = median(events.filter((e) => e.payDate).map((e) => businessDaysBetween(e.recordDate, e.payDate!, cal)));
   const payGap = payGapRaw === null ? null : Math.round(payGapRaw);
   // 지급일 **당일까지** 남긴다 — 입금이 오후 늦게 되는 경우가 있어 당일 아침에 사라지면 헷갈린다(2026-11-17 사용자 요청). 다음 날 빠진다.
@@ -182,11 +189,26 @@ export function planSymbolDividends(
     else if (medianPer !== null) out.push({ status: 'projected', source: 'history', ...e, perShare: medianPer });
   }
 
-  // 예탁원에 아직 없는 다음 배당 — 주기가 일정하고(매달·분기는 3회, 반기·연은 2회 이상) 최근까지 이어진 종목만.
+  // 예탁원에 아직 없는 다음 배당 — 주기가 일정하고(매주·매달·분기는 3회, 반기·연은 2회 이상) 최근까지 이어진 종목만.
+  // 주기는 최근 12번의 간격으로 본다(매달 분배하다 매주로 바꾼 ETF가 실제로 있다).
+  const recentKnown = known.slice(-13);
   const step = medianPer !== null && known.length >= 2
-    ? cadenceMonths(median(known.slice(1).map((e, i) => daysBetween(known[i].recordDate, e.recordDate)))!)
+    ? cadenceOf(median(recentKnown.slice(1).map((e, i) => daysBetween(recentKnown[i].recordDate, e.recordDate)))!)
     : null;
-  if (step !== null && (step >= 6 || known.length >= 3) && events.length) {
+  if (step === 'weekly') {
+    if (known.length >= 3 && events.length) {
+      // 매주 — 마지막 기준일(금액 미정 일정 포함)에서 7일씩. 휴일이면 직전 영업일(같은 주 안), 다음 주는 원래 요일에서 다시 센다.
+      const last = events[events.length - 1].recordDate;
+      if (last >= addDays(today, -21)) {
+        for (let k = 1; k <= 60; k++) {
+          const recordDate = previousBusinessDay(addDays(last, 7 * k), cal);
+          if (recordDate > until) break;
+          const payDate = payGap !== null ? addBusinessDays(recordDate, payGap, cal) : null;
+          if (upcoming(recordDate, payDate)) out.push({ status: 'projected', source: 'history', recordDate, payDate, perShare: medianPer! });
+        }
+      }
+    }
+  } else if (step !== null && (step >= 6 || known.length >= 3) && events.length) {
     const last = events[events.length - 1].recordDate; // 금액 미정 일정까지 포함한 마지막 기준일
     // "매달 며칠" — 휴일로 앞당겨진 날이 섞여도 중간값은 원래 일자. 최근 기준일이 전부 말일 3일 안이면 말일 기준.
     const recent = known.slice(-12).map((e) => e.recordDate);

@@ -6,6 +6,7 @@ import type { FlatHolding } from '../../calc/overview';
 import { krw, formatSignedKrw } from '../../format';
 import type { StoredTrade } from '../../types';
 import Hint from '../../components/Hint';
+import StockCell from '../../components/StockCell';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 // 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
@@ -73,7 +74,7 @@ export function FxEffectCard({ holdings, trades, currentFx }: { holdings: FlatHo
                 </div>
               </div>
               <div className="table-scroll">
-                <table>
+                <table className="num2">
                   <thead>
                     <tr>
                       <th style={{ textAlign: 'left' }}>종목</th>
@@ -87,9 +88,7 @@ export function FxEffectCard({ holdings, trades, currentFx }: { holdings: FlatHo
                     {result.rows.map((r) => (
                       <tr key={r.symbol}>
                         <td style={{ textAlign: 'left' }}>
-                          <span className="upcoming-cell-truncate" title={`${r.name} ${r.symbol}`}>
-                            {r.name} <span style={{ color: 'var(--text-muted)' }}>{r.symbol}</span>
-                          </span>
+                          <StockCell symbol={r.symbol} name={r.name} url={null} />
                         </td>
                         <td>{krw.format(Math.round(r.purchaseFx))}원</td>
                         <td className={signClass(r.priceEffectKrw)}>{signedWon(r.priceEffectKrw)}</td>
@@ -170,7 +169,7 @@ export function LookThroughCard({ holdings, toKrw }: { holdings: FlatHolding[]; 
                 펼친 ETF {etfCount}개 · ETF 기타 {won(result.etfOtherKrw)} ({result.totalKrw > 0 ? ((result.etfOtherKrw / result.totalKrw) * 100).toFixed(1) : '0'}%)
               </p>
               <div className="table-scroll">
-                <table>
+                <table className="num2">
                   <thead>
                     <tr>
                       <th style={{ textAlign: 'left' }}>종목</th>
@@ -184,9 +183,7 @@ export function LookThroughCard({ holdings, toKrw }: { holdings: FlatHolding[]; 
                     {result.rows.slice(0, 20).map((r) => (
                       <tr key={r.symbol}>
                         <td style={{ textAlign: 'left' }}>
-                          <span className="upcoming-cell-truncate" title={`${r.name} ${r.symbol}${r.etfs.length ? ` — ETF ${r.etfs.join(', ')}` : ''}`}>
-                            {r.name} <span style={{ color: 'var(--text-muted)' }}>{r.symbol}</span>
-                          </span>
+                          <StockCell symbol={r.symbol} name={r.name} url={null} />
                         </td>
                         <td>{r.directKrw ? won(r.directKrw) : '-'}</td>
                         <td>{r.viaEtfKrw ? `${won(r.viaEtfKrw)} (${r.etfs.length}개)` : '-'}</td>

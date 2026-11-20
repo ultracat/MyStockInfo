@@ -10,6 +10,8 @@ export interface DonutDetailRow {
   /** 지정하면 "이름 (심볼)" 대신 이 텍스트를 제목 줄에 쓴다 — 계좌처럼 심볼이
    *  없는 행용(심볼 자리는 React key로만 쓰인다). */
   label?: string;
+  /** `label` 아래 작은 글씨(계좌 행의 증권사·별칭). */
+  sub?: string;
   /** 행 아래에 작게 펼쳐 보여줄 내역(계좌별 보기의 종목별 금액 등). */
   details?: { label: string; valueKrw: number }[];
 }
@@ -98,7 +100,13 @@ export default function DonutDetailModal({
           <div style={{ display: 'flex', flexDirection: 'column' }}>
             {shownRows.map((r) => (
               <div key={r.symbol} style={{ padding: '10px 0', borderBottom: '1px solid var(--gridline)' }}>
-                <div>{r.label ?? `${r.name} (${r.symbol})`}</div>
+                {/* 종목은 코드(보통 글씨) + 전체 이름(작은 글씨), 계좌는 번호 + 증권사·별칭 — 표의 StockCell·AccountCell과 같은 모양(2026-11-20). */}
+                <div>
+                  {r.label ?? r.symbol}
+                  {(r.label ? r.sub : r.name !== r.symbol ? r.name : null) && (
+                    <span className="cell-sub">{r.label ? r.sub : r.name}</span>
+                  )}
+                </div>
                 <div
                   style={{
                     display: 'flex',

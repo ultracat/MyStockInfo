@@ -8,6 +8,7 @@ import { API_BROKER_IDS } from '../brokers';
 import StockNameLink, { useStockLinkResolver } from '../components/StockNameLink';
 import { formatKrwValue, formatSignedKrw, qtyFmt } from '../format';
 import Hint from '../components/Hint';
+import SortButton from '../components/SortButton';
 
 /** 전체 브로커/계좌의 보유종목 한 줄 — 종목별로 합치기 전의 원본(통화 기준 금액). */
 interface FlatHolding {
@@ -36,7 +37,7 @@ interface SymbolRow {
   unconverted: boolean;
 }
 
-type SortKey = 'market' | 'purchase' | 'dividend' | 'totalReturn' | 'symbol';
+type SortKey = 'market' | 'purchase' | 'valuation' | 'dividend' | 'totalReturn' | 'symbol';
 
 function formatRate(rate: number | null) {
   if (rate === null) return '-';
@@ -269,6 +270,8 @@ export default function StockReturns() {
           return a.symbol.localeCompare(b.symbol) * dir;
         case 'purchase':
           return (a.purchaseKrw - b.purchaseKrw) * dir;
+        case 'valuation':
+          return (a.marketKrw - a.purchaseKrw - (b.marketKrw - b.purchaseKrw)) * dir;
         case 'dividend':
           return (a.dividendKrw - b.dividendKrw) * dir;
         case 'totalReturn':
@@ -314,23 +317,17 @@ export default function StockReturns() {
   );
 
   function sortButton(key: SortKey, label: string) {
-    const active = sortKey === key;
     return (
-      <button
-        className="ghost"
-        style={{ padding: 0, font: 'inherit', color: active ? 'var(--text)' : undefined }}
-        onClick={() => {
-          if (active) setSortAsc((v) => !v);
-          else {
-            setSortKey(key);
-            setSortAsc(false);
-          }
+      <SortButton
+        sortKey={key}
+        label={label}
+        current={sortKey}
+        asc={sortAsc}
+        onChange={(k, asc) => {
+          setSortKey(k);
+          setSortAsc(asc);
         }}
-        title="정렬 기준 변경"
-      >
-        {label}
-        {active ? (sortAsc ? ' ▲' : ' ▼') : ''}
-      </button>
+      />
     );
   }
 
@@ -423,7 +420,7 @@ export default function StockReturns() {
                       <th>수량</th>
                       <th>{sortButton('purchase', '투자금')}</th>
                       <th>{sortButton('market', '현재평가금')}</th>
-                      <th title="위: 평가손익, 아래: 손익률">평가손익</th>
+                      <th title="위: 평가손익, 아래: 손익률">{sortButton('valuation', '평가손익')}</th>
                       <th title="위: 누적배당금, 아래: 투자금 대비 배당수익률">{sortButton('dividend', '누적배당금')}</th>
                       <th title="위: 평가손익 + 배당, 아래: 총 수익률">{sortButton('totalReturn', '총 수익')}</th>
                     </tr>

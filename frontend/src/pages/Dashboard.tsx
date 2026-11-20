@@ -322,7 +322,7 @@ export default function Dashboard() {
           )}
 
           <div className="card">
-            <HoldingsTable rows={rows} />
+            <HoldingsTable rows={rows} fxRate={effectiveFxRate} />
           </div>
         </>
       )}

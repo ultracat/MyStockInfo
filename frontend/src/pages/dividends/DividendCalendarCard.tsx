@@ -4,6 +4,7 @@ import { BROKER_LABELS } from '../../brokers';
 import { calendarEntries, calendarGrid, shiftMonth, type CalendarEntry } from '../../calc/projection';
 import { krw, localToday, usdFmt } from '../../format';
 import type { BrokerId, DividendRecord, UpcomingDividend } from '../../types';
+import StockCell from '../../components/StockCell';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const money = (e: Pick<CalendarEntry, 'currency' | 'net'>) => (e.currency === 'USD' ? usdFmt.format(e.net) : `${krw.format(e.net)}원`);
@@ -107,7 +108,7 @@ export function DividendCalendarCard({ records, upcomingItems }: { records: Divi
                       </td>
                       <td style={{ textAlign: 'left' }}>{BROKER_LABELS[e.broker as BrokerId] ?? e.broker}</td>
                       <td style={{ textAlign: 'left' }}>
-                        {e.name} <span style={{ color: 'var(--text-muted)' }}>{e.symbol}</span>
+                        <StockCell symbol={e.symbol} name={e.name} url={null} />
                       </td>
                       <td>{money(e)}</td>
                     </tr>

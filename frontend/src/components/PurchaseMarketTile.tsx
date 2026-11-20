@@ -5,6 +5,8 @@ const SMALL_LINE = { fontSize: 12, fontWeight: 400 as const, color: 'var(--text-
 
 interface Amount {
   krw: number;
+  /** 값 아래 작은 글씨 한 줄(대시보드의 "매입 대비 +12.34%" 등) — 없으면 안 그린다. */
+  note?: string;
   /** 달러 보유분 — `hasUsd`일 때만 쓴다. */
   usd?: number | null;
 }
@@ -42,6 +44,7 @@ export default function PurchaseMarketTile({
             {[a.krw !== 0 && formatKrw(a.krw), usd !== 0 && usdFmt.format(usd)].filter(Boolean).join(' · ')}
           </div>
         )}
+        {a.note && <div style={SMALL_LINE}>{a.note}</div>}
       </div>
     );
   }

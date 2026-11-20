@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { YearEndTaxCard } from './realized/YearEndTaxCard';
+import { SalesTable } from './realized/SalesTable';
 import { effectiveRate, monthlyRateOr } from '../fx';
 import { loadUsdKrwRates } from '../fxLoader';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredHolding, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
-import { accountLabelKey, findAccountLabel, formatAccountOption } from '../accountLabels';
-import { formatKrwValue, localToday, qtyFmt } from '../format';
+import { accountLabelKey } from '../accountLabels';
+import { formatKrwValue, localToday } from '../format';
 import { usePlanner } from '../usePlanner';
 import { TaxAccountLimitsCard } from './realized/TaxAccountLimitsCard';
 import OfficialRealizedCompare from '../components/OfficialRealizedCompare';
@@ -285,72 +286,13 @@ export default function RealizedGains() {
   }, [taxTypes, allTrades, monthlyRateFor]);
   const isGeneralAccount = useCallback((b: string, accountId: string) => taxTypeFor(b as BrokerId, accountId) === 'GENERAL', [taxTypeFor]);
 
-  function accountDisplay(b: BrokerId, accountId: string): string {
-    return formatAccountOption({ id: accountId }, findAccountLabel(accountLabels, b, accountId));
-  }
-
   // 특정 증권사를 골랐으면 모든 행이 같은 값이라 증권사/계좌 컬럼 자체가
   // 불필요하다 — Trades.tsx의 "전체" 모드에서만 증권사/계좌 컬럼을 보여주는
   // 기존 패턴과 동일. 계좌정보 + 종목명 때문에 나머지(수량/금액/손익) 숫자를
   // 보려고 매번 가로 스크롤해야 한다는 피드백으로 추가했다.
   const isAllMode = broker === 'ALL';
 
-  function renderSalesTable(rows: RealizedSale[]) {
-    return (
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>일자</th>
-              {isAllMode && <th>증권사 · 계좌</th>}
-              <th>종목</th>
-              <th>수량</th>
-              <th>매도금액</th>
-              <th>취득금액</th>
-              <th title="위: 손익, 아래: 수익률">손익</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((s, idx) => (
-              <tr key={`${s.broker}:${s.accountId}:${s.symbol}:${s.date}:${idx}`}>
-                <td>{s.date}</td>
-                {isAllMode && (
-                  <td>
-                    {BROKER_LABELS[s.broker]}
-                    <span className="cell-sub cell-name-truncate" style={{ display: 'block' }} title={accountDisplay(s.broker, s.accountId)}>
-                      {accountDisplay(s.broker, s.accountId)}
-                    </span>
-                  </td>
-                )}
-                <td>
-                  {s.name ? (
-                    <>
-                      <span className="cell-name-truncate" title={s.name}>
-                        {s.name}
-                      </span>{' '}
-                      <span style={{ color: 'var(--text-muted)' }}>({s.symbol})</span>
-                    </>
-                  ) : (
-                    s.symbol
-                  )}
-                </td>
-                <td>{qtyFmt.format(s.quantity)}</td>
-                <td>{formatKrwValue(s.proceedsKrw)}</td>
-                <td>{formatKrwValue(s.costKrw)}</td>
-                <td className={s.gainKrw >= 0 ? 'text-good' : 'text-critical'}>
-                  {s.gainKrw >= 0 ? '+' : ''}
-                  {formatKrwValue(s.gainKrw)}
-                  <span className="cell-sub">
-                    {s.costKrw > 0 ? `${s.gainKrw >= 0 ? '+' : ''}${((s.gainKrw / s.costKrw) * 100).toFixed(2)}%` : '-'}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
+  const renderSalesTable = (rows: RealizedSale[]) => <SalesTable rows={rows} showAccount={isAllMode} accountLabels={accountLabels} />;
 
   if (loading) return <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>;
 
@@ -455,7 +397,7 @@ export default function RealizedGains() {
         <div className="card">
           <h3 style={{ marginTop: 0 }}>국내 상장 종목 매도 (22% 대상 아님)</h3>
           <Hint>
-            위 양도소득세 계산에 포함되지 않습니다. 국내 주식·국내 주식형 ETF(예: KODEX 코스피100)의
+            위 양도소득세 계산에 포함되지 않습니다. 국내 주식·국내 주식형 ETF(예: 코스피200 추종 ETF)의
             매매차익은 대주주가 아니면 <strong>비과세</strong>이고, 국내 상장 해외·기타 ETF(예: 미국 지수
             추종 ETF, 커버드콜 ETF)의 매매차익은 매도할 때 <strong>배당소득으로 15.4% 원천징수</strong>돼
             이미 과세가 끝납니다(아래 금융소득종합과세 기준에도 합산됨). 종목별 구분은 이 화면이 판단하지

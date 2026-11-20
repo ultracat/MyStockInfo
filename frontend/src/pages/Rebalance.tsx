@@ -6,6 +6,7 @@ import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import { usePlanner } from '../usePlanner';
 import type { TargetWeight } from '../types';
 import Hint from '../components/Hint';
+import StockCell from '../components/StockCell';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 // 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
@@ -160,15 +161,16 @@ export default function Rebalance() {
               <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>환율을 못 구해 뺀 달러 종목: {result.unconverted.join(', ')}</p>
             )}
             <div className="table-scroll">
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th style={{ textAlign: 'left' }}>종목</th>
                     <th>평가금액</th>
                     <th>현재 비중</th>
                     <th>목표 비중(%)</th>
-                    <th>맞추려면</th>
-                    <th>대략 수량</th>
+                    <th>
+                      맞추려면<span className="cell-sub">대략 수량</span>
+                    </th>
                     <th>추가 투자금 배분</th>
                   </tr>
                 </thead>
@@ -176,9 +178,7 @@ export default function Rebalance() {
                   {shownRows.map((r) => (
                     <tr key={r.symbol}>
                       <td style={{ textAlign: 'left' }}>
-                        <span className="upcoming-cell-truncate" title={`${r.name} ${r.symbol}`}>
-                          {r.name} <span style={{ color: 'var(--text-muted)' }}>{r.symbol}</span>
-                        </span>
+                        <StockCell symbol={r.symbol} name={r.name} url={null} />
                       </td>
                       <td>{won(r.valueKrw)}</td>
                       <td>{r.currentPct.toFixed(1)}%</td>
@@ -195,14 +195,16 @@ export default function Rebalance() {
                       {/* 매수·매도는 좋고 나쁨이 아니라 상태 색(--good/--critical)을 쓰지 않는다(frontend/CLAUDE.md TradesChart와 같은 규칙). */}
                       <td style={{ color: r.targetPct === null ? 'var(--text-muted)' : undefined }}>
                         {r.targetPct === null ? '유지' : Math.abs(r.diffKrw) < 1 ? '맞음' : `${r.diffKrw > 0 ? '매수' : '매도'} ${signedWon(r.diffKrw)}`}
+                        {r.targetPct !== null && r.diffShares !== null && Math.abs(r.diffKrw) >= 1 && (
+                          <span className="cell-sub">{`${r.diffShares > 0 ? '+' : ''}${r.diffShares.toFixed(r.diffShares % 1 === 0 ? 0 : 2)}주`}</span>
+                        )}
                       </td>
-                      <td>{r.targetPct === null || r.diffShares === null ? '-' : `${r.diffShares > 0 ? '+' : ''}${r.diffShares.toFixed(r.diffShares % 1 === 0 ? 0 : 2)}주`}</td>
                       <td>{r.buyOnlyKrw > 0 ? won(r.buyOnlyKrw) : '-'}</td>
                     </tr>
                   ))}
                   {smallCount > 0 && (
                     <tr className="group-toggle-row">
-                      <td colSpan={7} style={{ textAlign: 'left' }}>
+                      <td colSpan={6} style={{ textAlign: 'left' }}>
                         <button type="button" className="ghost" onClick={() => setShowSmall((v) => !v)}>
                           {showSmall ? `▾ 비중 ${SMALL_PCT}% 미만 ${smallCount}종목 접기` : `▸ 목표 없는 비중 ${SMALL_PCT}% 미만 ${smallCount}종목 펼치기`}
                         </button>
@@ -210,6 +212,32 @@ export default function Rebalance() {
                     </tr>
                   )}
                 </tbody>
+                {/* 합계 줄(2026-11-20) — 접힌 작은 종목까지 전부. 매수·매도는 따로 더한다(상쇄하면 얼마를 사고팔아야 하는지 안 보인다). */}
+                <tfoot>
+                  <tr>
+                    <td style={{ fontWeight: 600, textAlign: 'left' }}>합계 ({result.rows.length}종목)</td>
+                    <td style={{ fontWeight: 600 }}>{won(result.rows.reduce((a, r) => a + r.valueKrw, 0))}</td>
+                    <td>100%</td>
+                    <td>{draftTargets.length > 0 ? `${result.targetSum.toFixed(1)}%` : '-'}</td>
+                    <td>
+                      {(() => {
+                        const buy = result.rows.reduce((a, r) => a + (r.targetPct !== null && r.diffKrw > 0 ? r.diffKrw : 0), 0);
+                        const sell = result.rows.reduce((a, r) => a + (r.targetPct !== null && r.diffKrw < 0 ? -r.diffKrw : 0), 0);
+                        if (buy < 1 && sell < 1) return '-';
+                        return (
+                          <>
+                            매수 {won(buy)}
+                            <span className="cell-sub">매도 {won(sell)}</span>
+                          </>
+                        );
+                      })()}
+                    </td>
+                    <td>{(() => {
+                      const extra = result.rows.reduce((a, r) => a + r.buyOnlyKrw, 0);
+                      return extra > 0 ? won(extra) : '-';
+                    })()}</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </>

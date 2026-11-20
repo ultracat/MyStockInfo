@@ -67,8 +67,10 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/components/CollapseToggle.tsx` — 카드 헤더 우측 접기/펼치기 토글(공용, 처음엔
   Dividends.tsx 안에 있다가 Trades.tsx도 필요해져서 공용 컴포넌트로 뺌).
 - `src/components/HoldingsTable.tsx`, `DividendsChart.tsx` — 표시 전용 컴포넌트. **표 열 정렬**(2026-11-20): `HoldingsTable`(보유 종목)과
-  종목별 수익 표가 같은 `components/SortButton.tsx`를 쓴다(누르면 큰 순서 ▼, 다시 누르면 ▲, 비활성 열은 흐린 ↕). 보유 종목은 정렬 상태를 표 안에 두고
-  (기본 평가금액 큰 순서) `calc/portfolio.ts`의 `sortHoldingRows`로 원화·달러를 `fxRate`로 환산해 비교한다 — 환산 못 한 행은 방향과 상관없이 맨 뒤.
+  종목별 수익 표가 같은 `components/SortButton.tsx`를 쓴다(아래 "화면 UX 정리" 절). 보유 종목의 정렬 상태는 **Dashboard.tsx가 든다**(`holdingSort`) —
+  증권사를 바꾸면 `portfolio`가 null이 돼 표가 언마운트됐다 다시 생겨서, 표 안의 state로는 고른 정렬이 초기화됐다. 비교는 `calc/portfolio.ts`의 `sortHoldingRows`
+  (원화·달러를 `fxRate`로 환산). 행의 `account`는 `accountParts`로 나눈 `{number, label}` — "전체 계좌" 모드에서만 있다.
+  종목 칸은 `StockCell`(아래 "화면 UX 정리" 절). 정렬 "종목"은 여전히 이름 가나다순.
   `DividendsChart`의 `fxRate` prop은 고정 숫자(`number|null`)뿐 아니라
   `(month: string) => number|null` 형태의 함수도 받는다 — Dividends.tsx/
   Overview.tsx 둘 다 이제 함수를 넘겨서, 막대 하나(= 한 달)마다 그 달의
@@ -247,8 +249,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   브로커) + **API 브로커(토스/KIS)의 실시간 계좌 목록**(자격증명이 설정된
   경우만, `listAccounts`)까지 전부의 합집합이다(`refreshAccounts()`) — 별칭은
   CSV 전용 브로커 전제라 API 브로커 계좌엔 거의 안 쓰지만, 세금 유형은
-  **API 브로커 계좌에도 똑같이 필요하다**(실사용자의 한국투자증권 ISA 계좌가
-  실제 사례라 이 목록에 API 브로커를 추가하게 됐다). 데이터가 없어도 "새 계좌
+  **API 브로커 계좌에도 똑같이 필요하다**(API 증권사에도 ISA 계좌가 있어
+  이 목록에 API 브로커를 추가하게 됐다). 데이터가 없어도 "새 계좌
   등록" 폼으로 라벨만 미리 등록해둘 수 있고(사용자가 실제로 이렇게 씀 — 계좌부터
   이름 붙이고 나중에 CSV로 채움), 반대로 라벨이 없어도 실제 데이터가 있으면
   목록에 뜬다. 세금 유형은 "세금 유형" 열의 `<select>`(`taxTypeFor`/
@@ -395,8 +397,29 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - **설명 문단은 `components/Hint.tsx`**(한 줄 + "자세히", 인쇄 땐 전부) — `<p style={{color:muted,fontSize:13}}>` 긴 문단을 새로 쓰지 말 것. 화면 맨 위 단독 안내는 `<Hint card>`.
 - **CSV·Google Sheets 같은 버튼 묶음은 `components/ActionMenu.tsx`**(`<details>` 메뉴, 버튼을 누르면 닫힘, 바깥 클릭·Esc). 결과 문구는 메뉴 **밖**에(닫히면 안 보임).
   패널은 `position:absolute`라 줌 포털 불필요. 줄 왼쪽에 놓이면 `align="left"`.
-- **표 열 정렬은 `components/SortButton.tsx`**(2026-11-20 — 보유 종목·종목별 수익). 정렬 상태는 표(또는 화면)가 들고, 통화가 섞인 표는 원화로 환산해 비교하고 환산 못 한 행은
-  방향과 상관없이 맨 뒤(`calc/portfolio.ts`의 `sortHoldingRows` — null을 0으로 치면 오름·내림에서 위치가 뒤바뀐다).
+- **표 열 정렬은 `components/SortButton.tsx`**(2026-11-20 — 보유 종목·종목별 수익). 금액 열은 처음 ▼, 글자 열(`text`)은 ▲(가나다), 비활성 열은 흐린 ↕.
+  금액·비율이 한 칸인 열은 `small` 버튼을 제목 아래에 하나 더(손익률 등 — 칸 모양과 같은 위/아래). `<th aria-sort={ariaSort(...)}>`를 같이 단다.
+  비교는 `calc/sort.ts`의 `sortByValue`/`sortByText`(테스트 `frontend/test/sort.test.ts`) — **값이 없는 행(환율 미적용·비율 없음)은 방향과 상관없이 맨 뒤**
+  (null을 0으로 치면 오름·내림에서 위치가 뒤바뀐다), 글자는 `Intl.Collator('ko', { numeric: true })`(한글이 영문보다 앞). 화면별 키는 `calc/portfolio.ts`의
+  `sortHoldingRows`·`calc/stockReturns.ts`의 `sortStockReturnRows`. **정렬 상태는 표가 언마운트되지 않는 쪽에 둔다**(보유 종목 — 위 HoldingsTable 절).
+- **표 정렬·정돈 규칙(2026-11-20 표 점검)** — 새 표도 이걸 따른다.
+  - `td`/`th` 기본은 오른쪽 정렬, 첫 두 열만 왼쪽(`styles.css`). **두 번째 열이 숫자면 `<table className="num2">`**, 셋째 열 이후의 글자 칸(종목·메모)은 `className="text"`.
+  - 두 번째 값은 칸을 늘리지 말고 `cell-sub`(수수료·세금·취득금액·기준일·대략 수량·시장 등). 칸 첫 줄의 작은 회색 덧말은 `.cell-inline-muted`.
+  - 수정 행은 같은 칸 배치에 입력칸을 `.stack-inputs`로 쌓고, 행 끝 버튼은 `.row-actions`(작은 버튼). 고칠 수 없는 행엔 버튼을 그리지 않고 이유는 표 위 `Hint`에.
+  - 긴 메모는 `td.cell-memo`(200px에서 줄바꿈), 긴 주소는 `.cell-url`. **정보를 `title`에만 두지 않는다**(Electron에서 안 뜸).
+  - 열 이름: 매입금액·평가금액·평가손익·손익률(실현손익만 세법 용어 "취득금액"). 비율은 `format.ts`의 `formatRatePct`(소수 둘째 자리, 손익은 부호).
+  - 정렬 함수는 `calc/`에(`sortTrades`·`sortDividendRecords`·`sortRealizedSales`·`sortWatchRows`, 테스트 `frontend/test/sort.test.ts`), 페이지가 있는 표는 정렬을 바꾸면 1쪽으로.
+    실현손익 매도 표는 `pages/realized/SalesTable.tsx`(해외·국내·세제혜택 세 곳 공용, 합계 줄 포함).
+- **표의 종목 칸은 `components/StockCell.tsx`**(2026-11-20, 사용자 요청) — 종목코드 보통 글씨(`url`이 있으면 종목 링크) + 전체 이름 `cell-sub cell-fullname`(240px에서
+  **줄바꿈, 자르지 않는다** — 예전엔 "이름 (코드)" 한 줄에 `cell-name-truncate`/`upcoming-cell-truncate`로 잘렸다). `children`은 코드 뒤 첫 줄(메모·배지·"보유 없음").
+  표 거의 전부가 쓴다(보유 종목·종목별 수익·배당 목록(종목코드·종목명 두 열을 한 열로, 수정 행은 입력칸 두 개를 세로로)·매매내역·실현손익·관심종목·종목 링크·리밸런싱·
+  보고서·분석 변동성·연말 절세·배당 달력·배당수익률·다가오는 배당·환율 효과·ETF 겹침·ETF 구성·공식 실현손익 대조). 대시보드 상세 팝업(`DonutDetailModal`)도 같은 모양 —
+  종목 행은 코드 + 이름, 계좌 행은 `label`(번호) + `sub`(증권사·별칭, calc/overview.ts `accountTitle`). 안 바꾼 곳: 빠른 검색 목록·제목, 적립식 카드 제목, 상관계수 표 머리(짧은 이름),
+  도넛 범례, 팝업 계좌 행 아래 종목 내역 줄(이미 작은 한 줄).
+- **표의 계좌 칸은 `components/AccountCell.tsx`**(2026-11-20, 사용자 제안) — 계좌번호 보통 글씨 + 별칭 `cell-sub`(긴 별칭은 180px에서 줄임, `.cell-account`).
+  "증권사 · 계좌" 한 칸이면 `sub`로 증권사를 별칭 앞에. 조각은 `accountLabels.ts`의 `accountParts`, select 옵션처럼 한 줄인 곳은 그대로 `formatAccountOption`.
+  쓰는 곳: 보유 종목(전체 계좌)·매매내역(전체)·배당 기록 목록(표시용 번호로 적힌 배당도 `resolveDividendAccountId`로 별칭을 찾음 — 예전엔 별칭만 보였다)·
+  실현손익(전체)·다가오는 배당·ISA·연금 한도. 대시보드 상세 팝업의 계좌 행 제목은 한 줄 그대로.
 - **긴 화면 바로가기 `components/SectionNav.tsx`** + 카드 앞 `<div id=… className="section-anchor" />`(배당금·실현손익·설정).
 - **차트 폭은 `useContainerWidth()`(콜백 ref + ResizeObserver)** — 예전엔 480px 고정이라 넓은 카드의 절반만 썼다. ⚠ 콜백 ref인 이유: 차트가 데이터 없을 땐 상자 없이
   안내만 그리다 나중에 상자를 그려서, useRef + 마운트 effect는 상자를 놓쳤다(순자산 추이가 계속 480px). 숨긴 화면(폭 0)이면 직전 값을 둔다. 막대가 30px보다 가늘면
@@ -527,8 +550,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   `isKbSyncable`이면 수동 "새로고침" 버튼도 같이 뜬다(Toss/KIS의 자동 60초 폴링은
   KB엔 없음 — kbSync.ts 절 참고).
   **`userPickedAccountRef`(계좌를 처음 볼 때 연동 계좌를 기본 선택으로 강제)**:
-  KB는 종합위탁계좌/IRP/연금저축처럼 계좌가 실제로 여러 개일 수 있는데(예:
-  "신연금저축"/"개인형 IRP 퇴직연금"/"종합위탁계좌" 셋 다 로컬 저장소에 있음),
+  KB는 종합위탁계좌/IRP/연금저축처럼 계좌가 여러 개일 수 있는데(셋 다 로컬
+  저장소에 있는 경우),
   그중 실시간 연동된 건 하나뿐이다. 위 두 effect(로컬 저장소에서 계좌 목록을
   받아오는 effect와 `kbLink.linkedAccountId`를 합쳐 넣는 effect)는 서로 독립된
   비동기라 어느 쪽이 먼저 끝나는지가 매번 다른데, 로컬 저장소 effect가 먼저
@@ -595,7 +618,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   조회/동기화/가져오기를 안 한 계좌의 과거 매수는 안 잡힐 수 있다(다른 화면의
   "전체" 모드와 같은 한계).
   **상단 카드**: 총 매입/평가는 `PurchaseMarketTile` 한 카드, 손익은 "배당 제외"/"배당
-  포함" 두 카드. 배당 포함 값(`heldDividends`)은 **지금 보유 중인 (증권사, 계좌, 종목)**에
+  포함" 두 카드. 금액 아래 작은 %(2026-11-20 사용자 요청)는 전부 **총 매입금액 대비**(`format.ts`의 `ratioOf`·`formatRatePct`) — 평가금액은 `PurchaseMarketTile`의
+  `note`, 연간 배당은 지금 투자금 대비라 지난 연도를 고르면 그해 실제 수익률과 다르다(매뉴얼에 적음). 배당 포함 값(`heldDividends`)은 **지금 보유 중인 (증권사, 계좌, 종목)**에
   그 계좌의 그 종목 배당만 더한다 — 보유 종목 화면과 같은 `dividendMatch.ts` 규칙이라
   증권사별 보유 종목 화면의 "배당 포함" 값을 다 더하면 이 값이 된다(달러 배당 환산만
   다름: 여기는 지급월 평균 환율, 보유 종목 화면은 포지션 통화 그대로). 전량 매도한
@@ -877,8 +901,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   250만원 → 22%`)은 매년 바뀔 수 있는 세법 수치라 "참고용"이라고 항상 같이
   표시한다 — 개인 세무 자문으로 오인되지 않도록, 계산 근거와 한계를 화면에
   그대로 드러내는 선에서 그친다. **ISA/연금저축/IRP 계좌는 이 22% 계산에서
-  제외한다** — 실사용자가 한국투자증권 ISA 계좌(12345678-01)와 KB증권
-  연금저축/IRP 계좌 둘을 갖고 있어서, 섞어서 계산하면 틀린 숫자가 나온다는
+  제외한다** — ISA·연금 계좌의 매도를 일반 계좌와 섞어 계산하면 틀린 숫자가 나온다는
   피드백으로 추가했다(`backend/CLAUDE.md`의 "계좌별 세금 유형" 절 참고).
   **이 화면엔 세금 유형을 고치는 UI가 없다** — `api.listAccountTaxTypes()`로
   읽기만 하고(`taxTypeByAccount`/`taxTypeFor`), 분류 자체는 `Settings.tsx`의
@@ -928,7 +951,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
   입력 링크를 한 번 읽어 `(symbol, currency) → url`을 돌려줌)를 쓴다 — 새 화면에
   종목명 링크를 붙일 땐 이 둘만 쓰면 된다. `<a target="_blank">`는 Electron에선
   `setWindowOpenHandler`가 시스템 브라우저로 넘기고, 링크 클릭은 행 클릭으로 번지지
-  않게 막는다(관심종목 표는 행을 누르면 상세가 열려서). 상장폐지 종목(예: 028080 휴맥스홀딩스)은 국내 규칙상 링크가
+  않게 막는다(관심종목 표는 행을 누르면 상세가 열려서). 상장폐지 종목은 국내 규칙상 링크가
   만들어지지만 토스에 페이지가 없으니 "링크 없음"으로 저장하면 된다.
   **표 모양(2026-11-18)**: 링크가 있는 행은 주소를 짧은 글자(`https://www.` 뗌)로 보이고 "수정"(`editing` Set)을 눌러야 입력칸이 된다 —
   수십 줄이 전부 입력칸이라 빽빽하고 오른쪽 버튼이 잘렸다. "저장"은 고칠 때만 보인다.

@@ -313,6 +313,7 @@ export default function Dividends() {
         accountLabels={accountLabels}
         sync={sync}
         refresh={refresh}
+        fxRateFor={dividendFxRateFor}
       />
     </div>
   );

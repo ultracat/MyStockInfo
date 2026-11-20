@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { BenchmarkRow, CostYear, Diversification, RiskSummary, Breakdown } from '../../calc/analysis';
 import { krw } from '../../format';
 import Hint from '../../components/Hint';
+import StockCell from '../../components/StockCell';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 const pct = (v: number | null, digits = 1) => (v === null ? '-' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(digits)}%`);
@@ -41,7 +42,7 @@ export function BenchmarkCard({ rows, benchKeys }: { rows: BenchmarkRow[]; bench
         <p style={{ color: 'var(--text-muted)' }}>비교할 월간 수익률이 아직 없습니다(매매내역·월별 종가 필요).</p>
       ) : (
         <div className="table-scroll">
-          <table>
+          <table className="num2">
             <thead>
               <tr>
                 <th style={{ textAlign: 'left' }}>기간</th>
@@ -118,7 +119,7 @@ export function RiskCard({
         <>
           <h4 style={{ margin: '16px 0 4px' }}>종목별 변동성 (평가 상위 {holdingRows.length}종목, 최근 12개월)</h4>
           <div className="table-scroll">
-            <table>
+            <table className="num2">
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>종목</th>
@@ -130,7 +131,7 @@ export function RiskCard({
                 {holdingRows.map((h) => (
                   <tr key={h.symbol}>
                     <td style={{ textAlign: 'left' }}>
-                      {h.name} <span style={{ color: 'var(--text-muted)' }}>{h.symbol}</span>
+                      <StockCell symbol={h.symbol} name={h.name} url={null} />
                     </td>
                     <td>{plain(h.volatility)}</td>
                     <td>{h.months ? `${h.months}개월` : '자료 없음'}</td>
@@ -201,7 +202,7 @@ function BreakdownTable({ title, rows }: { title: string; rows: Breakdown[] }) {
   return (
     <div>
       <h4 style={{ margin: '8px 0' }}>{title}</h4>
-      <table>
+      <table className="num2">
         <tbody>
           {rows.map((r) => (
             <tr key={r.label}>
@@ -286,7 +287,7 @@ export function CostCard({ rows }: { rows: CostYear[] }) {
         </div>
       </div>
       <div className="table-scroll">
-        <table>
+        <table className="num2">
           <thead>
             <tr>
               <th style={{ textAlign: 'left' }}>연도</th>

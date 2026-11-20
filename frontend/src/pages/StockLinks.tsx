@@ -4,6 +4,7 @@ import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { StockLinkEntry } from '../types';
 import { autoStockLink, resolveStockLink, stockLinkMap, type StockLinkSource } from '../stockLinks';
 import Hint from '../components/Hint';
+import StockCell from '../components/StockCell';
 
 type SourceKind = '보유' | '배당' | '매매' | '관심';
 const SOURCE_ORDER: SourceKind[] = ['보유', '배당', '매매', '관심'];
@@ -206,10 +207,7 @@ export default function StockLinks() {
                   return (
                     <tr key={s.symbol}>
                       <td>
-                        <span className="cell-name-truncate" title={s.name || s.symbol}>
-                          {s.name || s.symbol}
-                        </span>{' '}
-                        <span style={{ color: 'var(--text-muted)' }}>({s.symbol})</span>
+                        <StockCell symbol={s.symbol} name={s.name} url={null} />
                       </td>
                       <td style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
                         {SOURCE_ORDER.filter((k) => s.sources.has(k)).join(' · ')}
@@ -217,9 +215,15 @@ export default function StockLinks() {
                       <td style={{ textAlign: 'left' }}>
                         {url && !dirty && !editing.has(s.symbol) ? (
                           <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-                            <span className="cell-name-truncate" style={{ maxWidth: 240, color: 'var(--text-secondary)', fontSize: 13 }} title={url ?? ''}>
+                            {/* 주소 전체를 줄바꿈해 보이고 누르면 열린다(예전엔 240px에서 잘리고 전체는 title에만 — Electron에선 안 떴다) */}
+                            <a
+                              className="stock-link cell-url"
+                              href={url ?? undefined}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
                               {(url ?? '').replace(/^https?:\/\/(www\.)?/, '')}
-                            </span>
+                            </a>
                             <button className="ghost" onClick={() => setEditing((prev) => new Set(prev).add(s.symbol))}>
                               수정
                             </button>

@@ -30,7 +30,7 @@ test('parseKsdDate: YYYYMMDD·빗금·하이픈을 모두 읽는다', () => {
   assert.equal(parseKsdDate('미정'), null);
 });
 
-test('planSymbolDividends: 예탁원에 아직 없는 다음 달 분배를 지난 일정으로 추정한다(금액은 최근 12회 중간값, 주말 반영)', () => {
+test('planSymbolDividends: 예탁원에 아직 없는 다음 달 분배를 지난 일정으로 추정한다(금액은 최근 3회 중간값 — 한 번 튄 60원은 걸러짐, 주말 반영)', () => {
   const out = planSymbolDividends(monthly, '2026-11-10', '2027-03-10');
   // 지난 지급은 기준일 뒤 2영업일(중간값). 2026-11-15는 일요일 → 직전 영업일 13일(금), 지급 17일(화).
   // 2027-01-15는 금요일 → 지급은 주말을 건너 19일(화).
@@ -43,6 +43,41 @@ test('planSymbolDividends: 예탁원에 아직 없는 다음 달 분배를 지�
       ['projected', '2027-02-15', '2027-02-17', 30],
     ]
   );
+});
+
+test('planSymbolDividends: 분배금이 한 단계 오르면 2회 뒤부터 오른 금액으로 추정한다(최근 3회 중간값)', () => {
+  // 30원 안팎이 이어지다 최근 두 번 45원 — 예전 12회 중간값이면 계속 30원이었다.
+  const raised = [...monthly.slice(0, 9), row('20260915', 45, '2026/09/17'), row('20261015', 45, '2026/10/17')];
+  assert.deepEqual(planSymbolDividends(raised, '2026-11-10', '2026-12-31').map((p) => p.perShare), [45, 45]);
+  // 오른 지 한 번뿐이면 아직 예전 금액(튄 달과 구별할 수 없다)
+  assert.deepEqual(planSymbolDividends(monthly, '2026-11-10', '2026-11-30').map((p) => p.perShare), [30]);
+});
+
+test('planSymbolDividends: 매주 분배는 7일씩 이어서 추정한다(휴일이면 직전 영업일)', () => {
+  // 목요일 기준·다음 날 지급. 마지막 두 건은 일정만 있고 금액 미정.
+  const thursdays = ['20261008', '20261015', '20261022', '20261029', '20261105', '20261112'];
+  const pays = ['2026/10/09', '2026/10/16', '2026/10/23', '2026/10/30', '2026/11/06', '2026/11/13'];
+  const weekly = [
+    ...thursdays.map((d, i) => row(d, [0.08, 0.07, 0.075, 0.09, 0.085, 0.07][i], pays[i])),
+    row('20261119', 0, '2026/11/20'),
+  ];
+  const cal = { '2026-11-26': false }; // 추수감사절(목) 휴장 가정 → 25일(수)
+  const out = planSymbolDividends(weekly, '2026-11-16', '2026-12-31', cal);
+  const per = 0.085; // 최근 3회(0.09, 0.085, 0.07) 중간값
+  assert.deepEqual(
+    out.map((p) => [p.status, p.recordDate, p.payDate, p.perShare]),
+    [
+      ['projected', '2026-11-19', '2026-11-20', per], // 일정은 있는데 금액 미정
+      ['projected', '2026-11-25', '2026-11-27', per], // 26일(목) 휴장 → 기준 25일, 지급은 휴장 건너 27일
+      ['projected', '2026-12-03', '2026-12-04', per], // 다음 주는 원래 요일(목)로
+      ['projected', '2026-12-10', '2026-12-11', per],
+      ['projected', '2026-12-17', '2026-12-18', per],
+      ['projected', '2026-12-24', '2026-12-25', per],
+      // 12-31 기준분은 지급(1-1)이 범위 밖이라 빠진다
+    ]
+  );
+  // 오래 끊긴 주간 분배(마지막 기준일이 3주 넘게 전)는 추정하지 않는다
+  assert.equal(planSymbolDividends(weekly.slice(0, 4), '2026-11-30', '2026-12-31', cal).length, 0);
 });
 
 test('planSymbolDividends: 휴장일 정보로 기준일을 앞당기고 지급일은 휴일을 건너뛴다', () => {
@@ -63,7 +98,7 @@ test('planSymbolDividends: 기준일이 지났어도 지급 전이면 예탁원 
   const out = planSymbolDividends(rows, '2026-11-16', '2026-12-31');
   assert.deepEqual(out.map((p) => [p.status, p.source, p.recordDate, p.perShare]), [
     ['estimated', 'ksd-schedule', '2026-11-15', 28],
-    ['projected', 'history', '2026-12-15', 29.5],
+    ['projected', 'history', '2026-12-15', 29], // 최근 3회(29·60·28) 중간값
   ]);
   // 지급일 당일까지는 남고(입금이 오후 늦게 되기도 함 — 2026-11-17 사용자 요청), 다음 날 빠진다
   assert.equal(planSymbolDividends(rows, '2026-11-17', '2026-11-30').length, 1);

@@ -210,6 +210,7 @@ export default function Trades() {
       <TradeAddCard onAdded={data.refreshAfterAdd} />
       <TradeListCard
         sortedTrades={sortedTrades}
+        fxRate={effectiveFxRate}
         isAllMode={isAllMode}
         accountLabels={accountLabels}
         periodKey={`${viewMode}|${year}|${month}`}

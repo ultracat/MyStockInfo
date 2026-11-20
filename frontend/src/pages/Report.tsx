@@ -4,12 +4,13 @@ import { loadAllHoldings, type HoldingLine } from '../allHoldings';
 import { computeRealizedSales } from '../calc/realizedGains';
 import { buildReport } from '../calc/report';
 import { monthlyRateOr } from '../fx';
-import { krw, localToday, formatSignedKrw } from '../format';
+import { formatRatePct, formatSignedKrw, krw, localToday, ratioOf } from '../format';
 import { BROKER_LABELS } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountTaxTypeEntry, DividendRecord, MonthlySummaryRow, SnapshotRecord, StoredTrade } from '../types';
 import DividendsChart from '../components/DividendsChart';
+import StockCell from '../components/StockCell';
 
 const won = (v: number) => `${krw.format(Math.round(v))}원`;
 // 부호 있는 원화는 앱 전체가 format.ts 하나로(2026-11-17 UI 점검 — 파일마다 기호가 달랐다)
@@ -211,7 +212,7 @@ export default function Report() {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: report.kind === 'year' ? '1fr 1fr' : '1fr', gap: 16 }}>
             {report.kind === 'year' && (
-              <table>
+              <table className="num2">
                 <thead>
                   <tr>
                     <th style={{ textAlign: 'left' }}>월</th>
@@ -228,7 +229,7 @@ export default function Report() {
                 </tbody>
               </table>
             )}
-            <table>
+            <table className="num2">
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>종목(상위 10)</th>
@@ -239,7 +240,7 @@ export default function Report() {
                 {report.dividends.topSymbols.map((s) => (
                   <tr key={s.symbol}>
                     <td style={{ textAlign: 'left' }}>
-                      {s.name} <span style={{ color: 'var(--text-muted)' }}>{s.symbol}</span>
+                      <StockCell symbol={s.symbol} name={s.name} url={null} />
                     </td>
                     <td>{won(s.krw)}</td>
                   </tr>
@@ -256,7 +257,7 @@ export default function Report() {
 
       <div className="card report-section">
         <h3 style={{ marginTop: 0 }}>매매와 실현손익</h3>
-        <table>
+        <table className="num2">
           <tbody>
             <tr>
               <td style={{ textAlign: 'left' }}>매수</td>
@@ -300,7 +301,7 @@ export default function Report() {
             <p style={{ fontSize: 13, margin: '0 0 8px' }}>
               총 평가금액 {won(topHoldings.total)} · 총 매입금액 {won(topHoldings.cost)} · 평가손익 {signedWon(topHoldings.total - topHoldings.cost)}
             </p>
-            <table>
+            <table className="num2">
               <thead>
                 <tr>
                   <th style={{ textAlign: 'left' }}>종목</th>
@@ -313,11 +314,13 @@ export default function Report() {
                 {topHoldings.rows.map((r) => (
                   <tr key={r.symbol}>
                     <td style={{ textAlign: 'left' }}>
-                      {r.name} <span style={{ color: 'var(--text-muted)' }}>{r.symbol}</span>
+                      <StockCell symbol={r.symbol} name={r.name} url={null} />
                     </td>
                     <td>{won(r.valueKrw)}</td>
                     <td>{topHoldings.total > 0 ? ((r.valueKrw / topHoldings.total) * 100).toFixed(1) : '0'}%</td>
-                    <td>{r.costKrw > 0 ? `${(((r.valueKrw - r.costKrw) / r.costKrw) * 100).toFixed(1)}%` : '-'}</td>
+                    <td className={r.costKrw > 0 ? (r.valueKrw >= r.costKrw ? 'text-good' : 'text-critical') : undefined}>
+                      {formatRatePct(ratioOf(r.valueKrw - r.costKrw, r.costKrw))}
+                    </td>
                   </tr>
                 ))}
               </tbody>

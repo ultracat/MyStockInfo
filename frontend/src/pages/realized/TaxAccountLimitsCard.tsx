@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BROKER_LABELS } from '../../brokers';
 import { findAccountLabel, formatAccountOption } from '../../accountLabels';
+import AccountCell from '../../components/AccountCell';
 import { krw } from '../../format';
 import {
   isaStatuses,
@@ -140,9 +141,11 @@ export function TaxAccountLimitsCard({
                 return (
                   <tr key={`${s.broker}:${s.accountId}`}>
                     <td style={{ textAlign: 'left' }}>
-                      <span className="upcoming-cell-truncate" title={label(s.broker, s.accountId)}>
-                        {label(s.broker, s.accountId)}
-                      </span>
+                      <AccountCell
+                        accountId={s.accountId}
+                        entry={findAccountLabel(accountLabels, s.broker as BrokerId, s.accountId)}
+                        sub={BROKER_LABELS[s.broker as BrokerId] ?? s.broker}
+                      />
                     </td>
                     <td style={{ textAlign: 'left' }}>
                       <select
@@ -169,11 +172,11 @@ export function TaxAccountLimitsCard({
                       <span className="cell-sub">배당 {won(s.dividendsKrw)}</span>
                     </td>
                     <td>
-                      {won(s.netIncomeKrw)} / {won(s.limitKrw)}
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: s.overKrw > 0 ? 700 : undefined }}>
-                        {pct(Math.max(0, s.netIncomeKrw), s.limitKrw)}
+                      {won(s.netIncomeKrw)}
+                      <span className="cell-sub" style={{ fontWeight: s.overKrw > 0 ? 700 : undefined }}>
+                        한도 {won(s.limitKrw)}의 {pct(Math.max(0, s.netIncomeKrw), s.limitKrw)}
                         {s.overKrw > 0 ? ' · 한도 초과' : ''}
-                      </div>
+                      </span>
                     </td>
                     <td>{s.overKrw > 0 ? won(s.estimatedTaxKrw) : '없음'}</td>
                     <td>
@@ -182,15 +185,15 @@ export function TaxAccountLimitsCard({
                       ) : (
                         <>
                           {won(s.netIncomeKrw + s.unrealizedKrw)}
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>평가손익 {won(s.unrealizedKrw)} 포함</div>
+                          <span className="cell-sub">평가손익 {won(s.unrealizedKrw)} 포함</span>
                         </>
                       )}
                     </td>
                     <td>
                       <ContributionInput value={s.contributionThisYear} onSave={(v) => saveContribution(s.broker, s.accountId, v)} label={`${label(s.broker, s.accountId)} ${year}년 납입액(원)`} />
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      <span className="cell-sub">
                         / {won(s.annualContributionLimit)} ({pct(s.contributionThisYear, s.annualContributionLimit)})
-                      </div>
+                      </span>
                     </td>
                   </tr>
                 );
@@ -216,9 +219,11 @@ export function TaxAccountLimitsCard({
                 {pension.accounts.map((a) => (
                   <tr key={`${a.broker}:${a.accountId}`}>
                     <td style={{ textAlign: 'left' }}>
-                      <span className="upcoming-cell-truncate" title={label(a.broker, a.accountId)}>
-                        {label(a.broker, a.accountId)}
-                      </span>
+                      <AccountCell
+                        accountId={a.accountId}
+                        entry={findAccountLabel(accountLabels, a.broker as BrokerId, a.accountId)}
+                        sub={BROKER_LABELS[a.broker as BrokerId] ?? a.broker}
+                      />
                     </td>
                     <td style={{ textAlign: 'left' }}>{a.taxType === 'IRP' ? 'IRP' : '연금저축'}</td>
                     <td>

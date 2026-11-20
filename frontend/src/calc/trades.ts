@@ -2,6 +2,8 @@
 import type { BrokerId, StoredTrade, TradeRecord } from '../types';
 import type { TradeSummaryBucket } from '../components/TradesChart';
 import { krw, usdFmt } from '../format';
+import { toKrw } from '../fx';
+import { sortByText, sortByValue } from './sort';
 
 /** 매매내역 목록(하단 표) 한 행의 공용 모양 — 개별 브로커 모드(TradeRecord, 위쪽
  *  select가 이미 broker/accountId를 알고 있음)와 전체보기 모드(StoredTrade,
@@ -161,4 +163,17 @@ export function toDisplayTrades(trades: TradeRecord[], broker: BrokerId, account
     tax: t.tax,
     executedAt: t.executedAt,
   }));
+}
+
+export type TradeSortKey = 'date' | 'name' | 'amount';
+
+/**
+ * 매매내역 표 정렬(2026-11-20) — 일자(같은 날은 원래 순서), 종목(이름 가나다), 체결금액(수수료·세금 포함, 달러는 `fxRate`로 원화 환산 —
+ * 환율이 없으면 달러 행은 맨 뒤). 비교는 calc/sort.ts.
+ */
+export function sortTrades<T extends DisplayTrade>(rows: T[], key: TradeSortKey, asc: boolean, fxRate: number | null): T[] {
+  if (key === 'name') return sortByText(rows, (t) => t.name || t.symbol, asc);
+  if (key === 'amount')
+    return sortByValue(rows, (t) => toKrw(netTradeAmount(t.amount, t.commission, t.tax), t.currency, fxRate), asc);
+  return sortByText(rows, (t) => t.executedAt, asc);
 }

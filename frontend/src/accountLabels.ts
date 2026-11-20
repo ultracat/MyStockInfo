@@ -52,7 +52,14 @@ export function displayAccountNumber(account: BrokerAccount, entry?: AccountLabe
  *  로컬 저장소에서 만든 계좌는 accountType이 없어서, 예전엔 이 자리에 그냥
  *  "(undefined)"가 그대로 찍히는 버그가 있었다). */
 export function formatAccountOption(account: BrokerAccount, entry?: AccountLabel): string {
+  const { number, label } = accountParts(account, entry);
+  return label ? `${label} · ${number}` : number;
+}
+
+/** 표 칸에 계좌를 두 줄로 그릴 때 쓰는 조각 — 계좌번호(+유형)와 별칭을 따로 준다(`components/AccountCell.tsx`).
+ *  한 줄짜리(select 옵션·팝업 제목)는 `formatAccountOption`. */
+export function accountParts(account: BrokerAccount, entry?: AccountLabel): { number: string; label?: string } {
   const base = displayAccountNumber(account, entry);
-  const withType = account.accountType ? `${base} (${account.accountType})` : base;
-  return entry?.label ? `${entry.label} · ${withType}` : withType;
+  const number = account.accountType ? `${base} (${account.accountType})` : base;
+  return entry?.label ? { number, label: entry.label } : { number };
 }

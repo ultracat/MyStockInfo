@@ -127,11 +127,11 @@ export function DividendSummaryCard({
                   {investedLoading ? '불러오는 중...' : '배당 기록이 없습니다.'}
                 </p>
               ) : (
-                <table>
+                <table className="num2">
                   <thead>
                     <tr>
                       <th>증권사</th>
-                      <th>투자금</th>
+                      <th>매입금액</th>
                       <th>배당금</th>
                       <th>배당수익률</th>
                     </tr>

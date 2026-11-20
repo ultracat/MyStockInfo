@@ -395,6 +395,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - **설명 문단은 `components/Hint.tsx`**(한 줄 + "자세히", 인쇄 땐 전부) — `<p style={{color:muted,fontSize:13}}>` 긴 문단을 새로 쓰지 말 것. 화면 맨 위 단독 안내는 `<Hint card>`.
 - **CSV·Google Sheets 같은 버튼 묶음은 `components/ActionMenu.tsx`**(`<details>` 메뉴, 버튼을 누르면 닫힘, 바깥 클릭·Esc). 결과 문구는 메뉴 **밖**에(닫히면 안 보임).
   패널은 `position:absolute`라 줌 포털 불필요. 줄 왼쪽에 놓이면 `align="left"`.
+- **표 열 정렬은 `components/SortButton.tsx`**(2026-11-20 — 보유 종목·종목별 수익). 정렬 상태는 표(또는 화면)가 들고, 통화가 섞인 표는 원화로 환산해 비교하고 환산 못 한 행은
+  방향과 상관없이 맨 뒤(`calc/portfolio.ts`의 `sortHoldingRows` — null을 0으로 치면 오름·내림에서 위치가 뒤바뀐다).
 - **긴 화면 바로가기 `components/SectionNav.tsx`** + 카드 앞 `<div id=… className="section-anchor" />`(배당금·실현손익·설정).
 - **차트 폭은 `useContainerWidth()`(콜백 ref + ResizeObserver)** — 예전엔 480px 고정이라 넓은 카드의 절반만 썼다. ⚠ 콜백 ref인 이유: 차트가 데이터 없을 땐 상자 없이
   안내만 그리다 나중에 상자를 그려서, useRef + 마운트 effect는 상자를 놓쳤다(순자산 추이가 계속 480px). 숨긴 화면(폭 0)이면 직전 값을 둔다. 막대가 30px보다 가늘면

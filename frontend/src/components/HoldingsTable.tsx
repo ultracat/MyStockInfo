@@ -3,6 +3,9 @@ import { formatMoneyIn as formatMoney, qtyFmt } from '../format';
 import StockNameLink from './StockNameLink';
 import WarningBadges from './WarningBadges';
 import type { ActiveWarning } from '../types';
+import { useMemo, useState } from 'react';
+import { sortHoldingRows, type HoldingSortKey } from '../calc/portfolio';
+import SortButton from './SortButton';
 
 function formatRate(rate: number) {
   const pct = (rate * 100).toFixed(2);
@@ -25,27 +28,44 @@ interface Row extends HoldingPosition {
   warnings?: ActiveWarning[];
 }
 
-export default function HoldingsTable({ rows }: { rows: Row[] }) {
+/** `fxRate`는 정렬에만 쓴다 — 원화·달러 종목을 원화로 환산해 한 순서로 비교한다(calc/portfolio.ts의 sortHoldingRows). */
+export default function HoldingsTable({ rows, fxRate }: { rows: Row[]; fxRate: number | null }) {
   const showAccount = rows.some((r) => r.accountLabel);
+  // 종목별 수익 화면과 같은 방식 — 기본은 평가금액 큰 순서.
+  const [sortKey, setSortKey] = useState<HoldingSortKey>('market');
+  const [sortAsc, setSortAsc] = useState(false);
+  const sortedRows = useMemo(() => sortHoldingRows(rows, sortKey, sortAsc, fxRate), [rows, sortKey, sortAsc, fxRate]);
+  const sortButton = (key: HoldingSortKey, label: string) => (
+    <SortButton
+      sortKey={key}
+      label={label}
+      current={sortKey}
+      asc={sortAsc}
+      onChange={(k, asc) => {
+        setSortKey(k);
+        setSortAsc(asc);
+      }}
+    />
+  );
   return (
     <div className="table-scroll">
       <table>
         <thead>
           <tr>
             {showAccount && <th>계좌</th>}
-            <th>종목</th>
+            <th>{sortButton('symbol', '종목')}</th>
             <th>시장</th>
             <th>수량</th>
             <th title="위: 매입평균가, 아래: 현재가">평균가 · 현재가</th>
-            <th>매입금액</th>
-            <th>평가금액</th>
-            <th title="위: 손익금액, 아래: 손익률">손익</th>
-            <th title="평가손익 + 이 계좌에서 이 종목으로 받은 배당금(배당금 화면에 기록한 내역)">배당 포함 손익</th>
+            <th>{sortButton('purchase', '매입금액')}</th>
+            <th>{sortButton('market', '평가금액')}</th>
+            <th title="위: 손익금액, 아래: 손익률">{sortButton('profit', '손익')}</th>
+            <th title="평가손익 + 이 계좌에서 이 종목으로 받은 배당금(배당금 화면에 기록한 내역)">{sortButton('profitWithDividend', '배당 포함 손익')}</th>
             <th>비중</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, idx) => (
+          {sortedRows.map((r, idx) => (
             <tr key={`${r.accountId ?? ''}:${r.symbol}:${r.memo ?? ''}:${idx}`}>
               {showAccount && <td>{r.accountLabel ?? '-'}</td>}
               <td>

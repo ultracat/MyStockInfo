@@ -1,6 +1,7 @@
 // 보유종목 합산(순수 함수) — Dashboard.tsx에서 옮겼다(2026-11-17, 테스트: frontend/test/portfolio.test.ts).
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import { groupDividendsByAccountSymbol } from '../dividendMatch';
+import { toKrw } from '../fx';
 import type { AccountLabel, BrokerId, DividendRecord, HoldingPosition, PortfolioOverview, StoredHolding } from '../types';
 
 /** 계좌 select의 특수값 — "이 브로커의 계좌를 전부 합쳐서 한 화면에 보여준다"는
@@ -208,4 +209,39 @@ export function dividendTotals(rows: { currency: string | null; dividendAmount: 
     else krwSum += r.dividendAmount;
   }
   return { krw: krwSum, usd: usdSum, unconverted };
+}
+
+export type HoldingSortKey = 'symbol' | 'purchase' | 'market' | 'profit' | 'profitWithDividend';
+
+type SortableHolding = Pick<HoldingPosition, 'symbol' | 'currency' | 'purchaseAmount' | 'marketValue' | 'profitLossAmount'> & {
+  dividendAmount: number | null;
+};
+
+/**
+ * 보유 종목 표 정렬 — 원화·달러 종목이 한 표에 섞이므로 금액은 원화로 환산해 비교한다(`fxRate`).
+ * 환율이 없어 환산 못 한 달러 종목(배당 포함 손익은 "환율 미적용" 행도)은 순서 방향과 상관없이 맨 뒤에 둔다.
+ * 값이 같으면 원래(증권사가 준) 순서를 유지한다.
+ */
+export function sortHoldingRows<T extends SortableHolding>(rows: T[], key: HoldingSortKey, asc: boolean, fxRate: number | null): T[] {
+  const dir = asc ? 1 : -1;
+  if (key === 'symbol') return [...rows].sort((a, b) => a.symbol.localeCompare(b.symbol) * dir);
+  const valueOf = (r: T): number | null => {
+    switch (key) {
+      case 'purchase':
+        return toKrw(r.purchaseAmount, r.currency, fxRate);
+      case 'profit':
+        return toKrw(r.profitLossAmount, r.currency, fxRate);
+      case 'profitWithDividend':
+        return r.dividendAmount === null ? null : toKrw(r.profitLossAmount + r.dividendAmount, r.currency, fxRate);
+      case 'market':
+      default:
+        return toKrw(r.marketValue, r.currency, fxRate);
+    }
+  };
+  const keyed = rows.map((r) => ({ r, v: valueOf(r) }));
+  keyed.sort((a, b) => {
+    if (a.v === null || b.v === null) return a.v === null ? (b.v === null ? 0 : 1) : -1;
+    return (a.v - b.v) * dir;
+  });
+  return keyed.map((k) => k.r);
 }

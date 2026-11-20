@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ALL_ACCOUNTS, buildPortfolioFromStored, dividendTotals, holdingRows, mergePortfolios } from '../src/calc/portfolio';
+import { ALL_ACCOUNTS, buildPortfolioFromStored, dividendTotals, holdingRows, mergePortfolios, sortHoldingRows } from '../src/calc/portfolio';
 import type { DividendRecord, StoredHolding } from '../src/types';
 
 function h(p: Partial<StoredHolding>): StoredHolding {
@@ -66,4 +66,20 @@ test('보유 표 행: 원화 기준 비중, 이 계좌의 이 종목 배당만, 
   assert.equal(noFx[2].weight, null);
   assert.equal(noFx[2].dividendAmount, null); // 통화가 다른 배당을 환산할 수 없음
   assert.deepEqual(dividendTotals(noFx), { krw: 40, usd: 0, unconverted: true });
+});
+
+test('보유 종목 정렬: 달러는 원화로 환산해 비교하고, 환산 못 한 행은 방향과 상관없이 맨 뒤', () => {
+  const row = (symbol: string, currency: string, marketValue: number, dividendAmount: number | null = 0) => ({
+    symbol, currency, purchaseAmount: 0, marketValue, profitLossAmount: marketValue, dividendAmount,
+  });
+  const rows = [row('A', 'KRW', 100_000), row('B', 'USD', 100), row('C', 'KRW', 200_000)];
+  const order = (r: { symbol: string }[]) => r.map((x) => x.symbol).join('');
+  assert.equal(order(sortHoldingRows(rows, 'market', false, 1400)), 'CBA'); // $100 = 14만원
+  assert.equal(order(sortHoldingRows(rows, 'market', true, 1400)), 'ABC');
+  assert.equal(order(sortHoldingRows(rows, 'market', false, null)), 'CAB');
+  assert.equal(order(sortHoldingRows(rows, 'market', true, null)), 'ACB');
+  // 배당 포함 손익이 "환율 미적용"(null)인 행도 맨 뒤
+  const withDiv = [row('A', 'KRW', 100, null), row('B', 'KRW', 50, 10)];
+  assert.equal(order(sortHoldingRows(withDiv, 'profitWithDividend', false, null)), 'BA');
+  assert.equal(order(sortHoldingRows(rows, 'symbol', true, null)), 'ABC');
 });

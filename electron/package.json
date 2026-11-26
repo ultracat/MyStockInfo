@@ -11,9 +11,9 @@
     "@mystock/backend": "*"
   },
   "devDependencies": {
-    "@types/node": "^24.19.4",
+    "@types/node": "^26.6.6",
     "electron": "^45.5.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^7.0.2"
   }
 }

@@ -18,7 +18,10 @@ export function startServer(
   const token = apiToken ?? randomBytes(32).toString('base64url');
   if (!apiToken) console.log(`[backend] API token: ${token}`);
   const app = createApp({ apiToken: token, requestRestart: options.requestRestart, extraOrigins: options.extraOrigins });
-  const server = app.listen(port, '127.0.0.1', () => {
+  // Express 5의 app.listen은 'error'(포트 사용 중 등)에서도 이 콜백을 오류와 함께 부른다 — 그땐 시작하지 않은 것이니
+  // 일정(백업·알림)을 걸지 않고, 안내는 아래 'error' 리스너가 한다.
+  const server = app.listen(port, '127.0.0.1', (err?: Error) => {
+    if (err) return;
     console.log(`[backend] listening on http://127.0.0.1:${port}`);
     // 하루 한 번 자동 로컬 백업(autoBackup.ts) — 실제 앱 실행에서만(테스트는 createApp만 쓴다).
     startAutoBackupSchedule();

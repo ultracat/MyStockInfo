@@ -123,7 +123,11 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 - `src/kstDate.ts` — 한국 날짜·시각(`kstToday`·`kstTodayCompact`·`kstHour`·`kstWeekday`·`kstMinuteOfDay`·`addDays`·`weekdayOf`·`daysInMonth`·`compactYmd`).
   **한국 날짜는 여기서만** — `getDate`/`getDay`(OS 시간대 — PC가 해외 시간대면 하루 어긋남, 예전 환율 조회 버그)나 인라인 `+9*3600_000`을 새로 쓰지 않는다.
   2026-11-26 백엔드 전체를 옮겼다(파일마다 따로 있던 `todayKst`/`kstToday` 8벌 제거). 예외: `autoBackup.ts`의 파일 이름 `stamp`는 사용자가 보는 이름이라 일부러 PC 지역 시간.
-- `routes/asyncRoute.ts` — Express 4는 async 핸들러의 거부를 잡지 않아 **응답 없이 매달린다**. async 라우트는 `asyncRoute(...)`로 감싸거나 try에서 `next(err)`로.
+- **Express 5**(2026-11-26, 4에서 올림): async 핸들러의 거부를 프레임워크가 `next(err)`로 넘긴다. 4와 달라 손댄 곳 —
+  ① 본문 없는/JSON 아닌 요청의 `req.body`가 `undefined` → `server.ts`가 `express.json` 뒤에서 `{}`로 맞춘다(라우트가 `const { x } = req.body`로 읽음),
+  ② `app.listen` 콜백이 'error'에서도 오류와 함께 불린다 → `index.ts`가 `err`면 일정(백업·알림)을 걸지 않는다.
+  경로 문법도 바뀌었다(`*`는 이름 필요 `/*splat`, 선택 매개변수는 `{/:x}`) — 지금 라우트엔 해당 없음, 새로 쓸 때 주의.
+- `routes/asyncRoute.ts` — Express 4 시절 async 거부가 **응답 없이 매달리던** 문제의 감싸개. Express 5에선 없어도 되지만 의도를 드러내려 남겨 둔다.
   `handleBrokerApiError`의 502·500 응답도 `redactText`로 가린다(증권사 원문 본문에 계좌번호가 섞일 수 있음).
 - `registry.ts` — `getAdapter`. **삼성증권/미래에셋증권은 등록 안
   돼 있음**(어댑터를 만들 계획 자체가 없음 — CSV 전용, 아래 `knownBrokers.ts` 참고).

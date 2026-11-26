@@ -65,6 +65,12 @@ export function createApp(options: { apiToken: string; requestRestart?: () => vo
   // routes/backup.ts)이 조금만 쌓여도 막힌다 — 이 앱 전체가 JSON body만 쓰는
   // 관례를 유지하려고 별도 multipart/raw 파서 대신 여기 제한값만 올렸다.
   app.use(express.json({ limit: '20mb' }));
+  // Express 5는 본문이 없거나 JSON이 아닌 요청의 req.body를 {}가 아니라 undefined로 둔다 — 라우트들이 Express 4처럼
+  // `const { x } = req.body`로 읽으므로(본문 없는 POST 동기화 등) 빈 객체로 맞춰 둔다.
+  app.use((req, _res, next) => {
+    if (req.body === undefined) req.body = {};
+    next();
+  });
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/settings', settingsRouter);

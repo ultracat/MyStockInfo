@@ -398,6 +398,10 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 목표는 **"이 앱의 권한(키체인으로 증권사 자격증명을 푸는 프로세스 + 토큰을 든 렌더러)을 남의 코드가 빌려 쓰지 못하게"**다.
 네 겹이고 각각 막는 길이 다르다.
 
+> **배포물에 주석을 싣지 않는다**(2026-11-26): backend·electron tsconfig의 `removeComments`. 주석의 "예:" 값이 실제 토스 계좌번호였고 TypeScript가
+> 주석을 dist에 남겨 **모든 릴리스 설치 파일(app.asar)에 들어갔다** — git 이력 전체를 다시 써서 지우고(`git filter-repo --replace-text`, `main`·모든 `v*`
+> 태그 강제 push) v1.6.2부터 주석 없이 배포, 예전 릴리스의 설치 파일은 내렸다. 확인은 `@electron/asar`로 app.asar 안의 파일을 꺼내 본다(설치본 실행 불필요).
+
 | 겹 | 위치 | 막는 것 |
 |---|---|---|
 | 렌더러 격리 | `main.ts` `webPreferences` | 렌더러에서 Node/Electron API 접근 |

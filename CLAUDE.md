@@ -50,7 +50,7 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   KIS는 `kis:verify`/`kis:record`, 실서버 점검 `-- --record`, 매주 `spec-watch.yml`이 업데이트 PR — 전부 `backend/CLAUDE.md` "공식 명세 감시".
 - `npm test`(백엔드 + 프론트엔드 순수 함수 + Electron 로그 가림 테스트), `npm run lint`(ESLint — 스타일이 아니라 `await` 누락·Promise 조건·React 훅
   규칙·프론트의 `toISOString().slice` 금지만, `eslint.config.mjs`), `npm run typecheck:test`(테스트 파일까지 타입 검사 — `tsx --test`는 타입을 안 본다).
-  **푸시·PR마다 `.github/workflows/ci.yml`이 build → lint → typecheck:test → test → `npm audit --omit=dev`**를 돌린다 — `backend/CLAUDE.md` "자동 테스트".
+  **푸시·PR마다 `.github/workflows/ci.yml`이 build → lint → typecheck:test → test → `npm audit --omit=dev`**(+ 이력 전체 gitleaks)를 돌린다 — `backend/CLAUDE.md` "자동 테스트".
   CI의 Node는 **`.nvmrc`(24 — Electron 번들 Node와 같은 메이저)** 하나로 정한다. Electron 메이저를 올리면 `.nvmrc`·`@types/node`도 같이.
 - **앱 아이콘 원본은 `build/icon.svg` 하나** — 고친 뒤 `npm run generate:icons`, 생성물은 직접 안 고침(`electron/CLAUDE.md` "앱 아이콘").
 - **화면 줌은 CSS `transform: scale`(돋보기 줌)** — 페이지 줌이 아니다. 사이드바는 배율 밖, 확대하면 리플로우 없이 스크롤. 배율의 단일 원천은
@@ -92,8 +92,9 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   `package.json`의 `"license": "AGPL-3.0-only"`, README "라이선스" 절. 외부 PR은 `CLA.md` 동의(PR 템플릿 체크박스)가
   있어야 반영한다 — 기여 코드도 상업 라이선스로 재허락하려면 그 권리가 필요해서다. 새 의존성은 AGPL-3.0과 호환되는
   라이선스만 들인다.
-- **실제 계좌번호·금액·보유 종목 같은 개인 데이터를 코드·문서·예시값에 쓰지 않는다** — 예시는
-  `123-45-678901`처럼 가짜 값으로(2026-11 공개 준비 때 이력에서 실제 계좌번호를 지웠다).
+- **실제 계좌번호·금액·보유 종목·실데이터 건수 같은 개인 데이터를 코드·주석·문서·예시값·테스트에 쓰지 않는다** — 예시는
+  `123-45-678901`처럼 가짜 값으로. ⚠ 2026-11-26 주석의 "예:" 값이 실제 토스 계좌번호였고 **설치 파일에까지 배포됐다** → 이력 전체를 다시 써서 지우고
+  빌드에서 주석을 뺐다(`removeComments`). gitleaks(CI `secrets` 잡, `.gitleaks.toml`)는 키·토큰 모양만 보니 개인 정보는 사람이 막는다.
 - 배당금은 **토스·한국투자·NH·키움·LS·DB증권은 API가 원천**이다 — 배당금 화면 진입 시 그 계좌 배당 기록을 API 내용으로
   통째로 교체하고(직접 수정·가져오기 불가, **KIS·LS 달러 배당만 예외로 수동**), 다른 증권사는 직접 입력한다. `amount`는
   **세후**, `tax`는 원천징수 세금(세전 = 합). `backend/CLAUDE.md`의 "배당 동기화(토스·한국투자증권·NH)" 절.

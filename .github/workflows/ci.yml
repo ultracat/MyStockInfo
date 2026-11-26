@@ -65,3 +65,24 @@ jobs:
       # 생성 타입이 최신인지. 최신 공식 예제와의 비교는 spec-watch.yml(주 1회)의 spec:check가 한다.
       - name: KIS API 검증 묶음
         run: npm run kis:verify -- --offline
+
+  # 비밀값(API 키·토큰 모양) 검사 — 이력 전체(2026-11-26). 설정·허용 목록은 루트 .gitleaks.toml(가짜 값만 허용).
+  # 바이너리는 공식 릴리스를 버전·SHA-256으로 고정해 받는다(액션 대신 — 다른 액션처럼 해시 고정, 권한 없음).
+  # ⚠ gitleaks는 실제 계좌번호·보유 종목 같은 개인 정보는 못 찾는다 — 예시값은 항상 가짜로(루트 CLAUDE.md).
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # 이력 전체를 검사한다
+      - name: gitleaks 설치(버전·체크섬 고정)
+        run: |
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+      - name: 비밀값 검사(이력 전체)
+        run: ./gitleaks git --no-banner --redact --exit-code 1 .

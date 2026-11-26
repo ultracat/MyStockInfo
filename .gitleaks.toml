@@ -1,0 +1,16 @@
+# gitleaks 설정(2026-11-26) — 기본 규칙을 그대로 쓰고, 테스트·공식 명세 예시에 일부러 넣은 **가짜 값**만 허용한다.
+# 파일 경로로 통째로 빼지 않는 이유: 그 파일에 진짜 키가 들어오면 놓친다. 값 하나하나를 적는다.
+# 새 가짜 값을 테스트에 넣다가 gitleaks에 걸리면 여기에 그 값을 추가한다(진짜 키는 절대 추가하지 말 것).
+# ⚠ gitleaks는 키·토큰 "모양"만 본다 — 실제 계좌번호·보유 종목 같은 개인 정보는 못 찾는다(예시값은 항상 가짜로, 루트 CLAUDE.md).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "테스트·공식 명세 예시의 가짜 값"
+regexes = [
+  '''Ab12Cd34Ef56Gh78Ij90Kl12Mn''',               # electron/test/redact.test.ts — 로그 가림 테스트 문자열
+  '''GOCSPX-testsecret123''',                      # backend/test/backup.test.ts — 가짜 Google 클라이언트 시크릿
+  '''LEGACYKEY1234567890''',                       # backend/test/eximbankKey.test.ts — 가짜 환율 인증키
+  '''eyJraWQiOiIyMDI2LTA0LTAxLWtleSIsImFsZyI6IlJTMjU2In0\.eyJzdWIiOiJjXzAxSFhZWiJ9\.\.\.''', # 토스 공식 명세 응답 예시(잘린 토큰)
+  '''WQJCwyqInphKnR3bSRtB9NE1lv\.\.\.''',          # 키움 공식 명세 응답 예시(잘린 토큰)
+]

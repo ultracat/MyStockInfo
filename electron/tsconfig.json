@@ -9,6 +9,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "strict": true,
+    // 빌드 결과물(dist → 설치 파일의 app.asar)에 주석을 남기지 않는다 — 2026-11-26 주석 속 "예:" 값이 실제 계좌번호였고 설치 파일에까지 배포됐다.
+    // 주석은 소스에만 둔다. 그래도 예시값은 항상 가짜로 쓴다(루트 CLAUDE.md).
+    "removeComments": true,
     "types": ["node", "electron"]
   },
   "include": ["src"]

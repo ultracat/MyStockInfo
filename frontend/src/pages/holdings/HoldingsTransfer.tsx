@@ -4,6 +4,7 @@ import { downloadCsv, parseCsv } from '../../csv';
 import { formatImportResult } from '../../importResult';
 import type { BrokerId } from '../../types';
 import ActionMenu from '../../components/ActionMenu';
+import { localToday } from '../../format';
 
 const HOLDINGS_CSV_HEADER = [
   'broker',
@@ -59,7 +60,7 @@ export function useHoldingsTransfer(refreshAfterStoreImport: () => Promise<void>
         h.memo ?? '',
       ]),
     ];
-    downloadCsv(`holdings-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    downloadCsv(`holdings-${localToday()}.csv`, rows);
   }
 
   function onImportClick() {

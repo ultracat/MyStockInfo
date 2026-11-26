@@ -21,7 +21,7 @@
     "build:frontend": "npm run build --workspace frontend",
     "build:electron": "npm run build --workspace electron",
     "build": "npm run build:backend && npm run build:frontend && npm run build:electron",
-    "test": "npm run test --workspace backend && npm run test --workspace frontend",
+    "test": "npm run test --workspace backend && npm run test --workspace frontend && npm run test:electron",
     "check:nh": "npm run build:backend && electron scripts/nh-live-check.cjs",
     "check:kiwoom": "npm run build:backend && electron scripts/kiwoom-live-check.cjs",
     "check:kis": "npm run build:backend && electron scripts/kis-live-check.cjs",
@@ -42,12 +42,14 @@
     "kis:record": "npm run build:backend && electron scripts/kis-live-check.cjs --record",
     "check:kb": "npm run build:backend && electron scripts/kb-live-check.cjs",
     "check:ls": "npm run build:backend && electron scripts/ls-live-check.cjs",
-    "check:db": "npm run build:backend && electron scripts/db-live-check.cjs"
+    "check:db": "npm run build:backend && electron scripts/db-live-check.cjs",
+    "typecheck:test": "tsc -p backend/tsconfig.test.json && tsc -p frontend/tsconfig.test.json && tsc -p electron/tsconfig.test.json",
+    "test:electron": "tsx --test \"electron/test/*.test.ts\""
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
     "cors": "^2.8.5",
-    "express": "^4.21.1"
+    "express": "^4.22.3"
   },
   "devDependencies": {
     "@electron/fuses": "^2.1.3",

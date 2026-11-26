@@ -4,6 +4,7 @@ import { downloadBlob } from '../../csv';
 import type { RestoreBackupResult } from '../../types';
 import { errorText, type Notify } from './notify';
 import Hint from '../../components/Hint';
+import { localToday } from '../../format';
 
 // 복원 업로드는 zip을 base64로 감싸 보통 JSON body로 보낸다(api.ts의
 // restoreBackup 참고) — ArrayBuffer를 base64로 바꿀 때 `String.fromCharCode(...bytes)`를
@@ -70,7 +71,7 @@ export function BackupCard({ notify }: { notify: Notify }) {
     setBackingUp(true);
     try {
       const blob = await api.downloadBackup(backupPassword || undefined);
-      downloadBlob(`mystock-backup-${new Date().toISOString().slice(0, 10)}.zip`, blob);
+      downloadBlob(`mystock-backup-${localToday()}.zip`, blob);
       notify.ok(
         backupPassword
           ? '백업 파일을 다운로드했습니다. API 키와 Google 연결은 입력한 비밀번호로 암호화해 넣었습니다 — 비밀번호를 잊으면 키는 복원할 수 없습니다.'

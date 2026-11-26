@@ -70,6 +70,8 @@ export const nhAdapter: BrokerAdapter = {
       cashBalanceKrw: nhNum(s.dca),
       cashBalanceUsd: overseas?.summary ? nhNum(overseas.summary.fc_dca) : null,
       positions: [...domesticPositions, ...overseasPositions],
+      // 해외 잔고 조회 실패 = 미국 종목이 빠진 부분 결과 — write-through가 저장된 미국 행을 지우지 않게(types.ts).
+      ...(overseas === null ? { failedMarkets: ['US'] } : {}),
     };
   },
 

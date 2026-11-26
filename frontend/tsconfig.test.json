@@ -1,0 +1,6 @@
+{
+  // 테스트 파일 타입 검사용 — tsconfig.json은 src만 보고, tsx --test는 타입을 지우기만 해서 test/** 타입 오류가
+  // 아무 데서도 안 걸렸다. 루트 `npm run typecheck:test`(CI 포함)가 쓴다(noEmit은 tsconfig.json에서 물려받는다).
+  "extends": "./tsconfig.json",
+  "include": ["src", "test"]
+}

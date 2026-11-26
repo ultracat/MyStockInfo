@@ -26,7 +26,8 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          # Electron 45의 내장 Node(24.x)와 맞춘다 — 버전은 루트 .nvmrc 한 곳(Electron 메이저를 올리면 같이).
+          node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
@@ -39,9 +40,19 @@ jobs:
       - name: 린트
         run: npm run lint
 
-      # 백엔드 자동 테스트(가짜 서버, 실키 없음) + 프론트엔드 순수 함수 테스트.
+      # 테스트 파일 타입 검사 — 빌드(tsconfig.json)는 src만 보고 tsx --test는 타입을 지우기만 해서, test/**의 타입 오류
+      # (응답 모양이 바뀌었는데 고정 데이터가 옛 모양 등)가 아무 데서도 안 걸렸다. backend·frontend·electron의 tsconfig.test.json.
+      - name: 테스트 타입 검사
+        run: npm run typecheck:test
+
+      # 백엔드 자동 테스트(가짜 서버, 실키 없음) + 프론트엔드 순수 함수 테스트 + Electron 로그 가리기.
       - name: 테스트
         run: npm test
+
+      # 앱에 실리는(프로덕션) 의존성의 알려진 취약점 — high 이상이면 실패. 개발 도구(electron-builder 등)는 빼고 본다
+      # (배포본에 안 들어가고, 고칠 수 없는 경고가 잦다). Electron 자체는 devDependency라 여기 안 걸린다 — Dependabot이 매주 본다.
+      - name: 의존성 취약점(npm audit)
+        run: npm audit --omit=dev --audit-level=high
 
       # 증권사 명세 타입(*.gen.ts)이 저장된 스냅샷(backend/spec/snapshots)과 맞는지 — 손으로 고쳤거나 다시 만들지 않았으면 실패.
       # 네트워크를 쓰지 않는다. 최신 공식 명세와의 비교는 spec-watch.yml(주 1회).

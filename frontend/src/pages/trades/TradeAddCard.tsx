@@ -4,8 +4,8 @@ import { BROKER_LABELS, CSV_ONLY_BROKER_IDS } from '../../brokers';
 import { computeAmount, formatTradeAmount as formatAmount, netTradeAmount } from '../../calc/trades';
 import { singleRowImportError } from '../../importResult';
 import type { BrokerId } from '../../types';
+import { localToday } from '../../format';
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 /**
  * "매매내역 추가" 카드 — CSV 전용 브로커(KB/삼성/미래에셋)만 대상. 토스/KIS는 실시간 API로 실제 체결 내역이 그대로 들어오므로
@@ -21,7 +21,7 @@ export function TradeAddCard({ onAdded }: { onAdded: (broker: BrokerId, accountI
   const [addQuantity, setAddQuantity] = useState('');
   const [addPrice, setAddPrice] = useState('');
   const [addCurrency, setAddCurrency] = useState('KRW');
-  const [addExecutedAt, setAddExecutedAt] = useState(today());
+  const [addExecutedAt, setAddExecutedAt] = useState(localToday());
   const [addCommission, setAddCommission] = useState('');
   const [addTax, setAddTax] = useState('');
   const [addError, setAddError] = useState<string | null>(null);

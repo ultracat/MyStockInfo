@@ -103,3 +103,62 @@ test('증권사 하나가 실패해도 나머지 보유는 보이고 error로 �
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(count('POST /portfolio-snapshots'), 0);
 });
+
+test('API 증권사의 계좌 하나만 실패해도 error로 알리고 그날 순자산은 기록하지 않는다', async () => {
+  const ok = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const path = url.pathname.replace(/^\/api/, '');
+    calls.push(`${init?.method ?? 'GET'} ${path}`);
+    if (path === '/accounts') return Response.json([{ id: 'toss', configured: true }]);
+    if (path === '/accounts/toss') return Response.json([{ id: 'acc-1' }, { id: 'acc-2' }]);
+    if (path === '/holdings/toss/acc-1') {
+      return Response.json({
+        broker: 'toss', accountId: 'acc-1', totalPurchaseAmount: [], totalMarketValue: [], totalProfitLoss: [],
+        positions: [{ symbol: '111110', name: '가짜', currency: 'KRW', quantity: 1, lastPrice: 100, purchaseAmount: 90, marketValue: 100, profitLossAmount: 10 }],
+      });
+    }
+    if (path === '/holdings/toss/acc-2') return Response.json({ error: 'boom' }, { status: 500 });
+    return ok(input, init);
+  }) as typeof fetch;
+  try {
+    await reloadOverview();
+  } finally {
+    globalThis.fetch = ok;
+  }
+  const s = getOverviewState();
+  assert.equal(s.holdings.length, 1);
+  assert.match(s.error ?? '', /계좌 1개/);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(count('POST /portfolio-snapshots'), 0);
+});
+
+test('환율이 없어 달러 보유가 합계에서 빠지면 그날 순자산은 기록하지 않는다', async () => {
+  const ok = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const path = url.pathname.replace(/^\/api/, '');
+    calls.push(`${init?.method ?? 'GET'} ${path}`);
+    if (path === '/settings/fx-rate') return Response.json({ usdKrwRate: null });
+    if (path.startsWith('/market-info/exchange-rate')) return Response.json({ rate: null });
+    if (path === '/holdings-store') {
+      return Response.json([{ broker: 'samsung', accountId: 'a', symbol: 'FAKE', name: '가짜', currency: 'USD', quantity: 1, lastPrice: 10, purchaseAmount: 9, marketValue: 10, profitLossAmount: 1 }]);
+    }
+    return ok(input, init);
+  }) as typeof fetch;
+  try {
+    await reloadOverview();
+  } finally {
+    globalThis.fetch = ok;
+  }
+  const s = getOverviewState();
+  assert.equal(s.unconvertedUsdHoldings, true);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(count('POST /portfolio-snapshots'), 0);
+});
+
+test('다 받았으면 순자산을 기록한다', async () => {
+  await reloadOverview();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(count('POST /portfolio-snapshots'), 1);
+});

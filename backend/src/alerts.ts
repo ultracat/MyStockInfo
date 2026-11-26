@@ -44,7 +44,7 @@ function stateStore() {
     warningsSeen: {},
     warningsInitialized: false,
     lastBackgroundDividendSync: null,
-  });
+  }, { onCorrupt: 'reset' }); // 알림 상태 — 손상되면 비운 채로(처음 켠 것처럼 다시 초기화, jsonStore.ts)
 }
 
 type Notify = (title: string, body: string) => void;

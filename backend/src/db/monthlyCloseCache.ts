@@ -37,7 +37,7 @@ function store() {
       // 못 지워도 안 읽으니 상관없다
     }
   }
-  return new JsonStore<MonthlyCloseCacheFile>('monthly-close-cache-v2.json', getDataDir(), {});
+  return new JsonStore<MonthlyCloseCacheFile>('monthly-close-cache-v2.json', getDataDir(), {}, { onCorrupt: 'reset' }) /* 다시 받으면 되는 캐시 — 손상되면 격리 후 비운 채로(jsonStore.ts) */;
 }
 
 // 아직 디스크에 안 쓴 새 캐시 항목 — fx/eximbankCache.ts와 같은 이유로 둔다.

@@ -4,24 +4,22 @@ import type { StoredTrade, TradeRecord } from '../types';
 import TradesChart from '../components/TradesChart';
 import { toDisplayTrades, tradeBuckets, tradeTotals, type DisplayTrade, type ViewMode } from '../calc/trades';
 import CollapseToggle from '../components/CollapseToggle';
-import { krw } from '../format';
+import { currentYear, krw, recentYears } from '../format';
 import { findAccountLabel, formatAccountOption } from '../accountLabels';
 import { TradeAddCard } from './trades/TradeAddCard';
 import { TradeListCard } from './trades/TradeListCard';
 import { TradesToolbar } from './trades/TradesToolbar';
 import { useTradesData, type BrokerSelection } from './trades/useTradesData';
 
-const CURRENT_YEAR = new Date().getFullYear();
-const CURRENT_MONTH = new Date().getMonth() + 1;
-const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 // 매매내역 화면 — 2026-11-17 나눴다: 데이터는 trades/useTradesData.ts, 집계는 calc/trades.ts, 머리줄·추가 폼·목록은 trades/*.
 // 여기엔 선택(증권사·계좌·보기·연도·월), 상단 타일, 그래프만 둔다.
 export default function Trades() {
-  const [year, setYear] = useState(CURRENT_YEAR);
+  // 올해·이번 달은 모듈 상수로 두지 않는다 — 앱을 켜 둔 채 해가 바뀌어도 옛 값으로 남았다(2026-11-26).
+  const [year, setYear] = useState(currentYear);
   const [viewMode, setViewMode] = useState<ViewMode>('year');
-  const [month, setMonth] = useState(CURRENT_MONTH);
+  const [month, setMonth] = useState(() => new Date().getMonth() + 1);
   const [chartCollapsed, setChartCollapsed] = useState(false);
   const data = useTradesData(year);
   const { loading, error, selectedBroker, setSelectedBroker, accounts, accountId, setAccountId, accountLabels, trades, allTrades, effectiveFxRate } = data;
@@ -146,7 +144,7 @@ export default function Trades() {
               setYear(Number(e.target.value));
             }}
           >
-            {YEAR_OPTIONS.map((y) => (
+            {recentYears().map((y) => (
               <option key={y} value={y}>
                 {y}년
               </option>

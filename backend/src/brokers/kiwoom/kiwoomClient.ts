@@ -1,8 +1,7 @@
-import crypto from 'node:crypto';
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
-import { getDataDir } from '../../paths';
-import { SecretJsonStore } from '../../secretJsonStore';
+import { createTokenManager } from '../tokenManager';
+import { fetchWithTimeout } from '../../http/fetchWithTimeout';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { KiwoomRequests, KiwoomResponses } from './kiwoomSpec.gen';
 import { noteResponse } from '../responseShape';
@@ -54,18 +53,6 @@ async function requireCredentials() {
 // ── 토큰 ───────────────────────────────────────────────────────────────────────
 // 응답 `expires_dt`(YYYYMMDDHHmmss, KST로 본다)까지 재사용. 백엔드 재시작(백엔드 수정마다)에도 다시 받지 않게 파일에
 // 저장하고, 앱키 해시로 키 변경을 감지한다(앱키 원문은 저장하지 않음). 동시 요청은 발급 하나를 공유한다.
-interface StoredKiwoomToken {
-  accessToken: string;
-  expiresAt: number;
-  keyHash: string;
-}
-
-const tokenStore = () => new SecretJsonStore<StoredKiwoomToken>('kiwoom-token.json', getDataDir());
-let cachedToken: StoredKiwoomToken | null = null;
-let inFlightToken: Promise<string> | null = null;
-
-const keyHash = (appKey: string) => crypto.createHash('sha256').update(appKey).digest('hex').slice(0, 16);
-
 /** `expires_dt` "20241107083713"(KST) → epoch ms. 형식이 다르면 24시간 뒤로 본다. */
 export function parseKiwoomExpiry(value: unknown): number {
   const s = String(value ?? '').trim();
@@ -74,48 +61,37 @@ export function parseKiwoomExpiry(value: unknown): number {
   return Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+09:00`);
 }
 
-async function loadCachedToken(hash: string): Promise<StoredKiwoomToken | null> {
-  const valid = (t: StoredKiwoomToken | null) => t && t.keyHash === hash && t.expiresAt > Date.now();
-  if (valid(cachedToken)) return cachedToken;
-  const persisted = await tokenStore().read();
-  if (valid(persisted)) return (cachedToken = persisted);
-  return null;
-}
-
-async function issueToken(): Promise<string> {
-  const creds = await requireCredentials();
-  const res = await kiwoomLimiter.schedule(() =>
-    fetch(`${BASE_URL}/oauth2/token`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json;charset=UTF-8', 'api-id': 'au10001' },
-      body: JSON.stringify({ grant_type: 'client_credentials', appkey: creds.appKey, secretkey: creds.appSecret }),
-    })
-  );
-  const text = await res.text();
-  let data: Record<string, unknown> = {};
-  try {
-    data = JSON.parse(text);
-  } catch {
-    /* 아래에서 처리 */
-  }
-  const code = returnCodeOf(data);
-  if (!res.ok || (code !== null && code !== 0) || typeof data.token !== 'string') {
-    throw new KiwoomApiError(`키움증권 토큰 발급 실패${code ? ` (${code})` : ''}: ${data.return_msg ?? res.status}`, res.status, text, code);
-  }
-  // 만료 1분 전부터는 새로 받는다.
-  cachedToken = { accessToken: data.token, expiresAt: parseKiwoomExpiry(data.expires_dt) - 60_000, keyHash: keyHash(creds.appKey) };
-  await tokenStore().write(cachedToken);
-  return cachedToken.accessToken;
-}
-
-async function getToken(force = false): Promise<string> {
-  if (!force) {
-    const t = await loadCachedToken(keyHash((await requireCredentials()).appKey));
-    if (t) return t.accessToken;
-  }
-  if (!inFlightToken) inFlightToken = issueToken().finally(() => (inFlightToken = null));
-  return inFlightToken;
-}
+// 파일 저장·동시 발급 공유·401/8005/8010 재발급 경쟁 방지(staleToken)·자격증명 변경 시 무효화는 공용 tokenManager.ts
+// (2026-11-26 — 예전엔 재발급이 필요한 응답마다 무조건 다시 받아, 동시에 실패한 요청들이 각자 발급했다).
+const tokens = createTokenManager({
+  broker: 'kiwoom',
+  persist: true,
+  loadCreds: requireCredentials,
+  keyOf: (creds) => creds.appKey,
+  async issue(creds) {
+    const res = await kiwoomLimiter.schedule(() =>
+      fetchWithTimeout(`${BASE_URL}/oauth2/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json;charset=UTF-8', 'api-id': 'au10001' },
+        body: JSON.stringify({ grant_type: 'client_credentials', appkey: creds.appKey, secretkey: creds.appSecret }),
+        label: '키움증권',
+      })
+    );
+    const text = await res.text();
+    let data: Record<string, unknown> = {};
+    try {
+      data = JSON.parse(text);
+    } catch {
+      /* 아래에서 처리 */
+    }
+    const code = returnCodeOf(data);
+    if (!res.ok || (code !== null && code !== 0) || typeof data.token !== 'string') {
+      throw new KiwoomApiError(`키움증권 토큰 발급 실패${code ? ` (${code})` : ''}: ${data.return_msg ?? res.status}`, res.status, text, code);
+    }
+    // 만료 1분 전부터는 새로 받는다.
+    return { accessToken: data.token, expiresAt: parseKiwoomExpiry(data.expires_dt) - 60_000 };
+  },
+});
 
 // ── 호출 ───────────────────────────────────────────────────────────────────────
 export type KiwoomBody = Record<string, unknown> & { return_code?: unknown; return_msg?: unknown };
@@ -167,9 +143,9 @@ export async function kiwoomPost<A extends KiwoomApiId>(
   cont?: { contYn: string; nextKey: string }
 ): Promise<KiwoomPage> {
   return kiwoomLimiter.schedule(async () => {
-    let force = false;
+    let stale: string | undefined;
     for (let attempt = 0; ; attempt++) {
-      const token = await getToken(force);
+      const token = await tokens.getToken(stale);
       const headers: Record<string, string> = {
         'content-type': 'application/json;charset=UTF-8',
         'api-id': apiId,
@@ -179,7 +155,7 @@ export async function kiwoomPost<A extends KiwoomApiId>(
         headers['cont-yn'] = cont.contYn;
         headers['next-key'] = cont.nextKey;
       }
-      const res = await fetch(`${BASE_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
+      const res = await fetchWithTimeout(`${BASE_URL}${path}`, { method: 'POST', headers, body: JSON.stringify(body), label: '키움증권' });
       const text = await res.text();
       let json: KiwoomBody = {};
       try {
@@ -188,8 +164,8 @@ export async function kiwoomPost<A extends KiwoomApiId>(
         if (res.ok) throw new KiwoomApiError(`키움증권 응답 파싱 실패: ${apiId}`, res.status, text);
       }
 
-      if (!force && needsNewToken(res.status, json)) {
-        force = true;
+      if (stale === undefined && needsNewToken(res.status, json)) {
+        stale = token; // 이 토큰은 쓰지 않는다 — 그새 다른 요청이 새로 받았으면 그걸, 아니면 새로 발급(한 번만)
         continue;
       }
       if (isRateLimited(res.status, json) && attempt < 3) {

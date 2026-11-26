@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api';
 import { BROKER_LABELS, BROKER_ORDER } from '../../brokers';
 import type { BrokerId, DividendCurrency } from '../../types';
+import { localToday } from '../../format';
+import { canAddDividendManually, manualDividendUsdOnly, USD_MANUAL_DIVIDEND_BROKERS } from '../../dividendOwnership';
 
 // 토스 종목 기본 정보 API가 symbols 파라미터에 실제로 허용하는 문자 범위
 // (backend/src/routes/stockInfo.ts의 TOSS_SYMBOL_PATTERN과 동일 — 백엔드가 이미
@@ -10,11 +12,9 @@ import type { BrokerId, DividendCurrency } from '../../types';
 // 요청을 보내는 건 여전히 낭비라 프론트에서도 먼저 걸러 요청 자체를 생략한다).
 const SYMBOL_CODE_PATTERN = /^[A-Za-z0-9.,-]+$/;
 
-const today = () => new Date().toISOString().slice(0, 10);
-
 /**
  * "배당 기록 추가" 카드 — 종목코드 입력 후 500ms 디바운스로 종목명 자동조회("직접 입력"으로 바꾸면 덮어쓰지 않음).
- * API 동기화 증권사는 선택지에서 빠지고, 한국투자증권은 달러 배당만(통화 USD 고정). `error`는 화면 첫 로딩 오류도 여기 보여서 위에서 받는다.
+ * API 동기화 증권사는 선택지에서 빠지고, 한국투자증권·LS증권은 달러 배당만(통화 USD 고정 — dividendOwnership.ts). `error`는 화면 첫 로딩 오류도 여기 보여서 위에서 받는다.
  */
 export function DividendAddCard({
   syncOwnedBrokers,
@@ -35,7 +35,7 @@ export function DividendAddCard({
   const [symbol, setSymbol] = useState('');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
-  const [paidDate, setPaidDate] = useState(today());
+  const [paidDate, setPaidDate] = useState(localToday());
   const [memo, setMemo] = useState('');
   const [taxInput, setTaxInput] = useState('');
   // 기본은 접힘 — 목록 바로 위에 큰 입력 폼이 늘 펼쳐져 있었다(2026-11-18 UX 점검).
@@ -48,15 +48,15 @@ export function DividendAddCard({
   const [nameError, setNameError] = useState<string | null>(null);
   const [manualNameEntry, setManualNameEntry] = useState(false);
 
-  // 직접 입력 폼에서 한국투자증권(동기화 중)을 고르면 통화를 달러로 고정한다.
+  // 직접 입력 폼에서 달러만 직접 입력하는 증권사(동기화 중인 한국투자증권·LS증권)를 고르면 통화를 달러로 고정한다.
   useEffect(() => {
-    if (broker === 'kis' && syncOwnedBrokers.has('kis') && currency !== 'USD') setCurrency('USD');
+    if (manualDividendUsdOnly(syncOwnedBrokers, broker) && currency !== 'USD') setCurrency('USD');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [broker, syncOwnedBrokers]);
 
   // 직접 입력 폼의 증권사 기본값이 API 동기화 증권사면 직접 입력 가능한 첫 증권사로 옮긴다.
   useEffect(() => {
-    if (syncOwnedBrokers.has(broker) && broker !== 'kis') {
+    if (!canAddDividendManually(syncOwnedBrokers, broker)) {
       const first = BROKER_ORDER.find((id) => !syncOwnedBrokers.has(id));
       if (first) setBroker(first);
     }
@@ -118,7 +118,9 @@ export function DividendAddCard({
       return;
     }
     if (isRowSyncOwned(broker, currency)) {
-      setError(`${BROKER_LABELS[broker]}의 원화 배당은 API 동기화로만 관리됩니다(한국투자증권은 달러 배당만 직접 입력).`);
+      setError(
+        `${BROKER_LABELS[broker]}의 원화 배당은 API 동기화로만 관리됩니다(${USD_MANUAL_DIVIDEND_BROKERS.map((b) => BROKER_LABELS[b]).join('·')}은 달러 배당만 직접 입력).`
+      );
       return;
     }
     const taxNum = taxInput.trim() ? Number(taxInput) : null;
@@ -182,7 +184,7 @@ export function DividendAddCard({
             <div className="form-row">
               <label>증권사</label>
               <select value={broker} onChange={(e) => setBroker(e.target.value as BrokerId)}>
-                {BROKER_ORDER.filter((id) => !syncOwnedBrokers.has(id) || id === 'kis').map((id) => (
+                {BROKER_ORDER.filter((id) => canAddDividendManually(syncOwnedBrokers, id)).map((id) => (
                   <option key={id} value={id}>
                     {BROKER_LABELS[id]}
                     {syncOwnedBrokers.has(id) ? ' (달러 배당만)' : ''}
@@ -239,7 +241,7 @@ export function DividendAddCard({
             <div className="form-row">
               <label>통화</label>
               <select value={currency} onChange={(e) => setCurrency(e.target.value as DividendCurrency)}>
-                <option value="KRW" disabled={broker === 'kis' && syncOwnedBrokers.has('kis')}>
+                <option value="KRW" disabled={manualDividendUsdOnly(syncOwnedBrokers, broker)}>
                   원화 (KRW)
                 </option>
                 <option value="USD">달러 (USD)</option>

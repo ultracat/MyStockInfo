@@ -39,8 +39,63 @@ export interface ImportTradeInput {
   executedAt: string;
 }
 
-function store() {
+function rawStore() {
   return new JsonStore<StoredTrade[]>('trades.json', getDataDir(), []);
+}
+
+// ─── 한 번만 하는 이관: KIS 국내 체결 id `주문번호` → `주문일자-주문번호` ─────────────────────────────
+// KIS 주문번호(odno)는 영업일마다 새로 매겨진다 — 예전엔 국내 체결 id가 odno뿐이라 날짜가 다른 체결이 같은 id로
+// 서로를 덮어썼다(kisAdapter.ts의 `kisDomesticTradeId`). 지금 쓰는 id로 옛 저장 행을 옮겨야 다음 실시간 조회가 같은
+// 체결을 새 id로 한 벌 더 쌓지 않는다.
+// - 대상: broker 'kis'이고 id가 **숫자만**인 행(옛 odno) — 해외(`ovrs-…`), 가져오기 UUID, 이미 옮긴 `YYYYMMDD-…`는
+//   숫자만이 아니라 건드리지 않는다 → 몇 번을 돌려도 결과가 같다(멱등).
+// - 날짜는 그 행의 executedAt(국내는 주문일자 = 체결일, YYYY-MM-DD)에서 뽑는다. 날짜를 못 뽑으면 그대로 둔다.
+// - 옮긴 id가 이미 있는 행(같은 계좌)과 겹치면 옛 행은 버린다 — 같은 체결의 사본이고, 새 id 쪽이 더 최근 조회분이다.
+// - 이미 덮어써져 사라진 옛 체결은 되살릴 수 없다 — 다음 실시간 조회(그 연도 다시 보기)가 새 id로 다시 채운다.
+// 저장소를 처음 읽을 때 검사해서 바뀐 게 있을 때만 한 번 쓴다. 같은 배열(JsonStore 캐시가 돌려준 같은 참조)은 다시
+// 검사하지 않는다.
+const KIS_LEGACY_DOMESTIC_ID_RE = /^\d+$/;
+const migrationChecked = new WeakSet<StoredTrade[]>();
+
+export function migrateKisDomesticTradeIds(trades: StoredTrade[]): StoredTrade[] | null {
+  if (!trades.some((t) => t.broker === 'kis' && KIS_LEGACY_DOMESTIC_ID_RE.test(t.id))) return null;
+  const taken = new Set(
+    trades.filter((t) => !(t.broker === 'kis' && KIS_LEGACY_DOMESTIC_ID_RE.test(t.id))).map((t) => tradeKey(t.broker, t.accountId, t.id))
+  );
+  const next: StoredTrade[] = [];
+  for (const t of trades) {
+    if (!(t.broker === 'kis' && KIS_LEGACY_DOMESTIC_ID_RE.test(t.id))) {
+      next.push(t);
+      continue;
+    }
+    const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(t.executedAt);
+    if (!ymd) {
+      next.push(t);
+      continue;
+    }
+    const id = `${ymd[1]}${ymd[2]}${ymd[3]}-${t.id}`;
+    const key = tradeKey(t.broker, t.accountId, id);
+    if (taken.has(key)) continue;
+    taken.add(key);
+    next.push({ ...t, id });
+  }
+  return next;
+}
+
+function store() {
+  const s = rawStore();
+  const current = s.read();
+  if (!migrationChecked.has(current)) {
+    const migrated = migrateKisDomesticTradeIds(current);
+    if (migrated) {
+      s.write(migrated);
+      migrationChecked.add(migrated);
+      console.log(`[trades-store] KIS 국내 체결 id를 '주문일자-주문번호'로 옮겼습니다(${current.length - migrated.length}건 중복 정리).`);
+    } else {
+      migrationChecked.add(current);
+    }
+  }
+  return s;
 }
 
 // upsert 대상 행을 찾을 때 레코드마다 전체를 findIndex로 훑으면 O(저장 건수 ×
@@ -90,7 +145,7 @@ function fingerprint(t: {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** 가져오기가 발급한 id(randomUUID)인가 — 브로커 고유 체결번호(토스 orderId,
- *  KIS odno, KB `날짜-순번`)는 이 형식이 아니다. */
+ *  KIS `주문일자-odno`, KB `날짜-순번`)는 이 형식이 아니다. */
 function isImportGeneratedId(id: string): boolean {
   return UUID_RE.test(id);
 }

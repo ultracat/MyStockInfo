@@ -42,7 +42,8 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          # Electron 45의 내장 Node(24.x)와 맞춘다 — 버전은 루트 .nvmrc 한 곳(Electron 메이저를 올리면 같이).
+          node-version-file: .nvmrc
           cache: npm
 
       # 생성 타입은 openapi-typescript(devDependency)가 필요하다 — 바뀐 게 없으면 이 뒤는 전부 건너뛴다.

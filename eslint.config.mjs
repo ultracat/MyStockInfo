@@ -36,6 +36,16 @@ export default tseslint.config(
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+      // `toISOString().slice(0, 10)`은 UTC 날짜라 한국 오전 9시 전엔 하루 전이 된다(오늘 날짜·파일 이름·조회 기간이 어제로 — 2026-11-26
+      // 점검에서 여러 화면에서 발견). 화면 코드는 format.ts의 localToday()/formatLocalDate()만 쓴다.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name=/^(slice|substring|substr)$/][callee.object.type='CallExpression'][callee.object.callee.property.name='toISOString']",
+          message: 'toISOString()은 UTC 날짜입니다 — 오늘은 format.ts의 localToday(), 다른 날짜는 formatLocalDate()를 쓰세요.',
+        },
+      ],
     },
   }
 );

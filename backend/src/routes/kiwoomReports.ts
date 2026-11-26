@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { kstToday } from '../kstDate';
 import {
   fetchKiwoomAccountNo,
   fetchKiwoomDomesticRealized,
@@ -49,7 +50,7 @@ kiwoomReportsRouter.get('/cash-flows', async (req, res) => {
       'kiwoom:cash-flows',
       3600_000,
       async () => {
-        const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+        const today = kstToday();
         const accountId = await fetchKiwoomAccountNo();
         const [flows, transfers] = await Promise.all([
           fetchKiwoomTransactions('2015-01-01', today, '1', '0'),

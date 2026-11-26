@@ -6,6 +6,7 @@ import { downloadCsv, parseCsv } from '../../csv';
 import { formatImportResult } from '../../importResult';
 import type { BrokerId, DividendCurrency, DividendRecord } from '../../types';
 import ActionMenu from '../../components/ActionMenu';
+import { localToday } from '../../format';
 
 // export/import 왕복 호환을 위한 CSV 컬럼 — DividendRecord 필드명을 그대로 헤더로
 // 쓴다(한글 헤더 대신 필드명을 쓰는 이유: 내보낸 파일을 그대로 다시 가져올 때
@@ -15,7 +16,6 @@ import ActionMenu from '../../components/ActionMenu';
 // amount = 세후(실수령), tax = 원천징수 세금(선택 — 예전 CSV처럼 없어도 된다).
 const DIVIDEND_CSV_HEADER = ['broker', 'accountId', 'symbol', 'currency', 'amount', 'paidDate', 'memo', 'tax'];
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 /**
  * 배당 기록 CSV·Google Sheets 내보내기/가져오기 줄. CSV 내보내기 범위는 목록의 증권사 필터(listBroker) 그대로, CSV 가져오기는
@@ -53,7 +53,7 @@ export function DividendTransferBar({
       ]),
     ];
     const scope = listBroker === 'ALL' ? 'all' : listBroker;
-    downloadCsv(`dividends-${scope}-${today()}.csv`, rows);
+    downloadCsv(`dividends-${scope}-${localToday()}.csv`, rows);
   }
 
   function onImportClick() {

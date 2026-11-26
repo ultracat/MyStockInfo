@@ -1,6 +1,7 @@
 import { withCache } from '../brokers/responseCache';
 import { eximbankKeyFingerprint, getEximbankAuthKey } from './eximbankKey';
 import { getCachedRate, setCachedRate } from './eximbankCache';
+import { addDays, compactYmd, daysInMonth, kstToday, weekdayOf } from '../kstDate';
 
 // 한국수출입은행 Open API(환율, data=AP01). 공공데이터포털 공지("도메인이
 // 2025-06-25에 www.koreaexim.go.kr로 이전, 구 도메인은 2026-04-30 폐쇄 예정")를
@@ -36,8 +37,10 @@ function parseKoreanNumber(s: unknown): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-function yyyymmdd(date: Date): string {
-  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+// 날짜는 전부 **한국 날짜**로 센다(kstDate.ts) — 수출입은행 고시일이 한국 날짜라, PC 시간대가 다르면 OS 지역 시간
+// (getDate/getDay)으로는 "오늘"과 요일이 하루 어긋났다.
+function daysAgoCompact(daysAgo: number): string {
+  return compactYmd(addDays(kstToday(), -daysAgo));
 }
 
 // fetch엔 기본 타임아웃이 없다 — 위 BASE_URL 주석에 적은 대로 신 도메인이
@@ -82,7 +85,7 @@ async function withRequestSlot<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 function isPastDate(searchdate: string): boolean {
-  return searchdate < yyyymmdd(new Date());
+  return searchdate < compactYmd(kstToday());
 }
 
 // 인증키가 없으면 즉시 null(예외 아님 — 미연동은 정상 상태). 그 외 실패
@@ -99,10 +102,20 @@ function isPastDate(searchdate: string): boolean {
 // 생기면 그 값은 그날 다시 안 바뀌므로 정상 캐시). 네트워크/타임아웃/응답
 // 형식 오류는 일시적 문제일 수 있어 아예 캐시하지 않는다(다음 호출에 재시도).
 async function fetchEximbankRateForDate(authKey: string, searchdate: string): Promise<number | null> {
+  return (await fetchEximbankRateForDateDetailed(authKey, searchdate)).rate;
+}
+
+/** 위와 같고, 그 답이 **확정**인지(`settled`)도 준다 — 값이 있거나, 지난 날짜인데 그날 USD가 없다고 확인됨(휴일).
+ *  네트워크·타임아웃·키 오류(result 2·3·4)·오늘 고시 전은 미확정 — 월평균이 이걸로 "일부만 받은 평균"을 가린다. */
+async function fetchEximbankRateForDateDetailed(
+  authKey: string,
+  searchdate: string
+): Promise<{ rate: number | null; settled: boolean }> {
   const cached = getCachedRate(searchdate);
   if (cached.hit && (cached.rate !== null || isPastDate(searchdate))) {
-    return cached.rate;
+    return { rate: cached.rate, settled: true };
   }
+  const unsettled = { rate: null, settled: false };
 
   let items: unknown;
   try {
@@ -113,23 +126,26 @@ async function fetchEximbankRateForDate(authKey: string, searchdate: string): Pr
       return res.ok ? res.json() : null;
     });
   } catch {
-    return null; // 타임아웃(AbortError) 포함
+    return unsettled; // 타임아웃(AbortError) 포함
   }
-  if (!Array.isArray(items)) return null;
+  if (!Array.isArray(items)) return unsettled;
 
   // result 2(DATA 코드 오류)·3(인증키 오류)·4(일일 한도 마감)는 키/요청 문제지 "그날 환율 없음"이 아니다 —
   // 캐시하면 키를 고친 뒤에도 그 날짜가 영영 비어 보인다(사용자 입력 키라 잘못 넣는 일이 생긴다).
-  if ((items as EximbankRateItem[]).some((i) => i.result !== 1)) return null;
+  if ((items as EximbankRateItem[]).some((i) => i.result !== 1)) return unsettled;
   const usd = (items as EximbankRateItem[]).find((i) => i.cur_unit === 'USD');
   if (!usd) {
-    if (isPastDate(searchdate)) setCachedRate(searchdate, null);
-    return null;
+    if (isPastDate(searchdate)) {
+      setCachedRate(searchdate, null);
+      return { rate: null, settled: true };
+    }
+    return unsettled;
   }
 
   const rate = parseKoreanNumber(usd.deal_bas_r);
   const result = Number.isFinite(rate) && rate > 0 ? rate : null;
   if (result !== null) setCachedRate(searchdate, result);
-  return result;
+  return { rate: result, settled: result !== null };
 }
 
 /**
@@ -144,9 +160,7 @@ export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: s
   if (!authKey) return null;
 
   for (let daysAgo = 0; daysAgo <= 5; daysAgo++) {
-    const date = new Date();
-    date.setDate(date.getDate() - daysAgo);
-    const searchdate = yyyymmdd(date);
+    const searchdate = daysAgoCompact(daysAgo);
 
     const rate = await fetchEximbankRateForDate(authKey, searchdate);
     if (rate === null) continue;
@@ -157,35 +171,41 @@ export async function fetchEximbankUsdKrwRate(): Promise<{ rate: number; asOf: s
   return null;
 }
 
+type MonthlyAvg = { rate: number; sampleCount: number } | null;
+
+/** `complete`: 그 달 평일 전부의 답이 확정(값 또는 휴일 확인)됐는가 — 아니면 평균이 일부 날짜만으로 나온 것이다. */
 async function computeEximbankMonthlyAvgUsdKrwRate(
   month: string,
   authKey: string
-): Promise<{ rate: number; sampleCount: number } | null> {
+): Promise<{ result: MonthlyAvg; complete: boolean }> {
+  const invalid = { result: null, complete: true }; // 형식이 틀린 달 — 다시 물어도 같다
+  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!m) return invalid;
+  const year = Number(m[1]);
+  const monthNum = Number(m[2]);
+  if (monthNum < 1 || monthNum > 12) return invalid;
 
-  const [yearStr, monthStr] = month.split('-');
-  const year = Number(yearStr);
-  const monthNum = Number(monthStr);
-  if (!Number.isInteger(year) || !Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12) return null;
-
-  const daysInMonth = new Date(year, monthNum, 0).getDate();
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === monthNum;
-  const lastDay = isCurrentMonth ? Math.min(daysInMonth, today.getDate()) : daysInMonth;
+  const today = kstToday();
+  const lastDayOfMonth = daysInMonth(year, monthNum);
+  const isCurrentMonth = today.slice(0, 7) === month;
+  if (month > today.slice(0, 7)) return { result: null, complete: false }; // 아직 오지 않은 달
+  const lastDay = isCurrentMonth ? Math.min(lastDayOfMonth, Number(today.slice(8, 10))) : lastDayOfMonth;
 
   const weekdaySearchdates: string[] = [];
   for (let day = 1; day <= lastDay; day++) {
-    const date = new Date(year, monthNum - 1, day);
-    const weekday = date.getDay(); // 0=일, 6=토
+    const ymd = `${month}-${String(day).padStart(2, '0')}`;
+    const weekday = weekdayOf(ymd); // 0=일, 6=토
     if (weekday === 0 || weekday === 6) continue;
-    weekdaySearchdates.push(yyyymmdd(date));
+    weekdaySearchdates.push(compactYmd(ymd));
   }
-  if (weekdaySearchdates.length === 0) return null;
+  if (weekdaySearchdates.length === 0) return { result: null, complete: !isCurrentMonth };
 
-  const rates = await Promise.all(weekdaySearchdates.map((d) => fetchEximbankRateForDate(authKey, d)));
-  const valid = rates.filter((r): r is number => r !== null);
-  if (valid.length === 0) return null;
+  const answers = await Promise.all(weekdaySearchdates.map((d) => fetchEximbankRateForDateDetailed(authKey, d)));
+  const complete = answers.every((a) => a.settled);
+  const valid = answers.map((a) => a.rate).filter((r): r is number => r !== null);
+  if (valid.length === 0) return { result: null, complete };
 
-  return { rate: valid.reduce((sum, r) => sum + r, 0) / valid.length, sampleCount: valid.length };
+  return { result: { rate: valid.reduce((sum, r) => sum + r, 0) / valid.length, sampleCount: valid.length }, complete };
 }
 
 // 이미 끝난 달의 평균은 다시 안 바뀌니 길게(30일, 이 프로세스가 사는 동안은
@@ -194,6 +214,10 @@ async function computeEximbankMonthlyAvgUsdKrwRate(
 // CANDLE_CACHE_TTL_MS)와 같은 근거) 캐싱한다.
 const PAST_MONTH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const CURRENT_MONTH_TTL_MS = 4 * 60 * 60 * 1000;
+// 그 달 평일 중 답을 못 받은 날(네트워크·타임아웃·한도 마감·키 오류)이 있거나 결과가 null이면 10분만 — 예전엔 일부
+// 날짜만으로 낸 평균(또는 null)도 30일 동안 그대로 썼다. 확정된 날짜는 디스크 캐시(eximbankCache.ts)에 있어 다시
+// 계산해도 못 받은 날만 다시 부른다.
+const INCOMPLETE_TTL_MS = 10 * 60 * 1000;
 
 /**
  * 어느 한 달("YYYY-MM")의 영업일별 매매기준율 평균 — 배당금처럼 특정 날짜에
@@ -210,14 +234,15 @@ export async function fetchEximbankMonthlyAvgUsdKrwRate(
 ): Promise<{ rate: number; sampleCount: number } | null> {
   const authKey = await getEximbankAuthKey();
   if (!authKey) return null; // 키 없음은 캐시하지 않는다 — 키를 넣는 즉시 다음 요청부터 받아진다
-  const now = new Date();
-  const isCurrentMonth = month === `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const isCurrentMonth = month === kstToday().slice(0, 7);
   // 캐시 키에 인증키 지문을 넣는다 — 잘못된 키로 받은 null을 새 키에서 30일 동안 다시 쓰지 않게.
-  return withCache(
+  const { result } = await withCache(
     `eximbank:monthly-avg:${eximbankKeyFingerprint(authKey)}:${month}`,
-    isCurrentMonth ? CURRENT_MONTH_TTL_MS : PAST_MONTH_TTL_MS,
+    (v: { result: MonthlyAvg; complete: boolean }) =>
+      v.result === null || !v.complete ? INCOMPLETE_TTL_MS : isCurrentMonth ? CURRENT_MONTH_TTL_MS : PAST_MONTH_TTL_MS,
     () => computeEximbankMonthlyAvgUsdKrwRate(month, authKey)
   );
+  return result;
 }
 
 export type EximbankKeyCheck = 'ok' | 'invalid' | 'limit' | 'unreachable';
@@ -228,12 +253,12 @@ export type EximbankKeyCheck = 'ok' | 'invalid' | 'limit' | 'unreachable';
  */
 export async function checkEximbankAuthKey(authKey: string): Promise<EximbankKeyCheck> {
   for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
-    const date = new Date();
-    date.setDate(date.getDate() - daysAgo);
-    if (date.getDay() === 0 || date.getDay() === 6) continue;
+    const searchdate = daysAgoCompact(daysAgo);
+    const weekday = weekdayOf(searchdate);
+    if (weekday === 0 || weekday === 6) continue;
     let items: unknown;
     try {
-      const res = await fetchWithTimeout(`${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${yyyymmdd(date)}&data=AP01`);
+      const res = await fetchWithTimeout(`${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`);
       if (!res.ok) return 'unreachable';
       items = await res.json();
     } catch {

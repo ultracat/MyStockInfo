@@ -7,7 +7,7 @@ import type { TossTransaction } from '../src/brokers/toss/tossClient';
 const tx = (o: Partial<TossTransaction>): TossTransaction => ({
   transactionType: 'DEPOSIT', marketCountry: 'KR', currency: 'KRW', symbol: null, assetClass: null, isinCode: null,
   amount: '0', tax: '0', netAmount: '0', exchangeRate: null, settlementDate: '2026-01-02', settled: true,
-  transactionTime: null, isCancellation: false, ...o,
+  transactionTime: null, isCancellation: false, commission: '0', filledPrice: null, quantity: null, ...o,
 });
 
 test('투자원금: 은행 입출금만 세고 분배금·세금 출금·채권·환전·미결제·취소는 뺀다', () => {

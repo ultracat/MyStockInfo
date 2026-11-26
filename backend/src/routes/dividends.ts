@@ -264,17 +264,27 @@ dividendsRouter.get('/upcoming', async (req, res) => {
   }
 });
 
-dividendsRouter.post('/sync', async (_req, res) => {
-  const { results, errors } = await syncAllDividends();
-  res.json({ results, errors });
+// Express 4는 async 핸들러가 던진 예외를 잡아주지 않는다(응답 없이 요청이 매달리고 unhandledRejection만 남음) —
+// next(err)로 server.ts의 전역 오류 처리기(JSON 응답 + 가리기)에 넘긴다.
+dividendsRouter.post('/sync', async (_req, res, next) => {
+  try {
+    const { results, errors } = await syncAllDividends();
+    res.json({ results, errors });
+  } catch (err) {
+    next(err);
+  }
 });
 
-dividendsRouter.post('/import', async (req, res) => {
+dividendsRouter.post('/import', async (req, res, next) => {
   const records = (req.body as { records?: unknown })?.records;
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
   }
-  res.json(await importDividendsRecords(records));
+  try {
+    res.json(await importDividendsRecords(records));
+  } catch (err) {
+    next(err);
+  }
 });
 
 dividendsRouter.delete('/:id', (req, res) => {

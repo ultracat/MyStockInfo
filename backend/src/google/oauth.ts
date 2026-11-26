@@ -2,6 +2,8 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import * as store from './store';
 import { getGoogleClientCredentials, hasGoogleClientCredentials } from './clientCredentials';
+// 요청마다 15초 제한 — 응답이 없으면 로그인 콜백·Sheets 내보내기가 끝없이 멈춘다(2026-11-26).
+import { fetchWithTimeout } from '../http/fetchWithTimeout';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -100,7 +102,7 @@ function buildAuthUrl(clientId: string, redirectUri: string, codeChallenge: stri
 
 async function fetchUserEmail(accessToken: string): Promise<string | null> {
   try {
-    const res = await fetch(USERINFO_URL, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const res = await fetchWithTimeout(USERINFO_URL, { headers: { Authorization: `Bearer ${accessToken}` }, label: 'Google' });
     if (!res.ok) return null;
     const body = (await res.json()) as { email?: string };
     return body.email ?? null;
@@ -116,8 +118,9 @@ function closeServer(server: http.Server): void {
 
 async function exchangeCode(code: string, codeVerifier: string, redirectUri: string): Promise<void> {
   const client = await requireClient();
-  const tokenRes = await fetch(TOKEN_URL, {
+  const tokenRes = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
+    label: 'Google 로그인',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: client.clientId,
@@ -294,8 +297,9 @@ export async function getValidAccessToken(): Promise<string> {
   }
   const client = await requireClient();
 
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetchWithTimeout(TOKEN_URL, {
     method: 'POST',
+    label: 'Google 로그인',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       client_id: client.clientId,

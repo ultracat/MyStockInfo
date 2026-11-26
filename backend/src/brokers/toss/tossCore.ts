@@ -5,6 +5,8 @@ import { withRateLimitRetry } from '../rateLimiter';
 import { getTossRateLimiter, type TossRateLimitGroup } from './rateLimitGroups';
 import type { components } from './tossSpec.gen';
 import { noteResponse } from '../responseShape';
+import { createTokenManager } from '../tokenManager';
+import { fetchWithTimeout } from '../../http/fetchWithTimeout';
 
 const BASE_URL = 'https://openapi.tossinvest.com';
 
@@ -163,70 +165,51 @@ export class TossApiError extends Error {
   }
 }
 
-// One in-memory token cache per process. Toss issues a single valid token
-// per client (reissuing invalidates the previous one), so we deliberately
-// don't refresh speculatively — only when expired/near-expiry or on 401.
-let cachedToken: { accessToken: string; expiresAt: number } | null = null;
-
-// Two concurrent callers that both see an expired/missing cachedToken (e.g.
-// two screens' requests landing at the same moment right after expiry) would
-// otherwise each fire their own `/oauth2/token` request — and since Toss
-// invalidates the previous token on every reissue (comment above), whichever
-// request loses the race gets a token that's already dead, 401s, and forces
-// yet another reissue. Sharing one in-flight fetch across concurrent callers
-// avoids both the wasted call and the self-inflicted invalidation.
-let inFlightFetch: Promise<string> | null = null;
-
-async function fetchTokenUncached(): Promise<string> {
-  const creds = await getCredentialFields('toss');
-  if (!creds) {
-    throw new Error('토스증권 API 키가 설정되지 않았습니다. 설정 화면에서 Client ID/Secret을 입력해주세요.');
-  }
-
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: creds.clientId,
-    client_secret: creds.clientSecret,
-  });
-
-  const authLimiter = getTossRateLimiter('AUTH');
-  const res = await authLimiter.schedule(() =>
-    withRateLimitRetry(
-      () =>
-        fetch(`${BASE_URL}/oauth2/token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-        }),
-      (r) => authLimiter.learnFromHeaders(r)
-    )
-  );
-
-  if (!res.ok) {
-    throw new TossApiError('토스증권 토큰 발급 실패', res.status, await res.text());
-  }
-
-  const data = (await res.json()) as TossTokenResponse;
-  // 60s safety buffer before expiry.
-  cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in - 60) * 1000 };
-  return cachedToken.accessToken;
-}
-
-function fetchToken(): Promise<string> {
-  if (!inFlightFetch) {
-    inFlightFetch = fetchTokenUncached().finally(() => {
-      inFlightFetch = null;
+// 토큰은 메모리에만 둔다(실행마다 새로 받는다). 토스는 클라이언트당 유효 토큰이 하나뿐이라(재발급하면 이전 토큰이
+// 바로 무효) 미리 갱신하지 않고 만료 임박·401일 때만 받는다. 동시 발급 공유·401 재발급 경쟁 방지(staleToken 비교)·
+// Client ID 해시·자격증명 변경 시 무효화는 공용 tokenManager.ts — 예전엔 401마다 무조건 재발급해서, 동시에 401을 받은
+// 요청들이 서로 막 받은 토큰을 다시 무효화했다(2026-11-26 리뷰).
+const tokens = createTokenManager({
+  broker: 'toss',
+  persist: false,
+  async loadCreds() {
+    const creds = await getCredentialFields('toss');
+    if (!creds) {
+      throw new Error('토스증권 API 키가 설정되지 않았습니다. 설정 화면에서 Client ID/Secret을 입력해주세요.');
+    }
+    return creds;
+  },
+  keyOf: (creds) => creds.clientId,
+  async issue(creds) {
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: creds.clientId,
+      client_secret: creds.clientSecret,
     });
-  }
-  return inFlightFetch;
-}
 
-async function getToken(forceRefresh = false): Promise<string> {
-  if (!forceRefresh && cachedToken && cachedToken.expiresAt > Date.now()) {
-    return cachedToken.accessToken;
-  }
-  return fetchToken();
-}
+    const authLimiter = getTossRateLimiter('AUTH');
+    const res = await authLimiter.schedule(() =>
+      withRateLimitRetry(
+        () =>
+          fetchWithTimeout(`${BASE_URL}/oauth2/token`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body,
+            label: '토스증권',
+          }),
+        (r) => authLimiter.learnFromHeaders(r)
+      )
+    );
+
+    if (!res.ok) {
+      throw new TossApiError('토스증권 토큰 발급 실패', res.status, await res.text());
+    }
+
+    const data = (await res.json()) as TossTokenResponse;
+    // 60s safety buffer before expiry.
+    return { accessToken: data.access_token, expiresAt: Date.now() + (data.expires_in - 60) * 1000 };
+  },
+});
 
 export async function tossFetch<T>(
   path: string,
@@ -238,19 +221,20 @@ export async function tossFetch<T>(
     if (opts.accountSeq !== undefined) {
       headers['X-Tossinvest-Account'] = String(opts.accountSeq);
     }
-    return fetch(`${BASE_URL}${path}`, { headers });
+    return fetchWithTimeout(`${BASE_URL}${path}`, { headers, label: '토스증권' });
   };
 
   const limiter = getTossRateLimiter(group);
   const res = await limiter.schedule(async () => {
     const learn = (r: Response) => limiter.learnFromHeaders(r);
 
-    let token = await getToken();
+    let token = await tokens.getToken();
     let response = await withRateLimitRetry(() => doFetch(token), learn);
 
     if (response.status === 401) {
-      // Token may have expired early or been invalidated — refresh once and retry.
-      token = await getToken(true);
+      // 토큰이 일찍 만료됐거나 무효화됐다 — 한 번만 다시 받아 재시도. 실패한 토큰을 넘겨서, 그새 다른 요청이 이미
+      // 새로 받았으면 또 발급하지 않고 그걸 쓴다(토스는 재발급하면 이전 토큰이 무효라 겹쳐 받으면 서로를 죽인다).
+      token = await tokens.getToken(token);
       response = await withRateLimitRetry(() => doFetch(token), learn);
     }
 

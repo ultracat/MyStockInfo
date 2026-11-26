@@ -55,7 +55,8 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   말 것 — 테스트는 `test/setup.ts`의 `readSecretJson`, 실서버 점검 스크립트(`check:kis`/`check:nh`)도 이 클래스로 읽는다.
   새 브로커 토큰도 **`<브로커>-token.json` 이름 + 이 클래스**로 — 백업이 이름 규칙으로 뺀다("백업/복원" 절).
 - `src/logRedact.ts` — **증권사 응답을 로그에 남길 땐 이걸 거친다**(2026-11-16). "응답 형식이 예상과 다름" 로그는
-  `shapeForLog(raw)`(값을 버리고 키·타입·길이만), 오류 본문은 `redactText()`(6자리 이상 숫자열 가림 + 500자). 예전엔 원본 응답
+  `shapeForLog(raw)`(값을 버리고 키·타입·길이만), 오류 본문은 `redactText()`(숫자 **개수** 6개 이상인 숫자열 가림 — `,` `.` `-`가 끼어도 한 덩어리, 날짜·6자리 종목코드도 가려지고 버전·IPv4·5자리 이하는 남김 + 500자).
+  가림 자체는 `maskDigitRuns()` 하나 — Electron 로그 파일(`electron/src/redact.ts`)이 `backend/dist/logRedact`를 그대로 import해 같은 규칙을 쓴다. 예전엔 원본 응답
   전체(계좌번호·수량·금액)를 찍었다 — 터미널·Linux·Windows에선 남을 수 있다. 새 로그에 `JSON.stringify(raw)`를 쓰지 말 것.
 - `src/paths.ts` — `getDataDir()`: Electron 안에서 `app.getPath('userData')/data`,
   단독 실행 시 `backend/data/`(gitignore). 단독 실행에서 `MYSTOCK_DATA_DIR` 환경변수가
@@ -64,7 +65,13 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 - **데이터 폴더는 0700, `JsonStore`가 쓰는 파일은 0600**(2026-11-16) — `paths.ts`가 폴더를 만들 때와 이미 있을 때
   모두 0700으로 맞추고(Linux는 `~/.config`가 755인 배포판이 있다), `JsonStore.write`의 임시 파일을 0600으로 만들어
   rename 뒤에도 그 권한이 남는다. Windows는 POSIX 권한이 없어 무시된다.
-- `src/jsonStore.ts` — `JsonStore<T>`: atomic write(tmp+rename) JSON 파일 저장 헬퍼.
+- `src/jsonStore.ts` — `JsonStore<T>`: atomic write(tmp **+ fsync** + rename, 폴더 fsync는 되는 플랫폼만) JSON 파일 저장 헬퍼.
+  **손상된 파일**(파싱 실패)은 `<이름>.corrupt-<시각>`으로 격리하고 `JsonStoreCorruptError`(백업 복원 안내)를 던진다 — 기본
+  `onCorrupt: 'block'`은 원래 파일이 다시 생길 때까지 읽기·쓰기 모두 거부(격리본이 디스크에 있는지로 판단해 재시작해도 유지).
+  ⚠ 기본값을 돌려주면 write-through·update가 곧바로 빈(일부뿐인) 데이터를 써서 손상 전 내용을 영영 덮어쓴다 — 그래서 막는다.
+  다시 받으면 되는 캐시·접속 토큰(`SecretJsonStore`)·알림 상태는 `{ onCorrupt: 'reset' }`(격리 이름 `.cache-corrupt-`, 기본값으로 계속).
+  **새 저장소가 캐시면 `reset`을 붙인다.** `blockedDataFiles(dir)`가 막힌 사용자 데이터를 알려 주고 `autoBackup.ts`가 그동안 하루 자동 백업을 쉰다
+  (그 파일이 빠진 백업이 쌓여 손상 전 정상 백업을 7개 한도 밖으로 밀어내지 않게).
   자격증명/배당/보유종목/매매내역/설정이 전부 이걸 쓴다. **파싱 결과를 파일 경로별로
   메모리에 캐시한다**(mtime/size가 같으면 재파싱 안 함) — 이 백엔드는 Electron 메인
   프로세스 안에서 돌아서 요청마다 sync 읽기+`JSON.parse`를 반복하면 창 이벤트까지
@@ -77,8 +84,17 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   키체인 복호화가 여러 번(스프레드시트 확인, 탭 생성, 읽기/쓰기 등 호출 수만큼) 반복됐다(당시엔 동기
   `decryptString`이라 메인 프로세스를 붙잡았고, 지금은 `decryptStringAsync`라도 키체인 왕복이라 캐시를 유지한다).
   `SealedValueStore`(환율 키·Google 클라이언트)도 같은 캐시를 쓴다.
-- **브로커 토큰 발급(`toss/tossClient.ts`/`kis/kisClient.ts`/`kb/kbClient.ts`의
-  `getToken`/`fetchToken`) 전부 in-flight 프로미스를 공유한다** — 캐시된 토큰이
+- **브로커 토큰은 전부 `brokers/tokenManager.ts`의 `createTokenManager({ broker, persist, loadCreds, keyOf, issue })` 하나로 관리한다**
+  (2026-11-26 — 6벌이던 구현이 갈라져 401 경쟁·키 변경 미감지·타임아웃 누락이 생겼다). 브로커별 차이(발급 요청 모양·만료·리미터·NH IGW40054 재시도)는
+  `issue`에, 토스만 `persist: false`(메모리). 지키는 것:
+  - **동시 발급 공유**(아래 이유).
+  - **`getToken(staleToken)`** — "토큰 무효" 응답을 받은 요청은 실패한 그 토큰을 넘기고, 캐시가 이미 다른 토큰이면 재발급 없이 그걸 쓴다.
+    무조건 재발급하면 동시 요청끼리 서로의 토큰을 죽인다(토스는 재발급 즉시 이전 토큰 무효, KIS는 발급 빈도 제한). 요청 함수는 `stale = token`으로 **한 번만** 재시도.
+  - **`keyHash`**(앱키·Client ID의 sha256 앞 16자, 원문 저장 안 함) — 키가 바뀌면 이전 토큰을 쓰지 않는다. 해시 없는 예전 파일은 한 번 받아들이고 해시를 붙인다(업그레이드로 KIS 재발급 안 나게).
+  - **`invalidateBrokerTokens(broker)`** — `credentials.ts`의 `setCredentialFields`(이전 값이 있고 **달라졌을 때만** — NH는 발급마다 보안 알림)와
+    `clearCredential`이 부른다. 메모리 캐시와 `<브로커>-token.json`을 지우고, 발급 도중이면 세대 번호로 그 결과를 버린다.
+  - 새 브로커도 이걸 쓴다.
+  예전 설명(동시 발급 공유가 생긴 이유): 캐시된 토큰이
   만료/부재일 때 두 요청이 동시에 들어오면(예: 화면 두 개가 거의 동시에 API를
   부르는 경우) 각자 독립적으로 토큰을 재발급받던 걸 하나로 합쳤다. KIS는 공식
   문서에 "1일 1회 발급 제한"(`EGW00133`)이 있다고 이미 적혀 있어서(`kis-token.json`
@@ -98,6 +114,17 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   **in-flight promise 공유**(같은 key로 거의 동시에 온 호출은 하나만 실제 요청). React
   StrictMode의 effect 이중실행이 이 없이는 rate-limit과 무관해 보이는 에러(토스
   `account-not-found` 등)로 샐 수 있어서 생긴 장치 — 새 브로커 클라이언트도 이걸로 감싼다.
+  진행 중 항목 삭제·캐시 쓰기는 **지금 진행 중인 요청이 자기일 때만**(forceRefresh가 끼어들면 먼저 시작한 요청의 늦은 결과가 새 값을 덮던 경합).
+  `ttlMs`는 값을 보고 정하는 함수도 되고 0 이하면 캐시하지 않는다 — 실패·일부만 성공한 결과를 긴 TTL로 캐시하지 말 것(수출입은행 월평균은 미확정 날짜가 있으면 10분).
+- `src/http/fetchWithTimeout.ts` — **새 외부 요청은 `fetch` 대신 이걸 쓴다**(2026-11-26). 기본 15초, 호출부 signal과 `AbortSignal.any`로 합치고,
+  **본문까지** 제한 시간 안에 읽어 같은 상태·헤더의 Response로 돌려준다(헤더 뒤 본문이 멈추는 경우도 끊음 — JSON API 전용, 큰 다운로드엔 쓰지 않음).
+  시간 초과는 `FetchTimeoutError`(status 0, **메시지에 URL 없음** — NH 토큰 요청은 쿼리에 앱키) → `handleBrokerApiError`가 502. 매번 `globalThis.fetch`를 불러 테스트 가짜 서버가 그대로 통한다
+  (`setDefaultFetchTimeoutForTest`). 예전엔 토스·KIS·KB·키움·Google에 제한이 없어 토큰 발급이 걸리면 그 증권사 요청 전체가 수 분 멈췄다.
+- `src/kstDate.ts` — 한국 날짜(`kstToday`·`kstTodayCompact`·`kstHour`·`addDays`·`weekdayOf`·`daysInMonth`·`compactYmd`). 한국 날짜는 여기서만 —
+  `getDate`/`getDay`(OS 시간대)나 인라인 `+9*3600_000`을 새로 쓰지 않는다. ⚠ 아직 옮기지 않은 곳: `marketInsights`·`alerts`·`upcomingDividends`·`xingFamily`·
+  `nhDividendSync`·`kisDividendSync`·`nhCashFlows`·`kiwoomDividendSync`(고칠 때 같이 옮긴다).
+- `routes/asyncRoute.ts` — Express 4는 async 핸들러의 거부를 잡지 않아 **응답 없이 매달린다**. async 라우트는 `asyncRoute(...)`로 감싸거나 try에서 `next(err)`로.
+  `handleBrokerApiError`의 502·500 응답도 `redactText`로 가린다(증권사 원문 본문에 계좌번호가 섞일 수 있음).
 - `registry.ts` — `getAdapter`. **삼성증권/미래에셋증권은 등록 안
   돼 있음**(어댑터를 만들 계획 자체가 없음 — CSV 전용, 아래 `knownBrokers.ts` 참고).
   **KB증권도 여기 없다** — Open API는 연동했지만(`kb/kbClient.ts`)
@@ -283,6 +310,9 @@ UI만 복잡해지고 실제로 채울 방법이 없는 브로커가 더 많아 
 `upsertFromImport`로 별도 경로를 쓴다 — 보유종목은 실시간 동기화와 마찬가지로 CSV에
 등장한 (broker,accountId)를 통째로 덮어쓰고(같은 CSV를 다시 가져와도 안 쌓임), 매매내역은
 누적 히스토리라 `id` 기준 upsert로 남긴다.
+**일부 시장만 실패한 조회**: 어댑터는 해외 잔고만 실패하면 국내만 돌려주되 `PortfolioOverview.failedMarkets: ['US']`를 붙이고(KIS·NH·LS·DB),
+`routes/holdings.ts`가 `replaceSnapshot(..., { keepMarkets })`로 그 시장의 저장 행은 그대로 둔다 — 예전엔 통째 교체가 실패를 **삭제**로 바꿔
+다가오는 배당·알림·내보내기에서 미국 보유가 빠졌다. 실패를 격리하는 조회를 통째 교체 저장에 쓸 땐 항상 이런 표시를 같이 싣는다.
 **KB증권**은 이 write-through를 `routes/kb.ts`의 동기화 라우트가 호출될 때 한다는
 점만 다르고(프론트가 보유종목/매매내역 화면 진입 시 자동으로 이 라우트를 호출한다
 — "KB증권 Open API" 절 참고), 쓰는 함수(`replaceSnapshot`/`upsertTrades`)는 동일하다.
@@ -526,7 +556,8 @@ purchaseAmount`의 순수 산술 결과라 값을 몇 번 다시 계산해도 �
   `ovrs_now_pric1`·`frcr_pchs_amt`·`frcr_evlu_amt2`·`evlu_pfls_amt2`·`evlu_pfls_rt1`), output2의 USD 줄 `frcr_dncl_amt_2`가 달러
   예수금. `TTTS3012R`(잔고)는 예수금이 없어 안 썼다. 30초 캐시(`PORTFOLIO_TTL_MS`).
 - 체결: 주문체결내역(`TTTS3035R`, `PDNO=%`, `CCLD_NCCS_DVSN=01` 체결만, `FK200/NK200` 연속조회, 1tps 리미터). 날짜는 현지 주문일.
-  id는 `ovrs-{ord_dt}-{odno}` — 국내 주문번호와 겹치지 않게(매매내역 저장소가 id로 upsert).
+  id는 `ovrs-{ord_dt}-{odno}` — 국내 주문번호와 겹치지 않게(매매내역 저장소가 id로 upsert). **국내 체결 id는 `{ord_dt}-{odno}`**(`kisDomesticTradeId`, 2026-11-26) —
+  주문번호가 영업일마다 새로 매겨져 예전 `odno`만으로는 다른 날 체결끼리 덮어썼다. 숫자만인 옛 `kis` id는 `tradesStore.migrateKisDomesticTradeIds`가 읽을 때 `executedAt` 날짜로 한 번 옮긴다(멱등, 중복이면 옛 사본 버림).
 - `kisAdapter`는 국내 조회와 **독립**으로 부른다 — 해외가 실패해도 국내 보유·매매내역은 그대로(경고 로그만). 해외 보유가 있으면
   `totalXxxUsd`가 채워지고, 없으면 예전처럼 null.
 - 해외 배당은 여전히 없다(계좌 기준 API 없음, 위 "배당 동기화" 절).
@@ -1170,7 +1201,7 @@ Google Sheets 연동은 "동기화"(부분 교체/append)라 백업이 아니므
   그대로 둠, 나머지 데이터는 복원). 예전 형식 백업(`secrets.enc.json` 없음)의
   `credentials.json`/`google-account.json`은 그대로 받는다 — 같은 PC면 열린다.
 - **복원 뒤에는 앱을 다시 시작한다** — `JsonStore` 캐시는 mtime으로 저절로 무효화되지만,
-  열린 `stockNames.sqlite` 핸들과 KIS/KB 토큰 메모리 캐시는 그대로라서. 패키징된 앱은
+  열린 `stockNames.sqlite` 핸들이 그대로라서(토큰 메모리 캐시는 이제 자격증명 저장 때 `invalidateBrokerTokens`가 버린다). 패키징된 앱은
   `electron/src/main.ts`가 `startServer(..., { requestRestart })`로 넘긴
   `app.relaunch()`+`app.exit(0)`을 응답 1.5초 뒤 부른다(응답의 `restarting: true`).
   dev 실행은 넘기지 않는다 — `concurrently -k`가 Electron 종료를 보고 Vite까지 내린다.
@@ -1293,7 +1324,7 @@ KB는 테스트 화면)이라 Electron 메인 프로세스(Node) 안에 넣으�
 - 생성 타입 `kis/kisSpec.gen.ts`는 KIS 검증 묶음이 만든다(`spec:types`·`spec:update`가 같이 부름).
 - `test/fixtures/toss-spec-examples.json` — `spec:update`가 토스 명세의 **공식 응답 예시**(쓰는 operation 17개, 예시 40여 개)를 뽑아 둔다.
   `test/tossSpecExamples.test.ts`가 예시 전부를 가짜 서버로 돌려 예외 없이 숫자로 바뀌는지 본다 — 이 테스트가 **같은 커서 반복 시 거래내역
-  200페이지를 다 돌던 문제**를 잡았다(지금은 같은 커서면 멈추고, 상한에 닿으면 던진다). NH·KIS 명세엔 응답 예시가 없다.
+  200페이지를 다 돌던 문제**를 잡았다(지금은 같은 커서가 반복돼도 상한에 닿아도 **던진다** — 잘린 목록으로 배당을 통째 교체하지 않게). NH·KIS 명세엔 응답 예시가 없다.
 
 ### 증권사 공통 — 실제 응답 기록·응답 변화 감지·자동 업데이트 PR (2026-11-17, 아래 KIS 묶음을 전 증권사로)
 
@@ -1341,7 +1372,7 @@ KIS는 OpenAPI 같은 명세가 없다. 포털(apiportal) 화면의 필드 표·
     없으면 종목코드로 대신 쓴다(해외 거래가 생기면 `kis:record`로 확인).
   - **재무비율 `FHKST66430300`이 HTTP 404**(같은 계열 `balance-sheet`는 응답, 예제 주소 그대로) — KIS 쪽 변경·장애로 보임. 종목 상세는 칸별
     실패를 null로 두므로 재무 칸만 빈다. `kis-live.json`에 기록이 없어 `kis:verify`가 WARN.
-- KIS 연속조회도 다른 증권사와 같이: 이미 받은 `ctx_area_nk*`로 되돌아오면 멈추고, `MAX_PAGES`(200)에 닿으면 **던진다**(권리현황·실현손익·
+- KIS 연속조회: 이미 받은 `ctx_area_nk*`로 되돌아와도, `MAX_PAGES`(200)에 닿아도 **던진다**(2026-11-26 — 예전엔 반복이면 받은 데까지 돌려줬다)(권리현황·실현손익·
   체결·해외 FK200) — 권리현황은 배당 기록 전체 교체의 원천이라 잘리면 안 된다.
 
 ### 자동 테스트 (`backend/test/`)

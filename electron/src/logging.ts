@@ -1,15 +1,15 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { format } from 'node:util';
 import { app } from 'electron';
+import { redactLogLine } from './redact';
 
 // 로컬 로그 파일(2026-11-16) — 예전엔 콘솔에만 찍혀서, 설치본 사용자가 "안 돼요"라고 하면 원인을 볼 방법이 없었다
 // (맥 설치본은 표준 출력이 어디에도 남지 않는다). 메인 프로세스(백엔드 포함)의 console.* 를 그대로 두고 파일에도 쓴다.
 //
 // - 위치: `app.getPath('logs')`(맥 ~/Library/Logs/@mystock/electron, 윈도우 %APPDATA%\@mystock\electron\logs, 리눅스
 //   ~/.config/@mystock/electron/logs) — 정보 화면의 "로그 폴더 열기"가 연다(backend routes/about.ts).
-// - **가려서 쓴다**: 홈 폴더 경로(→ `~`, 계정 이름), 6자리 이상 숫자열(계좌번호·금액·날짜), 이메일, `Bearer …`,
+// - **가려서 쓴다**(redact.ts): 홈 폴더 경로(→ `~`, 계정 이름), 6자리 이상 숫자열(계좌번호·금액·날짜), 이메일, `Bearer …`,
 //   24자 이상 영숫자·기호 덩어리(토큰·키)를 지운다.
 //   백엔드도 응답 원문은 모양만 남기지만(logRedact.ts) 여기서 한 번 더 거른다 — 사용자가 이 파일을 문의에 첨부한다.
 // - 크기: 시작할 때 2MB를 넘으면 main.1.log로 돌리고 그 전 것은 지운다(최대 약 4MB).
@@ -18,15 +18,6 @@ import { app } from 'electron';
 //   멈추는 것보다 기록 후 계속이 낫다.
 
 const MAX_BYTES = 2 * 1024 * 1024;
-
-export function redactLogLine(text: string): string {
-  const home = os.homedir();
-  return (home && home.length > 1 ? text.split(home).join('~') : text) // 경로 속 계정 이름
-    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '<email>')
-    .replace(/Bearer\s+\S+/gi, 'Bearer <redacted>')
-    .replace(/[A-Za-z0-9_\-+/=]{24,}/g, (m) => (/[A-Za-z]/.test(m) && /\d/.test(m) ? '<redacted>' : m))
-    .replace(/\d[\d,-]{5,}\d/g, (m) => '#'.repeat(m.length));
-}
 
 let installed = false;
 

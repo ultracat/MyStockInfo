@@ -105,3 +105,63 @@ test('해외주식 양도세 추정: 250만원 공제 후 22%, 손실이면 0', 
   assert.equal(estimateOverseasCapitalGainsTax(2_000_000), 0);
   assert.equal(estimateOverseasCapitalGainsTax(-500_000), 0);
 });
+
+// ---- 실현손익 화면의 연도별 합계(calc/realizedGains.ts — RealizedGains.tsx에서 옮김) ----
+import { dividendIncomeSummary, generalGrossDividendKrwForYear, isaRealizedSales, overseasGeneralGainForYear } from '../src/calc/realizedGains';
+import type { DividendRecord } from '../src/types';
+
+function d(p: Partial<DividendRecord> & Pick<DividendRecord, 'amount' | 'paidDate'>): DividendRecord {
+  return { id: `d${++seq}`, broker: 'toss', accountId: 'a1', symbol: 'AAA', name: '가짜', currency: 'KRW', memo: null, tax: null, ...p } as DividendRecord;
+}
+
+test('배당소득 요약: 그 해·일반 계좌만, 세전은 세금 포함, 환율 없는 달러는 건수만', () => {
+  const divs = [
+    d({ amount: 1000, tax: 100, paidDate: '2026-03-10' }),
+    d({ amount: 10, tax: 2, currency: 'USD', paidDate: '2026-04-10', broker: 'kis' }),
+    d({ amount: 5, currency: 'USD', paidDate: '2026-05-10', broker: 'kis' }), // 5월 환율 없음
+    d({ amount: 999, paidDate: '2025-12-31' }), // 다른 해
+    d({ amount: 777, paidDate: '2026-06-01', accountId: 'isa' }), // ISA
+  ];
+  const s = dividendIncomeSummary(divs, {
+    year: 2026,
+    broker: 'ALL',
+    taxTypeOf: (r) => (r.accountId === 'isa' ? 'ISA' : 'GENERAL'),
+    rateFor: (m) => (m === '2026-04' ? 1000 : null),
+  });
+  assert.equal(s.count, 3);
+  assert.equal(s.krwTotal, 1000);
+  assert.equal(s.usdTotal, 15);
+  assert.equal(s.convertedKrw, 1000 + 10_000);
+  assert.equal(s.grossKrw, 1100 + 12_000);
+  assert.equal(s.unconvertedCount, 1);
+  assert.deepEqual(s.brokerRows.map((r) => [r.broker, r.count, r.totalKrw]), [
+    ['toss', 1, 1000],
+    ['kis', 2, 10_000],
+  ]);
+  const onlyKis = dividendIncomeSummary(divs, { year: 2026, broker: 'kis', taxTypeOf: () => 'GENERAL', rateFor: () => 1000 });
+  assert.equal(onlyKis.count, 2);
+});
+
+test('올해 해외 일반 계좌 실현손익·세전 배당 합', () => {
+  const sales = [
+    { date: '2026-02-01', broker: 'toss', accountId: 'a1', symbol: 'X', name: null, quantity: 1, currency: 'USD', proceedsKrw: 0, costKrw: 0, gainKrw: 100 },
+    { date: '2026-03-01', broker: 'toss', accountId: 'a1', symbol: 'Y', name: null, quantity: 1, currency: 'KRW', proceedsKrw: 0, costKrw: 0, gainKrw: 50 },
+    { date: '2026-03-01', broker: 'toss', accountId: 'isa', symbol: 'Z', name: null, quantity: 1, currency: 'USD', proceedsKrw: 0, costKrw: 0, gainKrw: 70 },
+    { date: '2025-03-01', broker: 'toss', accountId: 'a1', symbol: 'Z', name: null, quantity: 1, currency: 'USD', proceedsKrw: 0, costKrw: 0, gainKrw: 30 },
+  ] as const;
+  assert.equal(overseasGeneralGainForYear([...sales], 2026, (_b, acc) => acc !== 'isa'), 100);
+  const divs = [d({ amount: 100, tax: 10, paidDate: '2026-01-05' }), d({ amount: 1, tax: 0.5, currency: 'USD', paidDate: '2026-02-05' })];
+  assert.equal(generalGrossDividendKrwForYear(divs, 2026, () => 'GENERAL', () => 1000), 110 + 1500);
+  assert.equal(generalGrossDividendKrwForYear(divs, 2026, () => 'GENERAL', () => null), 110);
+});
+
+test('ISA 매매손익은 계좌마다 따로 이동평균한다', () => {
+  const trades = [
+    t({ side: 'BUY', quantity: 1, price: 100, executedAt: '2026-01-01', accountId: 'isa', symbol: 'S' }),
+    t({ side: 'BUY', quantity: 1, price: 1000, executedAt: '2026-01-01', accountId: 'gen', symbol: 'S' }),
+    t({ side: 'SELL', quantity: 1, price: 200, executedAt: '2026-02-01', accountId: 'isa', symbol: 'S' }),
+  ];
+  const sales = isaRealizedSales([{ broker: 'toss', accountId: 'isa', taxType: 'ISA' }, { broker: 'toss', accountId: 'gen', taxType: 'GENERAL' }], trades, won);
+  assert.equal(sales.length, 1);
+  assert.equal(sales[0].gainKrw, 100); // 일반 계좌 매입가(1000)가 섞이지 않는다
+});

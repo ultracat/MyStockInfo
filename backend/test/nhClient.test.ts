@@ -176,7 +176,7 @@ test('모의투자 계좌는 moapi, 실전 계좌는 api 도메인으로 조회�
 });
 
 test('국내 잔고: 필수 입력값, 연속조회(헤더 cts) 끝까지, 요약은 마지막 페이지, 종목은 모든 페이지', async () => {
-  handlers['/krstock/inquiry/v1/balance'] = (call, nth) =>
+  handlers['/krstock/inquiry/v1/balance'] = (call, nth): Reply =>
     nth === 1
       ? {
           body: {
@@ -240,6 +240,7 @@ test('해외 잔고가 실패해도 국내 보유는 보여준다', async () => 
   const p = await nhAdapter.getPortfolio(LIVE, { forceRefresh: true });
   assert.equal(p.cashBalanceKrw, 1000);
   assert.equal(p.cashBalanceUsd, null);
+  assert.deepEqual(p.failedMarkets, ['US'], '부분 결과 표시 — write-through가 저장된 미국 행을 지우지 않게');
 });
 
 test('매매내역: 국내(종합거래내역 매매)와 미국(일별거래내역 매수·매도)을 요청 코드대로 받아 합친다', async () => {

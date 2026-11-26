@@ -16,8 +16,8 @@ import { getDataDir } from '../paths';
  * definitions, but it needs no native addon (no `better-sqlite3`) and no
  * runtime flag on the Node/Electron versions this app actually ships on
  * (verified empirically: `ELECTRON_RUN_AS_NODE=1 electron -e
- * "require('node:sqlite')"` against this project's Electron 43.4.0 — bundled
- * Node 24.18.1 — works with zero flags; the same is true of the system
+ * "require('node:sqlite')"` against this project's Electron 45.5.0 — bundled
+ * Node 24.22.3, re-checked 2026-11-26 — works with zero flags; the same is true of the system
  * `node` used for the standalone dev fallback, v24.17.0) — which matters
  * because a native module here would have undone the packaging work in
  * electron/CLAUDE.md (`asar: true` + `npmRebuild: false` are only safe

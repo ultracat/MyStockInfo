@@ -1,8 +1,16 @@
 # 워크플로의 외부 액션은 커밋 해시로 고정한다(.github/workflows/release.yml — 태그는 옮겨질 수 있어서).
 # 고정한 해시가 낡지 않게 Dependabot이 새 버전을 PR로 올린다.
 #
-# npm은 **Electron 하나만** 본다 — Electron(Chromium·V8·Node)은 보안 패치가 잦고 앱의 공격 면 대부분이라
-# 패치 버전을 놓치지 않게. 나머지 npm 의존성은 `npm audit`으로 본다(electron-builder 메이저 등은 직접 확인이 필요).
+# npm은 두 갈래다(2026-11-26):
+# - **Electron** — 매주, 따로. Electron(Chromium·V8·Node)은 보안 패치가 잦고 앱의 공격 면 대부분이라 패치 버전을 놓치지 않게.
+#   메이저도 올라오지만 직접 확인해서 머지한다(최소 OS·breaking changes — electron/CLAUDE.md "Mac" 절, 내장 Node가 바뀌면 .nvmrc도).
+# - **나머지 npm 의존성** — 매주, minor·patch를 **한 PR로 묶어서**(groups). 하나씩 오면 PR이 넘쳐 묵힌다.
+#   메이저(react 19·express 5·electron-builder 등)는 따로 **한 PR로 묶어** 온다 — 대개 코드 수정이 필요해 바로 머지하지 않고,
+#   올릴 때 직접 확인한다(닫아 두면 더 새 메이저가 나올 때까지 다시 열리지 않는다).
+#   ⚠ `ignore`로 메이저를 막지 않는 이유: ignore에는 "electron만 빼고"가 없어서 Electron 메이저 알림까지 끊긴다.
+#   보안 업데이트(Dependabot 알림이 켜져 있을 때 취약점 고침 PR)는 이 제한과 별개로 따로 온다.
+#   새 의존성은 AGPL-3.0과 호환되는 라이선스만(루트 CLAUDE.md) — 버전 갱신은 라이선스가 바뀌지 않았는지만 본다.
+# CI(ci.yml)의 `npm audit --omit=dev --audit-level=high`가 앱에 실리는 의존성의 알려진 취약점을 PR마다 따로 본다.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -13,6 +21,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    allow:
-      - dependency-name: electron
-    open-pull-requests-limit: 2
+    open-pull-requests-limit: 3
+    groups:
+      # Electron은 아래 두 그룹에서 빼서 혼자 PR로 온다(메이저 포함).
+      electron:
+        patterns: [electron]
+      npm-minor-patch:
+        patterns: ['*']
+        exclude-patterns: [electron]
+        update-types: [minor, patch]
+      npm-major:
+        patterns: ['*']
+        exclude-patterns: [electron]
+        update-types: [major]

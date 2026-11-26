@@ -1,5 +1,6 @@
 // 한국투자증권 국내 주식(계좌) — 잔고·기간별 권리·기간 실현손익·휴장일·배당 일정·체결 내역·현재가·종목명. 공통부는 kisCore.ts.
 import { shapeForLog } from '../../logRedact';
+import { addDays, compactYmd, kstToday } from '../../kstDate';
 import { getDataDir } from '../../paths';
 import { JsonStore } from '../../jsonStore';
 import { DEFAULT_TTL_MS, PORTFOLIO_TTL_MS, withCache } from '../responseCache';
@@ -46,13 +47,6 @@ export async function fetchKisBalance(
   return withCache('kis:balance', PORTFOLIO_TTL_MS, fetchKisBalanceUncached, opts);
 }
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function parseYmd(s: string): Date {
-  return new Date(`${s}T00:00:00`);
-}
 
 /** 기간별계좌권리현황조회(`CTRGA011R`, `GET /uapi/domestic-stock/v1/trading/period-rights`, 공식 예제
  *  `examples_llm/domestic_stock/period_rights/period_rights.py` 확인 2026-11-09) 한 행 — 배당 동기화에 쓰는
@@ -101,7 +95,9 @@ export async function fetchKisPeriodRights(from = '2000-01-01', to = '2099-12-31
     if (res.trCont !== 'M' && res.trCont !== 'F') return items;
     fk100 = String(res.ctx_area_fk100 ?? '');
     nk100 = String(res.ctx_area_nk100 ?? '');
-    if (seen.has(nk100)) return items; // 같은 연속조회 키로 되돌아오면 멈춘다
+    // 같은 연속조회 키로 되돌아오면(증권사가 "더 있음"이라면서 같은 자리를 다시 줌) 무한 반복 대신 던진다 — 받은 데까지만
+    // 돌려주면 아래 상한과 똑같이 잘린 목록으로 배당 기록이 교체된다.
+    if (seen.has(nk100)) throw new Error('한국투자증권 권리현황 연속조회 키가 반복돼 끝까지 받지 못했습니다');
     seen.add(nk100);
     trCont = 'N';
   }
@@ -144,7 +140,7 @@ export async function fetchKisPeriodTradeProfit(from: string, to: string): Promi
     if (res.trCont !== 'M' && res.trCont !== 'F') return rows;
     fk100 = String(res.ctx_area_fk100 ?? '');
     nk100 = String(res.ctx_area_nk100 ?? '');
-    if (seen.has(nk100)) return rows;
+    if (seen.has(nk100)) throw new Error('한국투자증권 기간 실현손익 연속조회 키가 반복돼 끝까지 받지 못했습니다');
     seen.add(nk100);
     trCont = 'N';
   }
@@ -157,8 +153,7 @@ interface StoredKisHolidays {
   /** YYYY-MM-DD → 영업일(`bzdy_yn === 'Y'`) 여부. */
   days: Record<string, boolean>;
 }
-const holidayStore = () => new JsonStore<StoredKisHolidays | null>('kis-holidays.json', getDataDir(), null);
-export const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+const holidayStore = () => new JsonStore<StoredKisHolidays | null>('kis-holidays.json', getDataDir(), null, { onCorrupt: 'reset' }) /* 다시 받으면 되는 캐시 — 손상되면 격리 후 비운 채로(jsonStore.ts) */;
 
 /**
  * 국내휴장일조회(`CTCA0903R`, `quotations/chk-holiday`) — `from`부터 `to`까지 날짜별 영업일 여부.
@@ -230,7 +225,7 @@ async function fetchDailyCcldAllPages(
   let nk100 = '';
   let trCont = '';
 
-  // 같은 연속조회 키로 되돌아오면 멈추고(무한 반복 방지), 상한(MAX_PAGES)에 닿으면 던진다 — 조용히 끊으면 매매내역이 빠진 채 저장된다.
+  // 같은 연속조회 키로 되돌아오거나(무한 반복) 상한(MAX_PAGES)에 닿으면 던진다 — 조용히 끊으면 매매내역이 빠진 채 저장된다.
   const seen = new Set<string>();
   for (let page = 0; page < MAX_PAGES; page++) {
     const res = await kisGet(
@@ -247,18 +242,23 @@ async function fetchDailyCcldAllPages(
     if (res.trCont !== 'M' && res.trCont !== 'F') return items;
     fk100 = String(res.ctx_area_fk100 ?? '');
     nk100 = String(res.ctx_area_nk100 ?? '');
-    if (seen.has(nk100)) return items;
+    // 같은 키 반복도 상한과 같이 던진다 — 받은 데까지만 돌려주면 매매내역이 빠진 채 저장된다.
+    if (seen.has(nk100)) throw new Error(`한국투자증권 체결 내역 연속조회 키가 반복돼 끝까지 받지 못했습니다(${trId})`);
     seen.add(nk100);
     trCont = 'N';
   }
   throw new Error(`한국투자증권 체결 내역이 ${MAX_PAGES}페이지를 넘어 끝까지 받지 못했습니다(${trId})`);
 }
 
+function threeMonthsBeforeKst(): string {
+  const [y, m, d] = kstToday().split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1 - 3, d)).toISOString().slice(0, 10);
+}
+
 async function fetchKisTradeHistoryUncached(from: string, to: string): Promise<KisDailyCcldItem[]> {
   const creds = await requireCredentials();
-  const fromDate = parseYmd(from);
-  const toDate = parseYmd(to);
-  if (fromDate > toDate) return [];
+  // 날짜는 'YYYY-MM-DD' 문자열 그대로 비교한다(사전순 = 날짜순) — OS 지역 시간대와 무관하게.
+  if (from > to) return [];
 
   const base = {
     CANO: creds.accountNumber,
@@ -278,32 +278,32 @@ async function fetchKisTradeHistoryUncached(from: string, to: string): Promise<K
   // 서로 다른 TR_ID로 나뉘어 있다(examples_llm/domestic_stock/inquire_daily_ccld/
   // inquire_daily_ccld.py, checked 2026-08-14) — 조회기간이 그 경계를 걸치면
   // 두 TR을 각각 필요한 구간만큼만 호출해서 합친다.
-  const splitDate = new Date();
-  splitDate.setMonth(splitDate.getMonth() - 3);
+  // 경계 = 한국 날짜로 오늘에서 석 달 전(같은 일자, 그 달에 없으면 넘친 만큼 다음 달 — 예전 setMonth와 같은 규칙).
+  const split = threeMonthsBeforeKst();
 
   const items: KisDailyCcldItem[] = [];
 
-  if (fromDate < splitDate) {
-    const beforeEndDate = toDate < splitDate ? toDate : new Date(splitDate.getTime() - 24 * 60 * 60 * 1000);
-    if (beforeEndDate >= fromDate) {
+  if (from < split) {
+    const beforeEnd = to < split ? to : addDays(split, -1);
+    if (beforeEnd >= from) {
       items.push(
         ...(await fetchDailyCcldAllPages('CTSC9215R', {
           ...base,
-          INQR_STRT_DT: ymd(fromDate),
-          INQR_END_DT: ymd(beforeEndDate),
+          INQR_STRT_DT: compactYmd(from),
+          INQR_END_DT: compactYmd(beforeEnd),
         }))
       );
     }
   }
 
-  if (toDate >= splitDate) {
-    const innerStartDate = fromDate > splitDate ? fromDate : splitDate;
-    if (toDate >= innerStartDate) {
+  if (to >= split) {
+    const innerStart = from > split ? from : split;
+    if (to >= innerStart) {
       items.push(
         ...(await fetchDailyCcldAllPages('TTTC0081R', {
           ...base,
-          INQR_STRT_DT: ymd(innerStartDate),
-          INQR_END_DT: ymd(toDate),
+          INQR_STRT_DT: compactYmd(innerStart),
+          INQR_END_DT: compactYmd(to),
         }))
       );
     }

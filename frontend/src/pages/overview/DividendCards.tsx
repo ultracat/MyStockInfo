@@ -2,12 +2,10 @@ import { useMemo, useState } from 'react';
 import DividendsChart from '../../components/DividendsChart';
 import DonutChart from '../../components/DonutChart';
 import DonutDetailModal, { type DonutDetailView } from '../../components/DonutDetailModal';
-import { formatDividendMeta, formatKrwValue } from '../../format';
+import { formatDividendMeta, formatKrwValue, recentYears } from '../../format';
 import type { AccountLabel, DividendRecord, MonthlySummaryRow } from '../../types';
 import { accountDividendRows, dividendSlices, dividendSymbolRows, type RateFor } from '../../calc/overview';
 
-const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
 function accountDividendView(rows: ReturnType<typeof accountDividendRows>): DonutDetailView {
   return {
@@ -79,7 +77,7 @@ export function DividendCards({
           <h3 style={{ margin: 0 }}>{year}년 월별 배당금</h3>
           <div className="form-row" style={{ margin: 0 }}>
             <select value={year} onChange={(e) => onYearChange(Number(e.target.value))}>
-              {YEAR_OPTIONS.map((y) => (
+              {recentYears().map((y) => (
                 <option key={y} value={y}>
                   {y}년
                 </option>

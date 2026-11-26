@@ -102,10 +102,10 @@ export async function fetchTossTransactions(
     }
     out.push(...(data.transactions as TossTransaction[]));
     if (!data.hasNext || !data.nextCursor) return out;
-    // 같은 커서가 다시 오면 같은 페이지를 끝없이 받게 된다(NH의 같은 cts와 같은 방어) — 받은 데까지로 끝낸다.
+    // 같은 커서가 다시 오면 같은 페이지를 끝없이 받게 된다 — 받은 데까지만 돌려주면 아래 상한과 똑같이 배당 동기화(전체
+    // 교체)가 잘린 목록으로 기존 기록을 지우므로, 멈추되 던진다.
     if (data.nextCursor === cursor) {
-      console.warn('[toss] 거래내역 커서가 반복돼 연속조회를 멈춥니다');
-      return out;
+      throw new Error('토스증권 거래내역 커서가 반복돼 끝까지 받지 못했습니다.');
     }
     cursor = data.nextCursor;
   }

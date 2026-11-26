@@ -34,10 +34,10 @@ kbRouter.post('/sync-holdings', async (req, res) => {
   if (!isKbConfigured()) {
     return res.status(409).json({ error: 'KB증권 API 키가 설정되지 않았습니다.' });
   }
-  const resolved = await resolveAccountId(req.body);
-  if ('error' in resolved) return res.status(400).json({ error: resolved.error });
-
   try {
+    // resolveAccountId는 키체인의 자격증명을 읽는다(실패할 수 있음) — try 안에 둬야 Express 4가 놓친 예외로 요청이 매달리지 않는다.
+    const resolved = await resolveAccountId(req.body);
+    if ('error' in resolved) return res.status(400).json({ error: resolved.error });
     const positions = await fetchKbPortfolio();
     replaceSnapshot('kb', resolved.accountId, positions);
     res.json({ synced: positions.length, accountId: resolved.accountId });
@@ -50,9 +50,6 @@ kbRouter.post('/sync-trades', async (req, res) => {
   if (!isKbConfigured()) {
     return res.status(409).json({ error: 'KB증권 API 키가 설정되지 않았습니다.' });
   }
-  const resolved = await resolveAccountId(req.body);
-  if ('error' in resolved) return res.status(400).json({ error: resolved.error });
-
   const { from, to } = req.body as { from?: unknown; to?: unknown };
   const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
   if (typeof from !== 'string' || !DATE_RE.test(from) || typeof to !== 'string' || !DATE_RE.test(to)) {
@@ -60,6 +57,8 @@ kbRouter.post('/sync-trades', async (req, res) => {
   }
 
   try {
+    const resolved = await resolveAccountId(req.body);
+    if ('error' in resolved) return res.status(400).json({ error: resolved.error });
     let trades = await fetchKbTradeHistory(from, to);
 
     // KB의 체결 내역(is_nm)이 어쩌다 비어 있는 행이 있으면(실측 미검증 — 연결된

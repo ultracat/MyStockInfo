@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import type { KisRealizedRow } from '../types';
-import { krw } from '../format';
+import { krw, localToday } from '../format';
 import CollapseToggle from './CollapseToggle';
 import Hint from './Hint';
 import StockCell from './StockCell';
@@ -61,7 +61,7 @@ export default function OfficialRealizedCompare({
     let cancelled = false;
     setRows(null);
     setError(null);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localToday();
     const to = `${year}-12-31` < today ? `${year}-12-31` : today;
     const load =
       broker === 'nh'

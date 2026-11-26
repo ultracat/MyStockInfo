@@ -1,8 +1,7 @@
-import crypto from 'node:crypto';
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
-import { getDataDir } from '../../paths';
-import { SecretJsonStore } from '../../secretJsonStore';
+import { createTokenManager } from '../tokenManager';
+import { fetchWithTimeout } from '../../http/fetchWithTimeout';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
 import { redactText } from '../../logRedact';
@@ -84,33 +83,7 @@ async function requireCredentials() {
 // 저장해 백엔드 재시작(백엔드 수정마다 Electron 재시작) 뒤에도 재사용하고, 동시 요청은 발급 한 번을 공유한다.
 // 재발급은 만료 또는 401(토큰 무효)일 때만. 429에는 재발급하지 않는다. 키를 바꾸면 이전 토큰을 쓰지 않도록
 // 앱키 해시를 같이 저장한다(앱키 원문은 저장하지 않음).
-interface StoredNhToken {
-  accessToken: string;
-  expiresAt: number;
-  keyHash: string;
-}
-
-const tokenStore = () => new SecretJsonStore<StoredNhToken>('nh-token.json', getDataDir());
-let cachedToken: StoredNhToken | null = null;
-let inFlightToken: Promise<string> | null = null;
-
-function keyHash(appKey: string): string {
-  return crypto.createHash('sha256').update(appKey).digest('hex').slice(0, 16);
-}
-
-async function loadCachedToken(hash: string): Promise<StoredNhToken | null> {
-  const valid = (t: StoredNhToken | null) => t && t.keyHash === hash && t.expiresAt > Date.now();
-  if (valid(cachedToken)) return cachedToken;
-  const persisted = await tokenStore().read();
-  if (valid(persisted)) {
-    cachedToken = persisted;
-    return cachedToken;
-  }
-  return null;
-}
-
-async function issueToken(): Promise<string> {
-  const creds = await requireCredentials();
+async function issueToken(creds: Record<string, string>): Promise<{ accessToken: string; expiresAt: number }> {
   // 명세: 쿼리 파라미터 + Content-Type x-www-form-urlencoded(본문 없음). 토큰은 운영 도메인에서만 발급된다.
   const url = new URL('/oauth2/token', BASE_URL);
   url.searchParams.set('appkey', creds.appKey);
@@ -123,10 +96,11 @@ async function issueToken(): Promise<string> {
   for (let attempt = 0; ; attempt++) {
     try {
       res = await nhLimiter.schedule(() =>
-        fetch(url, {
+        fetchWithTimeout(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          label: 'NH투자증권',
         })
       );
       text = await res.text();
@@ -152,23 +126,19 @@ async function issueToken(): Promise<string> {
   }
   if (!data.access_token) throw new NhApiError('NH투자증권 토큰 응답에 access_token이 없습니다', res.status, text);
   const expiresInSec = Number(data.expires_in) > 0 ? Number(data.expires_in) : 86400;
-  cachedToken = {
-    accessToken: data.access_token,
-    expiresAt: Date.now() + (expiresInSec - 60) * 1000,
-    keyHash: keyHash(creds.appKey),
-  };
-  await tokenStore().write(cachedToken);
-  return cachedToken.accessToken;
+  return { accessToken: data.access_token, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
 }
 
-/** `staleToken`: 401 등으로 무효라고 본 토큰. 그새 다른 요청이 이미 새로 받아 캐시가 바뀌었으면 또 발급하지 않고 그걸 쓴다 —
- *  동시에 401을 받은 두 요청이 각자 재발급하면 계좌주에게 보안 알림이 두 번 간다. */
-async function getToken(staleToken?: string): Promise<string> {
-  const t = await loadCachedToken(keyHash((await requireCredentials()).appKey));
-  if (t && t.accessToken !== staleToken) return t.accessToken;
-  if (!inFlightToken) inFlightToken = issueToken().finally(() => (inFlightToken = null));
-  return inFlightToken;
-}
+// 파일 저장(nh-token.json, 앱키 해시)·동시 발급 공유·staleToken 비교·자격증명 변경 시 무효화는 공용 tokenManager.ts —
+// NH의 방식(getToken(staleToken))을 2026-11-26에 다른 증권사와 같이 쓰도록 옮겼다. 동시에 401을 받은 두 요청이 각자
+// 재발급하면 계좌주에게 보안 알림이 두 번 간다.
+const tokens = createTokenManager({
+  broker: 'nh',
+  persist: true,
+  loadCreds: requireCredentials,
+  keyOf: (creds) => creds.appKey,
+  issue: issueToken,
+});
 
 // ── 호출 ───────────────────────────────────────────────────────────────────────
 function gatewayCode(text: string): string | null {
@@ -225,7 +195,7 @@ export async function nhPost<P extends NhPath>(
   return nhLimiter.schedule(async () => {
     let stale: string | undefined;
     for (let attempt = 0; ; attempt++) {
-      const token = await getToken(stale);
+      const token = await tokens.getToken(stale);
       const headers: Record<string, string> = {
         authorization: `Bearer ${token}`,
         'content-type': 'application/json; charset=UTF-8',
@@ -235,11 +205,12 @@ export async function nhPost<P extends NhPath>(
       let res: Response;
       let text: string;
       try {
-        res = await fetch(`${base}${path}`, {
+        res = await fetchWithTimeout(`${base}${path}`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ Input_0: input }),
-          signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          label: 'NH투자증권',
         });
         text = await res.text();
       } catch (err) {

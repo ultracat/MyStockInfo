@@ -89,8 +89,7 @@ test('KIS 토큰: 파일(kis-token.json)에 저장된 유효 토큰이 있으면
 
 test('KIS 토큰: 만료됐으면 한 번 발급해 파일에 저장, 동시에 들어온 호출들도 발급은 한 번만 한다', async () => {
   fs.writeFileSync(path.join(DATA_DIR, 'kis-token.json'), JSON.stringify({ accessToken: 'expired', expiresAt: Date.now() - 1000 }));
-  // 메모리 캐시를 무효로 만들려면 401을 한 번 받아 강제 재발급 경로를 타게 한다.
-  handlers[BALANCE] = (call, nth) => (nth === 1 ? { status: 401, body: { rt_cd: '1', msg1: '기간이 만료된 token 입니다.' } } : defaultHandlers()[BALANCE](call, nth));
+  // 테스트마다 앱키가 달라 이전 테스트의 메모리 토큰은 키 해시로 걸러진다(tokenManager.ts) — 예전엔 그걸 401로 억지로 무효화했다.
   await Promise.all([
     kisAdapter.getPortfolio('12345678-01', { forceRefresh: true }),
     kisAdapter.getPortfolio('12345678-01', { forceRefresh: true }),
@@ -138,6 +137,7 @@ test('KIS 해외 잔고가 실패해도 국내 보유는 보여준다', async ()
   assert.equal(p.positions.length, 1);
   assert.equal(p.cashBalanceUsd, null);
   assert.equal(p.totalMarketValueUsd, null);
+  assert.deepEqual(p.failedMarkets, ['US'], '부분 결과 표시 — write-through가 저장된 미국 행을 지우지 않게');
 });
 
 test('KIS 업무 오류(rt_cd≠0)는 msg_cd를 담은 KisApiError — 라우트가 502로 바꾸는 모양', async () => {
@@ -187,8 +187,8 @@ test('KIS 매매내역: 3개월 이전/이내 TR 분할, tr_cont=M이면 ctx_are
   assert.equal(pathCalls(OVERSEAS_CCNL)[0].headers.tr_id, 'TTTS3035R');
   assert.deepEqual(
     t.map((x) => [x.id, x.side, x.currency]).sort(),
-    [['0001', 'BUY', 'KRW'], ['0009', 'SELL', 'KRW'], ['ovrs-20260107-7', 'BUY', 'USD']].sort(),
-    '체결수량 0은 뺀다, 해외는 접두어 id'
+    [['20260105-0001', 'BUY', 'KRW'], ['20250105-0009', 'SELL', 'KRW'], ['ovrs-20260107-7', 'BUY', 'USD']].sort(),
+    '체결수량 0은 뺀다, 국내는 주문일자-주문번호(주문번호가 영업일마다 새로 매겨짐), 해외는 접두어 id'
   );
 });
 
@@ -227,7 +227,7 @@ test('KIS 해외 기간별권리: 상품유형코드를 512→513→529로 찾�
   const first = pathCalls(OVERSEAS_RIGHTS)[0];
   assert.equal(first.headers.tr_id, 'CTRGT011R');
   assert.deepEqual([first.query.get('PDNO'), first.query.get('INQR_DVSN_CD'), first.query.get('INQR_STRT_DT')], ['NVDY', '02', '20251012']);
-  assert.equal(readJson('kis-overseas-product-types.json').NVDY.code, '529');
+  assert.equal(readJson<Record<string, { code: string }>>('kis-overseas-product-types.json').NVDY.code, '529');
 
   calls = [];
   await fetchKisOverseasDividendRights('NVDY', '2025-10-12', '2027-03-16');

@@ -16,7 +16,7 @@ interface EximbankCacheFile {
 }
 
 function store() {
-  return new JsonStore<EximbankCacheFile>('eximbank-cache.json', getDataDir(), { ratesByDate: {} });
+  return new JsonStore<EximbankCacheFile>('eximbank-cache.json', getDataDir(), { ratesByDate: {} }, { onCorrupt: 'reset' }) /* 다시 받으면 되는 캐시 — 손상되면 격리 후 비운 채로(jsonStore.ts) */;
 }
 
 export type CachedRate = { hit: true; rate: number | null } | { hit: false };

@@ -21,7 +21,10 @@ holdingsRouter.get('/:broker/:accountId', async (req, res) => {
     // 실패가 실시간 응답 자체를 막으면 안 되므로 별도로 감싼다.
     // 모의투자 계좌는 저장하지 않는다 — 로컬 저장소는 다가오는 배당 예상·CSV 내보내기 등이 "실제 보유"로 읽는다.
     try {
-      if (!(await adapter.isPaperAccount?.(accountId))) replaceSnapshot(broker, accountId, portfolio.positions);
+      // 해외 잔고처럼 일부 시장만 실패한 부분 결과면(failedMarkets) 그 시장의 저장 행은 지우지 않는다 — types.ts 참고.
+      if (!(await adapter.isPaperAccount?.(accountId))) {
+        replaceSnapshot(broker, accountId, portfolio.positions, { keepMarkets: portfolio.failedMarkets });
+      }
     } catch (storeErr) {
       console.error('[holdings-store] 로컬 저장 실패:', storeErr);
     }

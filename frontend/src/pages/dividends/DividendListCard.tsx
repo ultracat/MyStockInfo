@@ -65,9 +65,23 @@ export function DividendListCard({
     return <AccountCell accountId={id} entry={findAccountLabel(accountLabels, recordBroker, id)} sub={BROKER_LABELS[recordBroker]} />;
   }
 
-  async function onDelete(id: string) {
-    await api.deleteDividend(id);
-    await refresh();
+  // 삭제 — 되돌릴 수 없어서 한 번 묻고(Google Sheets 덮어쓰기와 같은 window.confirm), 실패하면 표 위에 알린다(2026-11-26 — 예전엔
+  // 묻지 않고 지웠고, 실패하면 거부가 그대로 묻혀 아무 반응이 없었다).
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  async function onDelete(r: DividendRecord) {
+    const amountText = r.currency === 'USD' ? usdFmt.format(r.amount) : `${krw.format(r.amount)}원`;
+    if (!window.confirm(`${r.paidDate} ${r.name || r.symbol} 배당 ${amountText} 기록을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    setDeleteError(null);
+    setDeletingId(r.id);
+    try {
+      await api.deleteDividend(r.id);
+      await refresh();
+    } catch (e) {
+      setDeleteError(`삭제하지 못했습니다: ${(e as Error).message}`);
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   // 배당 기록 목록의 인라인 수정 — 한 번에 한 행만 편집 가능(editingId).
@@ -301,6 +315,11 @@ export function DividendListCard({
           배당금은 <b>세후 실수령액</b>이고 아래 작은 글씨가 원천징수 세금입니다(세전 = 배당금 + 세금). 증권사 API로 동기화되는 기록(토스·한국투자·NH·키움·LS·DB의
           원화 배당 등)은 다음 동기화 때 API 내용으로 바뀌어 여기서 고치거나 지울 수 없습니다 — 수정·삭제 버튼은 직접 입력한 기록에만 있습니다.
         </Hint>
+        {deleteError && (
+          <p className="text-critical" style={{ whiteSpace: 'pre-wrap' }}>
+            {deleteError}
+          </p>
+        )}
         <div className="table-scroll">
         {/* 2026-11-20 표 정리: 증권사는 계좌 칸 아래 줄, 세금은 배당금 아래 작은 글씨(8열 → 6열). 수정 행도 같은 칸에 입력칸을 쌓는다. */}
         <table>
@@ -450,8 +469,8 @@ export function DividendListCard({
                         <button className="ghost" onClick={() => startEdit(r)}>
                           수정
                         </button>
-                        <button className="ghost" onClick={() => onDelete(r.id)}>
-                          삭제
+                        <button className="ghost" onClick={() => onDelete(r)} disabled={deletingId !== null}>
+                          {deletingId === r.id ? '삭제 중...' : '삭제'}
                         </button>
                       </div>
                     )}

@@ -154,6 +154,11 @@ const API_TOKEN = randomBytes(32).toString('base64url');
 
 let mainWindow: BrowserWindow | null = null;
 
+// 렌더러 프로세스가 죽었을 때(메모리 부족·GPU 문제 등) 다시 띄우는 횟수 제한 — 띄우자마자 또 죽는 경우(예: 로드 직후 크래시)
+// 끝없이 다시 띄우면 CPU만 태우고 로그가 넘친다. RENDERER_RELOAD_WINDOW_MS 안에 RENDERER_MAX_RELOADS번을 넘으면 멈추고 안내 창을 띄운다.
+const RENDERER_MAX_RELOADS = 3;
+const RENDERER_RELOAD_WINDOW_MS = 60_000;
+
 /** 렌더러에 넘기는 URL 해시 — 토큰 + 백엔드가 실제로 뜬 포트(frontend/src/api.ts가 읽음). */
 function rendererHash() {
   return `token=${API_TOKEN}&port=${backendPort}`;
@@ -206,6 +211,31 @@ function createWindow() {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
+  // 렌더러 프로세스가 죽으면 흰 화면(또는 멈춘 화면)만 남는다 — 이유를 로그에 남기고 다시 띄운다.
+  // 'clean-exit'는 정상 종료(창 닫기 등)라 다시 띄우지 않는다. 짧은 시간에 여러 번 죽으면 루프를 막으려고 멈추고 알린다.
+  const win = mainWindow;
+  const reloadTimes: number[] = [];
+  win.webContents.on('render-process-gone', (_event, details) => {
+    console.error(`[electron] 화면 프로세스 종료: reason=${details.reason} exitCode=${details.exitCode}`);
+    if (details.reason === 'clean-exit' || win.isDestroyed()) return;
+    const now = Date.now();
+    while (reloadTimes.length > 0 && now - reloadTimes[0] > RENDERER_RELOAD_WINDOW_MS) reloadTimes.shift();
+    if (reloadTimes.length >= RENDERER_MAX_RELOADS) {
+      console.error(`[electron] 화면이 ${RENDERER_RELOAD_WINDOW_MS / 1000}초 안에 ${RENDERER_MAX_RELOADS}번 넘게 종료돼 다시 띄우지 않습니다.`);
+      dialog.showErrorBox(
+        'MyStock 화면 오류',
+        `화면이 계속 비정상 종료되어(${details.reason}) 다시 띄우지 않았습니다.\n앱을 끝낸 뒤 다시 실행해주세요. 반복되면 정보 화면의 로그 파일을 첨부해 알려 주세요.`,
+      );
+      return;
+    }
+    reloadTimes.push(now);
+    // reload()는 지금 URL(해시의 토큰·포트 포함)을 그대로 다시 연다.
+    win.webContents.reload();
+  });
+  // 화면이 응답하지 않을 때(긴 동기 작업 등) — 기록만 한다. Chromium이 다시 응답하면 'responsive'가 온다.
+  win.on('unresponsive', () => console.warn('[electron] 화면이 응답하지 않습니다.'));
+  win.on('responsive', () => console.log('[electron] 화면이 다시 응답합니다.'));
+
   // 렌더러가 target="_blank"로 여는 링크(연결된 Google 스프레드시트 바로가기 등)를
   // 앱 안 새 창이 아니라 시스템 브라우저로 연다.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -255,11 +285,37 @@ if (!gotSingleInstanceLock) {
   });
 }
 
+// GPU·유틸리티(네트워크 서비스 등) 자식 프로세스가 죽은 것 — Chromium이 스스로 다시 띄우지만 원인 추적용으로 남긴다.
+app.on('child-process-gone', (_event, details) => {
+  if (details.reason === 'clean-exit') return;
+  console.error(
+    `[electron] 자식 프로세스 종료: type=${details.type} reason=${details.reason} exitCode=${details.exitCode}` +
+      (details.serviceName ? ` service=${details.serviceName}` : '') +
+      (details.name ? ` name=${details.name}` : ''),
+  );
+});
+
+/** 시작 중 예외(백엔드 모듈 초기화·창 생성 실패 등) — 예전엔 처리 안 된 거부로 로그에만 남고 창 없이 Dock에 아이콘만 남았다.
+ *  안내 창을 띄우고 끝낸다(ready 이후라 dialog를 쓸 수 있다). */
+function failStartup(err: unknown) {
+  console.error('[electron] 시작 실패:', err);
+  const message = err instanceof Error ? err.message : String(err);
+  dialog.showErrorBox('MyStock 시작 실패', `앱을 시작하지 못했습니다: ${message}\n\n다시 실행해주세요. 반복되면 로그 파일을 첨부해 알려 주세요.`);
+  app.exit(1);
+}
+
 void app.whenReady().then(async () => {
   // 락을 못 잡은 두 번째 인스턴스는 app.quit()이 끝나기 전에 ready가 올 수 있다 —
   // 백엔드·창을 띄우지 않는다.
   if (!gotSingleInstanceLock) return;
+  try {
+    await startApp();
+  } catch (err) {
+    failStartup(err);
+  }
+});
 
+async function startApp() {
   denyAllPermissions();
 
   // 패키징된 mac 앱은 번들의 .icns를 쓰므로 건드리지 않는다 — dev 실행만
@@ -310,7 +366,7 @@ void app.whenReady().then(async () => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

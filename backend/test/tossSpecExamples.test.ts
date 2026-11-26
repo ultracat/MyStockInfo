@@ -195,9 +195,8 @@ test('명세 예시: 일봉 → 월말 종가(다음 페이지 → 마지막 페
   assert.ok(closes.every((c) => isNum(c.closePrice)));
 });
 
-test('거래내역: 같은 커서가 다시 오면 같은 페이지를 반복해 받지 않고 멈춘다', async () => {
+test('거래내역: 같은 커서가 다시 오면 같은 페이지를 반복해 받지 않고 던진다(잘린 목록으로 배당을 교체하지 않게)', async () => {
   // 명세의 trades 예시는 hasNext=true + nextCursor — 같은 응답을 계속 주면 커서가 반복된다.
   pick.getTransactions = 'trades';
-  const txns = await fetchTossTransactions(1, { types: ['BUY', 'SELL'] });
-  assert.equal(txns.length, EX.getTransactions.trades.result.transactions.length * 2, '첫 페이지 + 커서가 반복된 두 번째 페이지까지만');
+  await assert.rejects(fetchTossTransactions(1, { types: ['BUY', 'SELL'] }), /커서가 반복/);
 });

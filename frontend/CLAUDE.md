@@ -12,7 +12,9 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `src/App.tsx` — 좌측 네비 + `page` 상태
   (`'overview'|'dashboard'|'stockReturns'|'dividends'|'trades'|'realizedGains'|'analysis'|'rebalance'|'report'|'watchlist'|'stockLinks'|'settings'|'about'`,
   기본값 `'overview'` — 사이드바 순서도 이 순서).
-  새 페이지 추가 시 `Page` 타입과 `PAGES`·`NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가.
+  새 페이지 추가 시 `Page` 타입과 `PAGES`·`NAV_ITEMS`에 항목(아이콘 컴포넌트 포함) 추가. **대시보드(Overview)만 바로 싣고 나머지 화면은
+  `React.lazy`로 처음 열 때 불러온다**(2026-11-26 — 한 덩어리 622KB → 시작 288KB, 빌드 500KB 경고 해소). `PageSlot`의 `Suspense`가 "불러오는 중..."을 보이고,
+  조각을 못 받으면 `PageErrorBoundary`가 받는다. 새 화면도 `lazy(() => import(...))`로. 조각도 `./assets/`라 CSP·file://와 무관(빌드 결과물을 file://로 열어 확인).
   **화면 유지(2026-11-16, 사용자 요청)**: 한 번 연 페이지(`visited`)는 지우지 않고 `display:none`으로 숨겨 둔다 — 메뉴를 옮겨도
   데이터·선택·필터가 남고, 스크롤은 페이지마다 적어 뒀다 되돌린다(`scrollByPage`, sizer 높이가 다시 재진 뒤 두 프레임 뒤에 한 번 더).
   예전엔 페이지를 새로 마운트해 매번 "불러오는 중"부터였다. 각 페이지는 `PageActivity`(`src/pageActivity.tsx`)로 보이는지 안다 —
@@ -467,6 +469,8 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - **모든 계좌 보유는 `loadAllHoldings()`**(`src/allHoldings.ts`) — 대시보드 loadAll과 같은 경로(API 증권사 실시간 + CSV 전용 로컬), 환율 같이. 리밸런싱·보고서·배당수익률 카드·종목별 수익이 쓴다.
   실패는 `failedBrokers`(계좌 목록부터 실패)와 `failedAccounts`(계좌 하나 실패)로 돌려주고 안내 문구는 `holdingsFailureMessage()` —
   ⚠ `.catch(() => null)`로 삼키지 말 것(예전에 계좌 실패가 묻혀 상위의 "일부 실패면 기록 건너뜀" 보호가 안 돌았다).
+  **해외 잔고만 실패한 계좌**(`PortfolioOverview.failedMarkets`, 백엔드가 지난 기록은 보존)는 `partialAccounts` — 같은 문구에 "○○ 계좌 N개의 미국 잔고"로 들어가
+  대시보드가 그날 순자산을 기록하지 않는다. 보유 종목 화면은 `calc/portfolio.ts`의 `failedMarketsNotice`로 안내하고, `mergePortfolios`가 전체 계좌의 `failedMarkets`를 모은다.
   **2026-11-18부터 대시보드·분석(`overviewStore`)도 이 함수 하나를 쓴다** — `AllHoldings`에 수동·실시간 환율과 `failedBrokers`(실패한 증권사 — 대시보드가
   나머지를 보여 주고 `error`로 알리며 그날 순자산 기록은 건너뜀)를 같이 준다. `skipCache`는 이 모듈의 30초 재사용만 건너뛴다(데이터가 바뀐 뒤 다시 받을 때 —
   `reloadOverview`가 나이 제한 없이 부르면 켠다). 테스트는 `resetOverviewStore`가 `resetAllHoldingsCache`도 부른다.
@@ -489,7 +493,7 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 | 대시보드 | `Overview.tsx` | `overview/`: `overviewStore`(공용 저장소 — 조회·환율·월별 종가/월평균 환율 지연 로딩·순자산 기록, `reloadOverview`) + `useOverviewData`(구독·다시 보일 때 갱신·환율 함수), `HoldingsCards`(보유·섹터 비중 + 상세 팝업), `DividendCards`, `TrendCards` | `calc/overview.ts` — 비중·계좌별 묶음·`accountDividendRows`·`heldDividendTotal`·`monthlyAmountRows`(평단가·월 종가 맵 포함)·`indexComparisonRows` |
 | 보유 종목 | `Dashboard.tsx` | `holdings/`: `useHoldings`(선택·포트폴리오·1분 새로고침·`loadLivePortfolioAll`·KB 동기화), `HoldingsTransfer`(CSV·Sheets), `StatTiles`(`AmountTile`·`RateTile`) | `calc/portfolio.ts` — `holdingRows`(비중·배당 포함 손익), `dividendTotals` |
 | 관심종목 상세 | `watchlist/WatchDetail.tsx` | `watchlist/`: `useWatchData`(`useWatchData`·`useMonthlyCloses`·`useCompareCandles` — 받기), `WatchCompareSection`(비교·배당 포함 수익), `WatchSections`(월별 등락률·배당·내 매매·미국 종목 정보), `WatchActions`(만약 산다면·메모), `watchUi`(price/pct/Seg) | `calc/watchDetail.ts` |
-| 실현손익 | `RealizedGains.tsx` | — | `calc/realizedGains.ts` — `dividendIncomeSummary`·`overseasGeneralGainForYear`·`generalGrossDividendKrwForYear`·`isaRealizedSales` |
+| 실현손익 | `RealizedGains.tsx` | `realized/`: `useRealizedGainsData`(매매·배당·별칭·세금 유형·보유·planner·환율/월평균 환율 받기, 다시 보일 때 갱신), `OverseasGainsCard`(연도·증권사 필터 + 해외 양도소득), `SalesSections`(`DomesticSalesCard`·`OfficialCompareCards`·`TaxAdvantagedSalesCard`), `DividendIncomeCard`, `SalesTable`, `YearEndTaxCard`, `TaxAccountLimitsCard` | `calc/realizedGains.ts` — `dividendIncomeSummary`·`overseasGeneralGainForYear`·`generalGrossDividendKrwForYear`·`isaRealizedSales` |
 | 배당금 | `Dividends.tsx` | `dividends/`: `useUpcomingDividends`, `useDividendSync`(`isRowSyncOwned` → `src/dividendOwnership.ts`), `useInvestedByBroker`, `DividendSummaryCard`, `DividendAddCard`, `DividendListCard`, `DividendTransferBar` | `calc/dividends.ts` — `upcomingMonthlyRows`, `brokerDividendSums`, `brokerLines`, `grandTotal` |
 | 매매내역 | `Trades.tsx` | `trades/`: `useTradesData`(선택·조회·KB 동기화 + 저장소를 바꾼 뒤 화면 맞추기 `refreshAfter*`), `TradesToolbar`, `TradeAddCard`, `TradeListCard` | `calc/trades.ts` — `tradeBuckets`, `tradeTotals`, `toDisplayTrades` |
 | 설정 | `Settings.tsx` | `settings/`: 카드 7개(`BrokerStatusCard`·`ApiKeyCard`·`EximbankKeyCard`·`FxRateCard`·`GoogleSheetsCard`·`AccountLabelsCard`·`BackupCard`), `useSettingsAccounts`(알려진 계좌 목록), `notify.ts`(맨 위 공용 안내) | — |

@@ -133,6 +133,34 @@ test('API 증권사의 계좌 하나만 실패해도 error로 알리고 그날 �
   assert.equal(count('POST /portfolio-snapshots'), 0);
 });
 
+test('해외 잔고만 못 받은 계좌(failedMarkets)가 있으면 error로 알리고 그날 순자산은 기록하지 않는다', async () => {
+  const ok = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const path = url.pathname.replace(/^\/api/, '');
+    calls.push(`${init?.method ?? 'GET'} ${path}`);
+    if (path === '/accounts') return Response.json([{ id: 'kis', configured: true }]);
+    if (path === '/accounts/kis') return Response.json([{ id: 'acc-1' }]);
+    if (path === '/holdings/kis/acc-1') {
+      return Response.json({
+        broker: 'kis', accountId: 'acc-1', totalPurchaseAmount: [], totalMarketValue: [], totalProfitLoss: [], failedMarkets: ['US'],
+        positions: [{ symbol: '111110', name: '가짜', currency: 'KRW', quantity: 1, lastPrice: 100, purchaseAmount: 90, marketValue: 100, profitLossAmount: 10 }],
+      });
+    }
+    return ok(input, init);
+  }) as typeof fetch;
+  try {
+    await reloadOverview();
+  } finally {
+    globalThis.fetch = ok;
+  }
+  const s = getOverviewState();
+  assert.equal(s.holdings.length, 1);
+  assert.match(s.error ?? '', /계좌 1개의 미국 잔고/);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(count('POST /portfolio-snapshots'), 0);
+});
+
 test('환율이 없어 달러 보유가 합계에서 빠지면 그날 순자산은 기록하지 않는다', async () => {
   const ok = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL, init?: RequestInit) => {

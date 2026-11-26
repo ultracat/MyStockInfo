@@ -69,6 +69,18 @@ export function buildPortfolioFromStored(broker: BrokerId, accountId: string, ro
  *  합친다. 금액/손익은 통화별로 그대로 더하고(각 overview가 이미 hasUsd 여부를 KRW/USD
  *  로 나눠 갖고 있음), 포지션은 이어붙이되 어느 계좌에서 왔는지 `accountId`를 남겨서
  *  HoldingsTable이 "계좌" 열로 구분해 보여줄 수 있게 한다. */
+/** 시장 코드 → 안내 문구용 이름(`US` → 미국). */
+export function marketLabel(market: string): string {
+  return market === 'US' ? '미국' : market === 'KR' ? '국내' : market;
+}
+
+/** 이번 조회에서 일부 시장만 못 받았을 때 보유 종목 화면에 띄울 문구 — 다 받았으면 null. */
+export function failedMarketsNotice(failedMarkets: string[] | undefined): string | null {
+  if (!failedMarkets?.length) return null;
+  const names = failedMarkets.map(marketLabel).join('·');
+  return `${names} 잔고를 불러오지 못해 ${names} 종목이 이번 조회에서 빠졌습니다(합계 포함). 저장된 기록은 그대로 두니 잠시 뒤 새로고침해 보세요.`;
+}
+
 export function mergePortfolios(
   broker: BrokerId,
   parts: { accountId: string; overview: PortfolioOverview }[]
@@ -86,8 +98,10 @@ export function mergePortfolios(
   let cashKrw: number | null = null;
   let cashUsd: number | null = null;
   const positions: HoldingPosition[] = [];
+  const failedMarkets = new Set<string>();
 
   for (const { accountId, overview } of parts) {
+    for (const m of overview.failedMarkets ?? []) failedMarkets.add(m);
     purchaseKrw += overview.totalPurchaseAmountKrw;
     marketKrw += overview.totalMarketValueKrw;
     plKrw += overview.totalProfitLossKrw;
@@ -115,6 +129,7 @@ export function mergePortfolios(
     cashBalanceKrw: cashKrw,
     cashBalanceUsd: cashUsd,
     positions,
+    ...(failedMarkets.size ? { failedMarkets: [...failedMarkets] } : {}),
   };
 }
 

@@ -2,6 +2,7 @@ import { api } from './api';
 import { API_BROKER_IDS, BROKER_LABELS } from './brokers';
 import { loadUsdKrwRates } from './fxLoader';
 import { effectiveRate } from './fx';
+import { marketLabel } from './calc/portfolio';
 import type { BrokerId } from './types';
 
 /** 모든 증권사·계좌의 보유 한 줄(원래 통화 기준) — 리밸런싱·보고서가 쓴다. */
@@ -39,15 +40,29 @@ export interface AllHoldings {
    * 순자산 기록에 남았다. 증권사 전체가 실패하면 `failedBrokers`에만 들어간다.
    */
   failedAccounts: { broker: BrokerId; accountId: string }[];
+  /** 보유는 받았지만 일부 시장(해외 잔고)만 못 받은 계좌 — 그 시장 종목이 합계에서 빠져 있다(PortfolioOverview.failedMarkets). */
+  partialAccounts: { broker: BrokerId; accountId: string; markets: string[] }[];
 }
 
 /** 일부 증권사·계좌를 못 받았을 때 화면에 띄울 문구(합계에서 빠졌다는 안내) — 다 받았으면 null. */
-export function holdingsFailureMessage(all: Pick<AllHoldings, 'failedBrokers' | 'failedAccounts'>): string | null {
+export function holdingsFailureMessage(
+  all: Pick<AllHoldings, 'failedBrokers' | 'failedAccounts'> & Partial<Pick<AllHoldings, 'partialAccounts'>>
+): string | null {
   const parts = all.failedBrokers.map((b) => BROKER_LABELS[b]);
   const accountCounts = new Map<BrokerId, number>();
   for (const f of all.failedAccounts) accountCounts.set(f.broker, (accountCounts.get(f.broker) ?? 0) + 1);
   for (const [b, n] of accountCounts) parts.push(`${BROKER_LABELS[b]} 계좌 ${n}개`);
-  return parts.length ? `${parts.join('·')} 보유를 불러오지 못해 합계에서 빠졌습니다.` : null;
+  // 해외 잔고만 실패한 계좌 — "토스증권 계좌 1개의 미국 잔고"(순자산 기록도 이 문구가 있으면 건너뛴다, overviewStore.ts)
+  const partialCounts = new Map<string, { broker: BrokerId; markets: string; n: number }>();
+  for (const p of all.partialAccounts ?? []) {
+    const markets = p.markets.map(marketLabel).join('·');
+    const key = `${p.broker}|${markets}`;
+    const cur = partialCounts.get(key) ?? { broker: p.broker, markets, n: 0 };
+    cur.n++;
+    partialCounts.set(key, cur);
+  }
+  for (const { broker, markets, n } of partialCounts.values()) parts.push(`${BROKER_LABELS[broker]} 계좌 ${n}개의 ${markets} 잔고`);
+  return parts.length ? `${parts.join('·')}를 불러오지 못해 합계에서 빠졌습니다.` : null;
 }
 
 let cached: { at: number; value: AllHoldings } | null = null;
@@ -82,6 +97,7 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<AllHo
   const lines: HoldingLine[] = [];
   const failedBrokers: BrokerId[] = [];
   const failedAccounts: { broker: BrokerId; accountId: string }[] = [];
+  const partialAccounts: { broker: BrokerId; accountId: string; markets: string[] }[] = [];
   await Promise.all(
     brokers
       .filter((b) => b.configured)
@@ -99,9 +115,11 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<AllHo
                   )
                 )
               )
-              .then((ps) =>
-                ps.filter((p): p is NonNullable<typeof p> => p !== null).flatMap((p) => p.positions.map((pos) => ({ ...pos, accountId: p.accountId })))
-              )
+              .then((ps) => {
+                const got = ps.filter((p): p is NonNullable<typeof p> => p !== null);
+                for (const p of got) if (p.failedMarkets?.length) partialAccounts.push({ broker: b.id, accountId: p.accountId, markets: p.failedMarkets });
+                return got.flatMap((p) => p.positions.map((pos) => ({ ...pos, accountId: p.accountId })));
+              })
               .catch(() => {
                 failedBrokers.push(b.id);
                 return [];
@@ -126,5 +144,5 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<AllHo
         }
       })
   );
-  return { lines, fxRate: effectiveRate(manual, live), manualFxRate: manual, liveFxRate: live, failedBrokers, failedAccounts };
+  return { lines, fxRate: effectiveRate(manual, live), manualFxRate: manual, liveFxRate: live, failedBrokers, failedAccounts, partialAccounts };
 }

@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
-import { ALL_ACCOUNTS, dividendTotals as dividendTotalsOf, holdingRows } from '../calc/portfolio';
+import { ALL_ACCOUNTS, dividendTotals as dividendTotalsOf, failedMarketsNotice, holdingRows } from '../calc/portfolio';
 import type { BrokerId } from '../types';
 import HoldingsTable, { type HoldingSort } from '../components/HoldingsTable';
 import PurchaseMarketTile from '../components/PurchaseMarketTile';
@@ -141,6 +141,11 @@ export default function Dashboard() {
       {kbSyncNotice && (
         <div className="notice text-critical" style={{ fontSize: 13 }}>
           {kbSyncNotice}
+        </div>
+      )}
+      {failedMarketsNotice(portfolio?.failedMarkets) && (
+        <div className="notice text-critical" style={{ fontSize: 13 }}>
+          {failedMarketsNotice(portfolio?.failedMarkets)}
         </div>
       )}
 

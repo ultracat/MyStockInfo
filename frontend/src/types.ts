@@ -71,6 +71,9 @@ export interface PortfolioOverview {
   cashBalanceKrw: number | null;
   cashBalanceUsd: number | null;
   positions: HoldingPosition[];
+  /** 이번 조회에서 못 받은 시장(지금은 해외 잔고만 실패하면 `['US']` — 백엔드 brokers/types.ts와 같음). 이 시장의 종목은 응답에서
+   *  빠져 있고(합계도), 로컬 저장소의 지난 기록은 백엔드가 그대로 둔다. 화면은 안내하고 대시보드는 그날 순자산을 기록하지 않는다. */
+  failedMarkets?: string[];
 }
 
 /** 로컬 저장소(backend/src/db/holdingsStore.ts)에 저장된 보유종목 스냅샷 한 줄 —

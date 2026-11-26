@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ALL_ACCOUNTS, buildPortfolioFromStored, dividendTotals, holdingRows, mergePortfolios, sortHoldingRows } from '../src/calc/portfolio';
+import { ALL_ACCOUNTS, buildPortfolioFromStored, dividendTotals, failedMarketsNotice, holdingRows, mergePortfolios, sortHoldingRows } from '../src/calc/portfolio';
 import type { DividendRecord, StoredHolding } from '../src/types';
 
 function h(p: Partial<StoredHolding>): StoredHolding {
@@ -41,6 +41,17 @@ test('전체 계좌 합치기: 금액·예수금을 더하고 포지션에 출�
   assert.equal(merged.cashBalanceKrw, 50); // 한 계좌라도 값이 있으면 나머지는 0으로
   assert.equal(merged.cashBalanceUsd, null); // 전부 없으면 "정보 없음"
   assert.deepEqual(merged.positions.map((p) => p.accountId), ['A', 'B']);
+});
+
+test('일부 시장만 못 받은 조회: 합칠 때 failedMarkets를 모으고, 안내 문구를 만든다', () => {
+  const a = { ...buildPortfolioFromStored('kis', 'A', [h({ purchaseAmount: 100, marketValue: 110, profitLossAmount: 10 })]), failedMarkets: ['US'] };
+  const b = buildPortfolioFromStored('kis', 'B', [h({ purchaseAmount: 50, marketValue: 50, profitLossAmount: 0 })]);
+  assert.deepEqual(mergePortfolios('kis', [{ accountId: 'A', overview: a }, { accountId: 'B', overview: b }]).failedMarkets, ['US']);
+  assert.equal(mergePortfolios('kis', [{ accountId: 'B', overview: b }]).failedMarkets, undefined, '다 받았으면 필드 없음');
+
+  assert.equal(failedMarketsNotice(undefined), null);
+  assert.equal(failedMarketsNotice([]), null);
+  assert.match(failedMarketsNotice(['US'])!, /^미국 잔고를 불러오지 못해 미국 종목이/);
 });
 
 test('보유 표 행: 원화 기준 비중, 이 계좌의 이 종목 배당만, memo로 나뉜 행은 수량 비율로, 통화가 다르면 환율', () => {

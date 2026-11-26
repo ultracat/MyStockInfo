@@ -1,22 +1,25 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { MAX_ZOOM, MIN_ZOOM, useZoom } from './useZoom';
 import Overview from './pages/Overview';
-import Dashboard from './pages/Dashboard';
-import StockReturns from './pages/StockReturns';
-import Dividends from './pages/Dividends';
-import Trades from './pages/Trades';
-import RealizedGains from './pages/RealizedGains';
-import Rebalance from './pages/Rebalance';
-import Report from './pages/Report';
-import Analysis from './pages/Analysis';
-import Watchlist from './pages/Watchlist';
-import StockLinks from './pages/StockLinks';
-import Settings from './pages/Settings';
-import About from './pages/About';
 import { PageActivity } from './pageActivity';
 import { QuickSearch } from './components/QuickSearch';
 import { PageErrorBoundary } from './components/PageErrorBoundary';
 import { api } from './api';
+
+// 처음 뜨는 대시보드(Overview)만 바로 싣고 나머지 화면은 처음 열 때 불러온다(2026-11-26 — 한 덩어리 622KB라 빌드가 500KB 경고를
+// 냈고, 시작할 때 안 쓰는 화면 코드까지 전부 읽었다). 화면 파일은 dist/assets의 별도 조각(같은 출처 'self'라 CSP와 무관, file://에서도 동작 확인).
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const StockReturns = lazy(() => import('./pages/StockReturns'));
+const Dividends = lazy(() => import('./pages/Dividends'));
+const Trades = lazy(() => import('./pages/Trades'));
+const RealizedGains = lazy(() => import('./pages/RealizedGains'));
+const Rebalance = lazy(() => import('./pages/Rebalance'));
+const Report = lazy(() => import('./pages/Report'));
+const Analysis = lazy(() => import('./pages/Analysis'));
+const Watchlist = lazy(() => import('./pages/Watchlist'));
+const StockLinks = lazy(() => import('./pages/StockLinks'));
+const Settings = lazy(() => import('./pages/Settings'));
+const About = lazy(() => import('./pages/About'));
 
 // 페이지 id → 컴포넌트. 한 번 연 페이지는 지우지 않고 숨겨 둔다(아래 `visited`, pageActivity.tsx).
 const PAGES = {
@@ -292,7 +295,10 @@ const PageSlot = memo(function PageSlot({ id, active }: { id: Page; active: bool
     <div style={active ? undefined : { display: 'none' }}>
       <PageActivity active={active}>
         <PageErrorBoundary page={id}>
-          <PageComponent />
+          {/* 처음 열 때 화면 조각을 받는 동안 — 조각을 못 받으면(손상된 설치 등) 위 오류 경계가 "다시 불러오기"를 띄운다. */}
+          <Suspense fallback={<p>불러오는 중...</p>}>
+            <PageComponent />
+          </Suspense>
         </PageErrorBoundary>
       </PageActivity>
     </div>

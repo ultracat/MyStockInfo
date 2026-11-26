@@ -130,6 +130,9 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
 - **TypeScript 버전**(2026-11-26): **6.0**에 머문다. 7.0은 Go로 다시 짠 컴파일러라 예전 JS API가 없고, 타입 기반 lint 규칙
   (`no-floating-promises` 등 — `eslint.config.mjs`)을 돌리는 `typescript-eslint`가 `typescript <6.1.0`만 지원한다. Dependabot도
   `>=6.1.0`을 막아 뒀다(`.github/dependabot.yml`) — `typescript-eslint`가 지원하면 그 줄을 지우고 올린다.
+  ⚠ `openapi-typescript`(명세 → `*.gen.ts`, `spec:types`)는 peer가 `typescript ^5`라 루트 `package.json`의 `overrides`로 프로젝트 TypeScript를
+  쓰게 했다(없으면 깨끗한 `npm ci`가 ERESOLVE로 실패 — 로컬은 이미 설치돼 있어 안 보이고 CI에서만 걸린다). TypeScript 6.0으로 다시 만든 `*.gen.ts`는
+  한 글자도 바뀌지 않았다. TypeScript를 올릴 땐 **`rm -rf node_modules && npm ci`**로 peer 충돌을 먼저 본다.
   6.0이 7.0에서 없앨 설정을 오류로 알려 backend·electron tsconfig를 `module`/`moduleResolution: "Node16"`으로 바꿨다(예전 `CommonJS`/`Node`=node10;
   package.json에 `"type"`이 없어 출력은 그대로 CommonJS — 바꾸기 전후 dist가 바이트 단위로 같음). 테스트 설정(`tsconfig.test.json`)만
   `Preserve`/`Bundler` — 테스트의 동적 `await import('../src/x')`를 tsx처럼 확장자 없이 해석하게(Node16은 동적 import에 확장자를 요구).

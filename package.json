@@ -136,6 +136,9 @@
     }
   },
   "overrides": {
-    "qs": "^6.16.2"
+    "qs": "^6.16.2",
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   }
 }

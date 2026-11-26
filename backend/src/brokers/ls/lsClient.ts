@@ -14,6 +14,7 @@
 // - 속도: TR별 `transactionPerSec`(t0424 2, C계열 1) — TR마다 리미터.
 import { RateLimiter } from '../rateLimiter';
 import { redactText } from '../../logRedact';
+import { fetchWithTimeout } from '../../http/fetchWithTimeout';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import { noteResponse } from '../responseShape';
 import type { FetchOpts } from '../types';
@@ -69,7 +70,7 @@ export async function lsPost<T extends LsTr>(tr: T, input: LsRequests[T], cont?:
       let res: Response;
       let text: string;
       try {
-        res = await fetch(`${BASE_URL}${path}`, {
+        res = await fetchWithTimeout(`${BASE_URL}${path}`, {
           method: 'POST',
           headers: {
             'content-type': 'application/json; charset=utf-8',
@@ -80,7 +81,7 @@ export async function lsPost<T extends LsTr>(tr: T, input: LsRequests[T], cont?:
             mac_address: '', // 법인만 필수(명세)
           },
           body: JSON.stringify(input),
-          signal: AbortSignal.timeout(15_000),
+          label: 'LS증권', // 공용 15초 제한(본문까지) — http/fetchWithTimeout.ts
         });
         text = await res.text();
       } catch (err) {

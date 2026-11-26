@@ -15,6 +15,7 @@
 // - 연속조회: 응답 헤더 `cont_yn=Y`면 받은 `cont_key`로 다시(끝나면 N·""). 속도: 앱 10TPS(공지, SDK는 20 — 낮은 쪽) + TR별 TPS.
 import { RateLimiter } from '../rateLimiter';
 import { redactText } from '../../logRedact';
+import { fetchWithTimeout } from '../../http/fetchWithTimeout';
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import { noteResponse } from '../responseShape';
@@ -81,7 +82,7 @@ export async function dbPost<T extends DbTr>(tr: T, input: DbRequests[T]['In'], 
         let res: Response;
         let text: string;
         try {
-          res = await fetch(`${BASE_URL}${path}`, {
+          res = await fetchWithTimeout(`${BASE_URL}${path}`, {
             method: 'POST',
             headers: {
               'content-type': 'application/json; charset=utf-8',
@@ -90,7 +91,7 @@ export async function dbPost<T extends DbTr>(tr: T, input: DbRequests[T]['In'], 
               cont_key: cont?.key ?? '',
             },
             body: JSON.stringify({ In: input }),
-            signal: AbortSignal.timeout(15_000),
+            label: 'DB증권', // 공용 15초 제한(본문까지) — http/fetchWithTimeout.ts
           });
           text = await res.text();
         } catch (err) {

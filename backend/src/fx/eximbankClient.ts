@@ -2,6 +2,7 @@ import { withCache } from '../brokers/responseCache';
 import { eximbankKeyFingerprint, getEximbankAuthKey } from './eximbankKey';
 import { getCachedRate, setCachedRate } from './eximbankCache';
 import { addDays, compactYmd, daysInMonth, kstToday, weekdayOf } from '../kstDate';
+import { fetchWithTimeout } from '../http/fetchWithTimeout';
 
 // 한국수출입은행 Open API(환율, data=AP01). 공공데이터포털 공지("도메인이
 // 2025-06-25에 www.koreaexim.go.kr로 이전, 구 도메인은 2026-04-30 폐쇄 예정")를
@@ -51,14 +52,10 @@ function daysAgoCompact(daysAgo: number): string {
 // 6회 재시도로 총 대기 시간을 30초 안쪽으로 묶어둔다.
 const REQUEST_TIMEOUT_MS = 5_000;
 
-async function fetchWithTimeout(url: string): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+// 공용 헬퍼(http/fetchWithTimeout.ts — 본문까지 제한, 오류 메시지에 URL을 넣지 않아 쿼리의 인증키가 안 샌다)에
+// 이 API만의 짧은 제한(5초)을 준다.
+function fetchEximbank(url: string): Promise<Response> {
+  return fetchWithTimeout(url, { timeoutMs: REQUEST_TIMEOUT_MS, label: '한국수출입은행' });
 }
 
 // 동시에 진행할 수 있는 실제 네트워크 요청 수 상한 — 월평균 환율은 달 하나에
@@ -120,7 +117,7 @@ async function fetchEximbankRateForDateDetailed(
   let items: unknown;
   try {
     items = await withRequestSlot(async () => {
-      const res = await fetchWithTimeout(
+      const res = await fetchEximbank(
         `${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`
       );
       return res.ok ? res.json() : null;
@@ -258,7 +255,7 @@ export async function checkEximbankAuthKey(authKey: string): Promise<EximbankKey
     if (weekday === 0 || weekday === 6) continue;
     let items: unknown;
     try {
-      const res = await fetchWithTimeout(`${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`);
+      const res = await fetchEximbank(`${BASE_URL}?authkey=${encodeURIComponent(authKey)}&searchdate=${searchdate}&data=AP01`);
       if (!res.ok) return 'unreachable';
       items = await res.json();
     } catch {

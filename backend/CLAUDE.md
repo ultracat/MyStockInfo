@@ -93,6 +93,8 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   - **`keyHash`**(앱키·Client ID의 sha256 앞 16자, 원문 저장 안 함) — 키가 바뀌면 이전 토큰을 쓰지 않는다. 해시 없는 예전 파일은 한 번 받아들이고 해시를 붙인다(업그레이드로 KIS 재발급 안 나게).
   - **`invalidateBrokerTokens(broker)`** — `credentials.ts`의 `setCredentialFields`(이전 값이 있고 **달라졌을 때만** — NH는 발급마다 보안 알림)와
     `clearCredential`이 부른다. 메모리 캐시와 `<브로커>-token.json`을 지우고, 발급 도중이면 세대 번호로 그 결과를 버린다.
+    **응답 캐시도 버린다** — `responseCache.ts`의 `invalidateCacheByPrefix('<브로커>:')`(진행 중 요청은 결과를 캐시하지 않음). 그래서 **`withCache` 키는
+    반드시 `'<브로커>:'`로 시작한다**(이전 키로 받은 보유·잔고가 최대 30초 새 키 화면에 나오던 것, `test/cacheInvalidation.test.ts`).
   - 새 브로커도 이걸 쓴다.
   예전 설명(동시 발급 공유가 생긴 이유): 캐시된 토큰이
   만료/부재일 때 두 요청이 동시에 들어오면(예: 화면 두 개가 거의 동시에 API를
@@ -120,6 +122,7 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   **본문까지** 제한 시간 안에 읽어 같은 상태·헤더의 Response로 돌려준다(헤더 뒤 본문이 멈추는 경우도 끊음 — JSON API 전용, 큰 다운로드엔 쓰지 않음).
   시간 초과는 `FetchTimeoutError`(status 0, **메시지에 URL 없음** — NH 토큰 요청은 쿼리에 앱키) → `handleBrokerApiError`가 502. 매번 `globalThis.fetch`를 불러 테스트 가짜 서버가 그대로 통한다
   (`setDefaultFetchTimeoutForTest`). 예전엔 토스·KIS·KB·키움·Google에 제한이 없어 토큰 발급이 걸리면 그 증권사 요청 전체가 수 분 멈췄다.
+  **백엔드의 외부 요청은 전부 이걸 거친다**(2026-11-26 LS·DB·수출입은행(5초)·새 버전 확인(5초)까지 — 날 `fetch(`가 남아 있지 않다).
 - `src/kstDate.ts` — 한국 날짜·시각(`kstToday`·`kstTodayCompact`·`kstHour`·`kstWeekday`·`kstMinuteOfDay`·`addDays`·`weekdayOf`·`daysInMonth`·`compactYmd`).
   **한국 날짜는 여기서만** — `getDate`/`getDay`(OS 시간대 — PC가 해외 시간대면 하루 어긋남, 예전 환율 조회 버그)나 인라인 `+9*3600_000`을 새로 쓰지 않는다.
   2026-11-26 백엔드 전체를 옮겼다(파일마다 따로 있던 `todayKst`/`kstToday` 8벌 제거). 예외: `autoBackup.ts`의 파일 이름 `stamp`는 사용자가 보는 이름이라 일부러 PC 지역 시간.

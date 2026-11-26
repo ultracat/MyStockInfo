@@ -95,3 +95,11 @@ export async function withCache<T>(
   inFlight.set(key, promise);
   return promise;
 }
+
+/** `prefix`로 시작하는 키의 캐시와 진행 중 표시를 버린다 — 자격증명을 바꾸거나 지웠을 때(tokenManager.ts의
+ *  `invalidateBrokerTokens`가 `'<브로커>:'`로 부른다) 이전 키로 받은 응답(보유·잔고 등, 최대 30초)이 새 키 화면에 나오지 않게.
+ *  진행 중인 요청은 끝나도 "지금 진행 중인 요청이 자기일 때만 캐시"(위) 규칙에 따라 결과를 캐시하지 않는다. */
+export function invalidateCacheByPrefix(prefix: string): void {
+  for (const key of cache.keys()) if (key.startsWith(prefix)) cache.delete(key);
+  for (const key of inFlight.keys()) if (key.startsWith(prefix)) inFlight.delete(key);
+}

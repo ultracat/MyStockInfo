@@ -1,5 +1,6 @@
 import { APP_VERSION } from './generated/appInfo';
 import { getSettings } from './db/settings';
+import { fetchWithTimeout } from './http/fetchWithTimeout';
 
 // 새 버전 알림(2026-11-16) — 자동 업데이트는 코드 서명이 있어야 안전해서 아직 없다. 대신 GitHub 공개 릴리스 API로 최신
 // 버전만 확인해 화면에 "새 버전이 나왔습니다"를 띄운다(설치는 사용자가 릴리스 페이지에서). 보안 수정이 기존 사용자에게
@@ -35,11 +36,10 @@ export function isNewerVersion(candidate: string, current: string): boolean {
 }
 
 async function fetchLatest(): Promise<{ latest: string | null; url: string | null }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(LATEST_URL, {
-      signal: controller.signal,
+    const res = await fetchWithTimeout(LATEST_URL, {
+      timeoutMs: TIMEOUT_MS,
+      label: 'GitHub',
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': `MyStock/${APP_VERSION}` },
     });
     if (!res.ok) return { latest: null, url: null };
@@ -52,8 +52,6 @@ async function fetchLatest(): Promise<{ latest: string | null; url: string | nul
     return { latest: body.tag_name.replace(/^v/, ''), url };
   } catch {
     return { latest: null, url: null };
-  } finally {
-    clearTimeout(timer);
   }
 }
 

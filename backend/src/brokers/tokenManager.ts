@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getDataDir } from '../paths';
 import { SecretJsonStore } from '../secretJsonStore';
+import { invalidateCacheByPrefix } from './responseCache';
 import type { BrokerId } from './types';
 
 export interface IssuedToken {
@@ -68,6 +69,8 @@ const resetters = new Map<BrokerId, Set<() => void>>();
 export function invalidateBrokerTokens(broker: BrokerId): void {
   for (const reset of resetters.get(broker) ?? []) reset();
   fs.rmSync(path.join(getDataDir(), tokenFileName(broker)), { force: true });
+  // 이전 키로 받은 응답 캐시도 버린다(보유·잔고 30초 등) — 키 이름이 전부 '<브로커>:'로 시작한다.
+  invalidateCacheByPrefix(`${broker}:`);
 }
 
 export function createTokenManager<C>(opts: TokenManagerOptions<C>): TokenManager<C> {

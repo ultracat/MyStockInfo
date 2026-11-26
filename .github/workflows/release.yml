@@ -164,6 +164,9 @@ jobs:
           else
             echo "**Full Changelog**: https://github.com/${{ github.repository }}/commits/$tag" >> notes.md
           fi
+          # CHANGELOG의 상대 링크(예: doc/user-manual.md#…)는 저장소 안에선 맞지만 릴리스 페이지에선 …/releases/tag/doc/…로 풀려 404가 난다
+          # (2026-11-26 v1.6.1 노트를 손으로 고침) → 그 태그의 파일 주소로 바꾼다. http(s)·mailto·#앵커 링크는 그대로.
+          REPO="${{ github.repository }}" TAG="$tag" perl -pi -e 's{\]\((?!https?://|mailto:|#)(?:\./)?([^)\s]+)\)}{](https://github.com/$ENV{REPO}/blob/$ENV{TAG}/$1)}g' notes.md
           if [ "$(grep -c . notes.md)" -le 1 ]; then echo "::warning::CHANGELOG.md에 $tag 절이 없어 자동 생성 노트를 씁니다"; rm notes.md; fi
           [ -f notes.md ] && head -20 notes.md || true
 

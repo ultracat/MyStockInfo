@@ -2,6 +2,7 @@ import { fetchKisPeriodRights, getKisAccountId, type KisPeriodRight } from './ki
 import { replaceSyncedDividends, type NewDividendInput } from '../../db/dividends';
 import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes';
 import { isTaxDeferredAccount } from '../../db/accountTaxTypes';
+import { kstToday } from '../../kstDate';
 
 // 한국투자증권 배당 동기화 — 기간별계좌권리현황조회(`CTRGA011R`)로 계좌의 국내 배당·ETF 분배금을 받아
 // **API 우선으로 로컬에 덮어쓴다**(토스와 같은 원칙, tossDividendSync.ts 참고). 해외 배당을 계좌 기준으로
@@ -58,9 +59,6 @@ export function classifyKisRights(
   return { candidates, upcoming };
 }
 
-function todayKst(): string {
-  return new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
-}
 
 let inFlight: Promise<DividendSyncResult> | null = null;
 
@@ -72,7 +70,7 @@ export function syncKisDividends(): Promise<DividendSyncResult> {
 async function runSync(): Promise<DividendSyncResult> {
   const accountId = await getKisAccountId();
   const rows = await fetchKisPeriodRights();
-  const { candidates, upcoming } = classifyKisRights(rows, todayKst(), { taxDeferred: isTaxDeferredAccount('kis', accountId) });
+  const { candidates, upcoming } = classifyKisRights(rows, kstToday(), { taxDeferred: isTaxDeferredAccount('kis', accountId) });
 
   const inputs: NewDividendInput[] = candidates.map((c) => ({
     broker: 'kis',

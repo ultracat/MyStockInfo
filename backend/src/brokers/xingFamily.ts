@@ -37,7 +37,6 @@ export function ymdDash(v: unknown): string {
 }
 
 export const compactDate = (d: string) => d.replace(/-/g, '');
-export const kstToday = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
 
 /** [from, to]를 최대 1년(같은 해) 구간으로 — DB CDPCQ04700은 조회 기간 최대 12개월(공식 예제), LS는 명세에 없어 같게. */
 export function yearWindows(from: string, to: string): Array<[string, string]> {

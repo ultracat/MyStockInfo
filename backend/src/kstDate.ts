@@ -20,6 +20,17 @@ export function kstHour(now: number | Date = Date.now()): number {
   return new Date(+now + KST_OFFSET_MS).getUTCHours();
 }
 
+/** 그 시각의 한국 요일(0=일 … 6=토). */
+export function kstWeekday(now: number | Date = Date.now()): number {
+  return new Date(+now + KST_OFFSET_MS).getUTCDay();
+}
+
+/** 그 시각의 한국 자정부터 지난 분(0~1439) — "장이 열려 있을 시간인가" 같은 시각 비교용. */
+export function kstMinuteOfDay(now: number | Date = Date.now()): number {
+  const d = new Date(+now + KST_OFFSET_MS);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+}
+
 /** 'YYYY-MM-DD'(또는 'YYYYMMDD')에 날짜 수를 더한 'YYYY-MM-DD' — 달력 계산이라 시간대와 무관. */
 export function addDays(ymd: string, days: number): string {
   const d = parseYmdUtc(ymd);

@@ -10,6 +10,7 @@ import {
 import { fetchKisEtfComponents, isKisConfigured } from './brokers/kis/kisClient';
 import { JsonStore } from './jsonStore';
 import { getDataDir } from './paths';
+import { kstToday } from './kstDate';
 
 // 토스 시장 정보(계좌 무관)로 만드는 보조 기능 — 장 운영 상태, 보유 종목 경고, 지수 월말 종가, 섹터 분류.
 // 전부 토스 API 키만 있으면 되고, **어느 증권사 보유 종목에든** 적용된다(종목 코드 기준).
@@ -116,9 +117,6 @@ export function activeWarnings(
 
 const SYMBOL_RE = /^[A-Za-z0-9.-]{1,20}$/;
 
-export function todayKst(now = Date.now()): string {
-  return new Date(now + 9 * 3600_000).toISOString().slice(0, 10);
-}
 
 /** 여러 종목의 활성 경고 — 경고가 있는 종목만 키로 넣는다. 종목 하나의 실패가 나머지를 막지 않는다. */
 export async function getActiveWarnings(symbols: string[]): Promise<Record<string, ActiveWarning[]>> {
@@ -128,7 +126,7 @@ export async function getActiveWarnings(symbols: string[]): Promise<Record<strin
 /** 위와 같되 조회에 실패한 종목도 돌려준다 — 알림(alerts.ts)이 "실패 = 경고 없음"으로 오해해 다음에 같은 경고를 또 알리지 않게. */
 export async function getActiveWarningsDetailed(symbols: string[]): Promise<{ active: Record<string, ActiveWarning[]>; failed: string[] }> {
   if (!isTossConfigured()) return { active: {}, failed: [] };
-  const today = todayKst();
+  const today = kstToday();
   const active: Record<string, ActiveWarning[]> = {};
   const failed: string[] = [];
   const unique = [...new Set(symbols.filter((s) => SYMBOL_RE.test(s)))];
@@ -207,7 +205,7 @@ async function buildSectorMap(): Promise<SectorCache> {
   const results = await Promise.all(jobs.map(({ sector, c }) => fetchTossSectorStocks(sector.sectorId, c).catch(() => [])));
   const bySymbol: Record<string, string[]> = {};
   results.forEach((symbols, k) => symbols.forEach((sym) => addTo(bySymbol, sym, jobs[k].sector.name)));
-  const cache = { date: todayKst(), bySymbol };
+  const cache = { date: kstToday(), bySymbol };
   sectorStore().write(cache);
   return cache;
 }
@@ -229,7 +227,7 @@ async function buildEtfSectorMap(): Promise<EtfSectorCache> {
   const results = await Promise.all(jobs.map(({ s, c }) => fetchTossSectorEtfs(s.sectorId, c).catch(() => [])));
   const etfBySymbol: Record<string, string[]> = {};
   results.forEach((symbols, k) => symbols.forEach((sym) => addTo(etfBySymbol, sym, jobs[k].top)));
-  const cache = { date: todayKst(), etfBySymbol };
+  const cache = { date: kstToday(), etfBySymbol };
   etfSectorStore().write(cache);
   return cache;
 }
@@ -294,7 +292,7 @@ export async function getSectorsFor(symbols: string[]): Promise<{
   if (!isTossConfigured()) return { bySymbol: {}, weights: {}, sources: {}, date: null, etfPending: false };
 
   let cache = sectorStore().read();
-  if (!cache || cache.date !== todayKst()) {
+  if (!cache || cache.date !== kstToday()) {
     sectorBuild ??= buildSectorMap().finally(() => {
       sectorBuild = null;
     });
@@ -309,7 +307,7 @@ export async function getSectorsFor(symbols: string[]): Promise<{
   // 뒤에** 시작한다 — 같은 SECTOR 리미터를 쓰므로 먼저 시작하면 ETF 600건 뒤에 종목 80건이 줄 서서 첫 화면이 2분 넘게
   // 걸렸다(실측).
   const etfCache = etfSectorStore().read();
-  const etfFresh = !!etfCache && etfCache.date === todayKst();
+  const etfFresh = !!etfCache && etfCache.date === kstToday();
   if (!etfFresh && !etfSectorBuild) {
     etfSectorBuild = buildEtfSectorMap()
       .catch((err) => {

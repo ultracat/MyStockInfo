@@ -4,6 +4,7 @@ import { withCache } from '../responseCache';
 import { listAccountLabels } from '../../db/accountLabels';
 import { monthRows, type CashFlowSummary, type CashFlowYear } from '../toss/tossCashFlows';
 import type { FetchOpts } from '../types';
+import { kstToday } from '../../kstDate';
 
 // NH투자증권(나무) 계좌의 **실제 투자원금** — 입출금내역(`/common/inquiry/v1/depositWithdrawal`, HTS 8207)에서
 // 계좌 밖과 오간 원화만 모은다. 토스(tossCashFlows.ts)와 같은 요약 모양이라 화면 카드(PrincipalCard)를 같이 쓴다.
@@ -84,7 +85,7 @@ export function getNhCashFlows(opts: FetchOpts = {}): Promise<NhAccountCashFlows
     'nh:cash-flows',
     3600_000,
     async () => {
-      const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+      const today = kstToday();
       const accounts = await fetchNhAccounts(opts);
       const labels = listAccountLabels().filter((l) => l.broker === 'nh');
       const out: NhAccountCashFlows[] = [];

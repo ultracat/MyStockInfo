@@ -5,7 +5,8 @@
 // ⚠ 실키 미검증 — `npm run check:db`가 판정한다.
 import { replaceSyncedDividends, type NewDividendInput } from '../../db/dividends';
 import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes';
-import { classifyLedgerDividends, kstToday, xNum, xStr, ymdDash, type LedgerDividend } from '../xingFamily';
+import { classifyLedgerDividends, xNum, xStr, ymdDash, type LedgerDividend } from '../xingFamily';
+import { kstToday } from '../../kstDate';
 import type { DbResponses } from './dbSpec.gen';
 import { fetchDbLedger, fetchDbOverseasLedger, getDbAccountId } from './dbClient';
 import { isTaxDeferredAccount } from '../../db/accountTaxTypes';

@@ -14,7 +14,8 @@ import { JsonStore } from './jsonStore';
 import { getPlanner } from './db/planner';
 import { listHoldings } from './db/holdingsStore';
 import { resolveStockPrices } from './stockNameResolver';
-import { getActiveWarningsDetailed, todayKst } from './marketInsights';
+import { getActiveWarningsDetailed } from './marketInsights';
+import { addDays, kstHour, kstMinuteOfDay, kstToday, kstWeekday } from './kstDate';
 import { isTossConfigured } from './brokers/toss/tossClient';
 import { onDividendsAdded, syncAllDividends } from './dividendSyncAll';
 import { listDividends, type DividendRecord } from './db/dividends';
@@ -104,16 +105,15 @@ const MAX_PRICE_CHECKS = 40;
  * 국내(6자리 코드): 평일 8:50~15:40. 미국: 평일 밤 21:00~ 다음 날 아침 7:00(서머타임 차이를 덮게 넉넉히).
  */
 export function marketMaybeOpen(symbol: string, now = Date.now()): boolean {
-  const kst = new Date(now + 9 * 3600_000);
-  const day = kst.getUTCDay();
-  const min = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  const day = kstWeekday(now);
+  const min = kstMinuteOfDay(now);
   if (/^[0-9][0-9A-Z]{5}$/.test(symbol)) return day >= 1 && day <= 5 && min >= 8 * 60 + 50 && min <= 15 * 60 + 40;
   return (day >= 1 && day <= 5 && min >= 21 * 60) || (day >= 2 && day <= 6 && min <= 7 * 60);
 }
 
 /** 관심종목 목표가 — 장이 열려 있을 만한 종목만, 조건마다 하루 한 번. 돌려준 값은 알린 건수. */
 export async function checkTargetPrices(now = Date.now()): Promise<number> {
-  const today = todayKst(now);
+  const today = kstToday(now);
   const { alerts, watchTargets: all } = getPlanner();
   const watchTargets = all.filter((w) => marketMaybeOpen(w.symbol, now)).slice(0, MAX_PRICE_CHECKS);
   if (!alerts.targetPrice || watchTargets.length === 0) return 0;
@@ -173,15 +173,15 @@ export async function checkNewWarnings(): Promise<number> {
 }
 
 /** 새 배당 기록 → 알림(최근 7일 지급분만, 많으면 한 번에 묶어서). */
-export function notifyDividends(added: DividendRecord[], today = todayKst()): number {
+export function notifyDividends(added: DividendRecord[], today = kstToday()): number {
   if (!getPlanner().alerts.dividendReceived) return 0;
-  const weekAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 7 * 864e5).toISOString().slice(0, 10);
+  const weekAgo = addDays(today, -7);
   const store = stateStore();
   const state = store.read();
   const seen = { ...(state.dividendNotified ?? {}) };
   const key = (d: DividendRecord) => `${d.broker}|${d.accountId ?? ''}|${d.symbol}|${d.paidDate}`;
   const recent = added.filter((d) => d.paidDate >= weekAgo && d.paidDate <= today && !seen[key(d)]);
-  const monthAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 30 * 864e5).toISOString().slice(0, 10);
+  const monthAgo = addDays(today, -30);
   for (const k of Object.keys(seen)) if (seen[k] < monthAgo) delete seen[k];
   for (const d of recent) seen[key(d)] = today;
   store.write({ ...state, dividendNotified: seen });
@@ -199,7 +199,7 @@ export function notifyDividends(added: DividendRecord[], today = todayKst()): nu
 /** 한국 시간 9~21시, 마지막 백그라운드 동기화에서 4시간이 지났으면 배당 동기화(새 기록은 위 리스너가 알린다). */
 export async function maybeBackgroundDividendSync(now = Date.now()): Promise<boolean> {
   if (!getPlanner().alerts.dividendReceived) return false;
-  const hourKst = new Date(now + 9 * 3600_000).getUTCHours();
+  const hourKst = kstHour(now);
   if (hourKst < 9 || hourKst >= 21) return false;
   const store = stateStore();
   const last = store.read().lastBackgroundDividendSync;
@@ -211,7 +211,6 @@ export async function maybeBackgroundDividendSync(now = Date.now()): Promise<boo
 
 // ---- 주간 요약(금요일 18시 이후 한 번) -----------------------------------------------------------------------------------------
 
-const addDaysYmd = (ymd: string, d: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + d * 864e5).toISOString().slice(0, 10);
 const signedWon = (v: number) => `${v >= 0 ? '+' : '-'}${Math.abs(Math.round(v)).toLocaleString('ko-KR')}원`;
 const sumBy = <T,>(xs: T[], pick: (x: T) => number) => xs.reduce((s, x) => s + pick(x), 0);
 
@@ -231,18 +230,18 @@ export function weeklySummaryText(i: WeeklySummaryInput): string {
   const amounts = (krwSum: number, usdSum: number) => [krwSum ? won(krwSum) : null, usdSum ? `$${usdSum.toFixed(2)}` : null].filter(Boolean).join('·');
   const snaps = [...i.snapshots].sort((a, b) => (a.date < b.date ? -1 : 1));
   const latest = snaps[snaps.length - 1];
-  const weekAgo = [...snaps].reverse().find((s) => s.date <= addDaysYmd(i.today, -7));
+  const weekAgo = [...snaps].reverse().find((s) => s.date <= addDays(i.today, -7));
   if (latest && weekAgo) {
     parts.push(`자산 ${signedWon(latest.totalMarketValueKrw - weekAgo.totalMarketValueKrw)}(${weekAgo.date.slice(5)}→${latest.date.slice(5)})`);
   }
-  const from = addDaysYmd(i.today, -6);
+  const from = addDays(i.today, -6);
   const got = i.dividends.filter((d) => d.paidDate >= from && d.paidDate <= i.today);
   if (got.length) {
     const krwSum = sumBy(got.filter((d) => d.currency !== 'USD'), (d) => d.amount);
     const usdSum = sumBy(got.filter((d) => d.currency === 'USD'), (d) => d.amount);
     parts.push(`배당 ${got.length}건 ${amounts(krwSum, usdSum)}`);
   }
-  const until = addDaysYmd(i.today, 7);
+  const until = addDays(i.today, 7);
   const next = i.upcoming.filter((u) => u.payDate !== null && u.payDate > i.today && u.payDate <= until);
   if (next.length) {
     const krwSum = sumBy(next.filter((u) => u.currency !== 'USD'), (u) => u.grossAmount);
@@ -262,9 +261,8 @@ export function weeklySummaryText(i: WeeklySummaryInput): string {
 export async function maybeWeeklySummary(now = Date.now()): Promise<boolean> {
   const planner = getPlanner();
   if (!planner.alerts.weeklySummary) return false;
-  const kst = new Date(now + 9 * 3600_000);
-  if (kst.getUTCDay() !== 5 || kst.getUTCHours() < 18) return false;
-  const today = kst.toISOString().slice(0, 10);
+  if (kstWeekday(now) !== 5 || kstHour(now) < 18) return false;
+  const today = kstToday(now);
   const store = stateStore();
   if (store.read().lastWeeklySummary === today) return false;
   store.update((s) => ({ ...s, lastWeeklySummary: today }));

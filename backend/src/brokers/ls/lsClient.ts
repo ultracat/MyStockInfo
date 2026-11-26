@@ -17,7 +17,8 @@ import { redactText } from '../../logRedact';
 import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import { noteResponse } from '../responseShape';
 import type { FetchOpts } from '../types';
-import { compactDate, createXingTokenCache, kstToday, xStr, yearWindows } from '../xingFamily';
+import { compactDate, createXingTokenCache, xStr, yearWindows } from '../xingFamily';
+import { kstToday } from '../../kstDate';
 import { hasCredential } from '../../credentials';
 import type { LsRequests, LsResponses } from './lsSpec.gen';
 

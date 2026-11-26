@@ -2,6 +2,7 @@ import { fetchKiwoomAccountNo, fetchKiwoomTransactions } from './kiwoomClient';
 import { classifyKiwoomDividends } from './kiwoomMappers';
 import { replaceSyncedDividends, type NewDividendInput } from '../../db/dividends';
 import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes';
+import { kstToday } from '../../kstDate';
 
 // 키움증권 배당 동기화 — 토스·한투·NH와 같은 원칙(API 우선, 그 계좌 배당 기록을 통째로 교체). 위탁종합거래내역 입금(tp 6)
 // 중 배당·분배 적요를 원화(국내)·달러(미국) 모두 가져온다 → 원화·달러 모두 동기화 소유(rowOwnership.ts).
@@ -19,7 +20,7 @@ export function syncKiwoomDividends(): Promise<DividendSyncResult> {
 }
 
 async function runSync(): Promise<DividendSyncResult> {
-  const today = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+  const today = kstToday();
   const accountId = await fetchKiwoomAccountNo({ forceRefresh: true });
   const rows = await fetchKiwoomTransactions(SYNC_FROM, today, '6', '0', { forceRefresh: true });
   const candidates = classifyKiwoomDividends(rows);

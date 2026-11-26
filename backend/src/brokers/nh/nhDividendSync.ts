@@ -2,6 +2,7 @@ import { fetchNhAccounts, fetchNhOverseasTransactions, fetchNhTotalTransactions 
 import { classifyNhDomesticDividends, classifyNhOverseasDividends, type NhDividendCandidate } from './nhMappers';
 import { replaceSyncedDividends, type NewDividendInput } from '../../db/dividends';
 import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes';
+import { kstToday } from '../../kstDate';
 
 // NH투자증권(나무) 배당 동기화 — 토스·한투와 같은 원칙(API 우선으로 그 계좌 배당 기록을 통째로 교체).
 // 국내는 종합거래내역 입출금, 미국은 해외 일별거래내역 입금에서 배당·분배 적요를 고른다(nhMappers.ts).
@@ -11,9 +12,6 @@ import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes'
 /** 조회 시작일. 종합거래내역은 기간 제한이 명세에 없어 넉넉히 잡는다(실키로 2000-01-01~오늘 요청이 정상 응답함). */
 const SYNC_FROM = '2000-01-01';
 
-function todayKst(): string {
-  return new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
-}
 
 let inFlight: Promise<DividendSyncResult> | null = null;
 
@@ -23,7 +21,7 @@ export function syncNhDividends(): Promise<DividendSyncResult> {
 }
 
 async function runSync(): Promise<DividendSyncResult> {
-  const today = todayKst();
+  const today = kstToday();
   const accounts = (await fetchNhAccounts({ forceRefresh: true })).map((a) => a.accountNo);
   const inputs: NewDividendInput[] = [];
   const byKind: Record<DividendSyncKind, number> = { dividend: 0, etfDistribution: 0, taxRefund: 0 };

@@ -12,7 +12,7 @@ import { listHoldings } from './db/holdingsStore';
 import { usMarketClosedDays } from './usMarketCalendar';
 import { JsonStore } from './jsonStore';
 import { getDataDir } from './paths';
-import { todayKst } from './marketInsights';
+import { addDays, kstToday } from './kstDate';
 import type { BrokerId } from './brokers/types';
 import type { KisOverseasIceRight, KisOverseasPeriodRight } from './brokers/kis/kisClient';
 import { krMarketClosedDays } from './krMarketCalendar';
@@ -69,10 +69,6 @@ export interface UpcomingDividend {
 export function parseKsdDate(s: string | null | undefined): string | null {
   const m = /^(\d{4})[-/]?(\d{2})[-/]?(\d{2})$/.exec((s ?? '').trim());
   return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
-}
-
-function addDays(date: string, days: number): string {
-  return new Date(Date.parse(`${date}T00:00:00Z`) + days * 864e5).toISOString().slice(0, 10);
 }
 
 function daysBetween(a: string, b: string): number {
@@ -465,7 +461,7 @@ const missingTried = new Map<string, string>();
 function startRebuild(): Promise<void> {
   if (rebuildJob) return rebuildJob;
   rebuildJob = (async () => {
-    const today = todayKst();
+    const today = kstToday();
     const kisAccountId = await getKisAccountId();
     const { kr, us } = heldSymbols(listHoldings());
     const [confirmed, krCalendar, krRows, usRows] = await Promise.all([
@@ -518,7 +514,7 @@ function fetchMissing(kr: string[], us: string[], today: string): Promise<void> 
 /** `horizonMonths`가 있으면 예상·추정을 이번 달 말이 아니라 그만큼 뒤까지 만든다(앞으로 12개월 예상 배당 — 확정은 원래대로 120일). */
 export async function getUpcomingDividends(opts: { refresh?: boolean; horizonMonths?: number } = {}): Promise<UpcomingDividendsResult> {
   if (!isKisConfigured()) return { items: [], available: false, builtAt: null, refreshing: false };
-  const today = todayKst();
+  const today = kstToday();
   const kisAccountId = await getKisAccountId();
   const usable = () => {
     const s = snapshotStore().read();
@@ -582,7 +578,7 @@ export interface SymbolDividends {
 
 export async function getSymbolDividends(symbol: string, currency: 'KRW' | 'USD'): Promise<SymbolDividends> {
   return withCache(`symbolDividends:${currency}:${symbol}`, 6 * 60 * 60 * 1000, async () => {
-    const today = todayKst();
+    const today = kstToday();
     const until = addDays(today, 366);
     const usd = currency === 'USD';
     const rowsBySymbol = usd ? await fetchUsRows([symbol], today) : await fetchKrRows([symbol], today);

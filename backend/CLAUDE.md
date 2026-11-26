@@ -120,9 +120,9 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   **본문까지** 제한 시간 안에 읽어 같은 상태·헤더의 Response로 돌려준다(헤더 뒤 본문이 멈추는 경우도 끊음 — JSON API 전용, 큰 다운로드엔 쓰지 않음).
   시간 초과는 `FetchTimeoutError`(status 0, **메시지에 URL 없음** — NH 토큰 요청은 쿼리에 앱키) → `handleBrokerApiError`가 502. 매번 `globalThis.fetch`를 불러 테스트 가짜 서버가 그대로 통한다
   (`setDefaultFetchTimeoutForTest`). 예전엔 토스·KIS·KB·키움·Google에 제한이 없어 토큰 발급이 걸리면 그 증권사 요청 전체가 수 분 멈췄다.
-- `src/kstDate.ts` — 한국 날짜(`kstToday`·`kstTodayCompact`·`kstHour`·`addDays`·`weekdayOf`·`daysInMonth`·`compactYmd`). 한국 날짜는 여기서만 —
-  `getDate`/`getDay`(OS 시간대)나 인라인 `+9*3600_000`을 새로 쓰지 않는다. ⚠ 아직 옮기지 않은 곳: `marketInsights`·`alerts`·`upcomingDividends`·`xingFamily`·
-  `nhDividendSync`·`kisDividendSync`·`nhCashFlows`·`kiwoomDividendSync`(고칠 때 같이 옮긴다).
+- `src/kstDate.ts` — 한국 날짜·시각(`kstToday`·`kstTodayCompact`·`kstHour`·`kstWeekday`·`kstMinuteOfDay`·`addDays`·`weekdayOf`·`daysInMonth`·`compactYmd`).
+  **한국 날짜는 여기서만** — `getDate`/`getDay`(OS 시간대 — PC가 해외 시간대면 하루 어긋남, 예전 환율 조회 버그)나 인라인 `+9*3600_000`을 새로 쓰지 않는다.
+  2026-11-26 백엔드 전체를 옮겼다(파일마다 따로 있던 `todayKst`/`kstToday` 8벌 제거). 예외: `autoBackup.ts`의 파일 이름 `stamp`는 사용자가 보는 이름이라 일부러 PC 지역 시간.
 - `routes/asyncRoute.ts` — Express 4는 async 핸들러의 거부를 잡지 않아 **응답 없이 매달린다**. async 라우트는 `asyncRoute(...)`로 감싸거나 try에서 `next(err)`로.
   `handleBrokerApiError`의 502·500 응답도 `redactText`로 가린다(증권사 원문 본문에 계좌번호가 섞일 수 있음).
 - `registry.ts` — `getAdapter`. **삼성증권/미래에셋증권은 등록 안

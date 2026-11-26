@@ -4,7 +4,8 @@
 // ⚠ 실키 미검증 — 적요·세후 금액은 classifyLedgerDividends의 "⚠ 가정". `npm run check:ls`가 판정한다.
 import { replaceSyncedDividends, type NewDividendInput } from '../../db/dividends';
 import type { DividendSyncKind, DividendSyncResult } from '../dividendSyncTypes';
-import { classifyLedgerDividends, kstToday } from '../xingFamily';
+import { classifyLedgerDividends } from '../xingFamily';
+import { kstToday } from '../../kstDate';
 import { fetchLsAccount, fetchLsLedger } from './lsClient';
 import { isTaxDeferredAccount } from '../../db/accountTaxTypes';
 

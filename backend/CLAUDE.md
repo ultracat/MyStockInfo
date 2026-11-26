@@ -127,6 +127,12 @@ Express 서버. `@mystock/backend`로 `electron/`에서 직접 `import`되어 El
   ① 본문 없는/JSON 아닌 요청의 `req.body`가 `undefined` → `server.ts`가 `express.json` 뒤에서 `{}`로 맞춘다(라우트가 `const { x } = req.body`로 읽음),
   ② `app.listen` 콜백이 'error'에서도 오류와 함께 불린다 → `index.ts`가 `err`면 일정(백업·알림)을 걸지 않는다.
   경로 문법도 바뀌었다(`*`는 이름 필요 `/*splat`, 선택 매개변수는 `{/:x}`) — 지금 라우트엔 해당 없음, 새로 쓸 때 주의.
+- **TypeScript 버전**(2026-11-26): **6.0**에 머문다. 7.0은 Go로 다시 짠 컴파일러라 예전 JS API가 없고, 타입 기반 lint 규칙
+  (`no-floating-promises` 등 — `eslint.config.mjs`)을 돌리는 `typescript-eslint`가 `typescript <6.1.0`만 지원한다. Dependabot도
+  `>=6.1.0`을 막아 뒀다(`.github/dependabot.yml`) — `typescript-eslint`가 지원하면 그 줄을 지우고 올린다.
+  6.0이 7.0에서 없앨 설정을 오류로 알려 backend·electron tsconfig를 `module`/`moduleResolution: "Node16"`으로 바꿨다(예전 `CommonJS`/`Node`=node10;
+  package.json에 `"type"`이 없어 출력은 그대로 CommonJS — 바꾸기 전후 dist가 바이트 단위로 같음). 테스트 설정(`tsconfig.test.json`)만
+  `Preserve`/`Bundler` — 테스트의 동적 `await import('../src/x')`를 tsx처럼 확장자 없이 해석하게(Node16은 동적 import에 확장자를 요구).
 - `routes/asyncRoute.ts` — Express 4 시절 async 거부가 **응답 없이 매달리던** 문제의 감싸개. Express 5에선 없어도 되지만 의도를 드러내려 남겨 둔다.
   `handleBrokerApiError`의 502·500 응답도 `redactText`로 가린다(증권사 원문 본문에 계좌번호가 섞일 수 있음).
 - `registry.ts` — `getAdapter`. **삼성증권/미래에셋증권은 등록 안

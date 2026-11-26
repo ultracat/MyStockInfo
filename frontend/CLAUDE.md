@@ -1020,6 +1020,9 @@ React + Vite 렌더러 UI (TypeScript). 라우터 라이브러리 없이 `App.ts
 - `npm run dev`(frontend 워크스페이스) → Vite `localhost:5173`. 보통 루트의
   `npm run dev`로 electron과 함께 띄운다. HMR 자동 반영(백엔드와 달리 재빌드 불필요).
 - `npm run build` → `tsc` 타입체크 후 `vite build`.
+- **Vite 8 · React 19 · TypeScript 6.0**(2026-11-26). TypeScript 6부터 `@types/*`를 자동으로 넣지 않고 부수효과 import(`import './styles.css'`)도
+  모듈을 찾아야 해서 `src/vite-env.d.ts`(`vite/client`)와 `tsconfig.test.json`의 `types: ["node", "vite/client"]`가 필요하다.
+  TypeScript 7로 못 올리는 이유는 `backend/CLAUDE.md` "TypeScript 버전" — `typescript-eslint`가 아직 지원하지 않는다.
 - **`vite.config.ts`의 `base: './'`는 지우면 안 된다.** 패키징된 Electron 앱은
   `electron/src/main.ts`가 `mainWindow.loadFile()`로 `frontend/dist/index.html`을
   `file://`로 직접 연다(dev처럼 `http://localhost`가 아님) — Vite 기본값인 절대경로

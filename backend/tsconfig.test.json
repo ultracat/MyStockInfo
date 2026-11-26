@@ -4,7 +4,11 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "."
+    "rootDir": ".",
+    // 테스트는 tsx가 실행한다 — 테스트 안의 동적 `await import('../src/x')`를 tsx처럼(확장자 없이) 해석하게 한다.
+    // 빌드(tsconfig.json)는 Node16이라 동적 import도 ESM 규칙(확장자 필수)으로 본다. src는 빌드가 Node16으로 따로 검사한다.
+    "module": "Preserve",
+    "moduleResolution": "Bundler"
   },
   "include": ["src", "test"]
 }

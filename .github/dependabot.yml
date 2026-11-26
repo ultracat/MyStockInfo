@@ -22,6 +22,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    # 이 앱에서 올리면 안 되는 범위만 버전으로 막는다(패키지 단위 ignore가 아니라 범위라 Electron 알림과 무관):
+    # - typescript 6.1+: typescript-eslint가 `<6.1.0`만 지원하고, 7.0은 JS API가 없어 타입 기반 lint 규칙(await 누락 등)이 돌지 않는다.
+    #   typescript-eslint가 지원하면 이 줄을 지우고 올린다(2026-11-26).
+    # - @types/node 25+: 앱의 Node는 Electron 번들 Node(.nvmrc = 24)라 타입도 그 메이저에 맞춘다. Electron 메이저를 올릴 때 같이 올린다.
+    ignore:
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
+      - dependency-name: '@types/node'
+        versions: ['>=25.0.0']
     groups:
       # Electron은 아래 두 그룹에서 빼서 혼자 PR로 온다(메이저 포함).
       electron:

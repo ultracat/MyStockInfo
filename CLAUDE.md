@@ -1,19 +1,11 @@
 # MyStock
 
 여러 증권사 Open API를 연동해 보유 종목, 매입가, 손익, 비중, 배당금을 한 화면에서 보는
-Electron 데스크톱 앱. 현재 **토스증권**, **한국투자증권(KIS, 국내 + 미국 주식)**, **NH투자증권(나무, 모의투자 포함)**, **키움증권·LS증권·DB증권(셋 다 실키 미확인)**이 API로 연동되어 있고,
-**삼성증권/미래에셋증권**은 API 연동 없이 CSV로 보유종목·매매내역을 직접 관리한다
-(어댑터를 만들 계획 없음 — CSV 전용으로 확정된 결정, `backend/CLAUDE.md`의
-`knownBrokers.ts` 참고). **KB증권**은 둘의 중간 형태다 — Open API를 연동했지만
-`appKey`/`appSecret`이 발급 시점에 계좌 하나에만 고정 바인딩되는 구조라(계좌 목록
-조회 API 자체가 없음) 토스/KIS처럼 여러 계좌를 실시간으로 보여줄 수 없다. 그래서
-"CSV 전용 브로커의 로컬 저장소를 실시간 API로 채우는 자동 동기화"만 추가했다 —
-그 계좌가 보유종목/매매내역 화면에 보이는 시점에 백그라운드로 동기화되고
-수동 새로고침 버튼도 있다, `backend/CLAUDE.md`의 "KB증권 Open API" 절 참고.
-새 증권사를 API로 연동하려면 아래
-"브로커 확장 포인트"를 따르고, API 연동 없이 CSV로만 지원하려면
-`backend/src/brokers/knownBrokers.ts`에 `hasApiIntegration: false`로 한 줄만
-추가하면 된다.
+Electron 데스크톱 앱. API 연동: **토스증권**, **한국투자증권(KIS, 국내 + 미국)**, **NH투자증권(나무, 모의투자 포함)**,
+**키움·LS·DB증권(셋 다 실키 미확인)**. **삼성증권/미래에셋증권**은 CSV로만 관리한다(어댑터를 만들 계획 없음 — 확정된 결정).
+**KB증권**은 중간 형태 — 앱키가 계좌 하나에 고정돼(계좌 목록 API 없음) 여러 계좌를 실시간으로 못 보여 줘서, CSV 전용 저장소를 API로
+채우는 자동 동기화만 한다(`backend/CLAUDE.md` "KB증권 Open API"). 새 증권사: API 연동은 아래 "브로커 확장 포인트", CSV 전용은
+`backend/src/brokers/knownBrokers.ts`에 `hasApiIntegration: false` 한 줄.
 
 ## 워크스페이스 구조
 
@@ -54,34 +46,18 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
 - 백엔드는 `127.0.0.1`에서만 리슨한다 (외부 노출 없음). 포트는 4317이 기본이고, 사용 중이면
   빈 포트로 옮긴다(dev Vite 5173도 마찬가지) — `electron/CLAUDE.md`의 "포트는 고정이 아니다" 참고.
 - `npm run build` (backend → frontend → electron 순서)로 전체 빌드 검증 가능.
-- **증권사 공식 명세 감시**: `npm run spec:check`(최신 명세와 스냅샷 비교, CI가 주 1회) / `spec:update`(스냅샷·타입·토스 예시 갱신) /
-  `spec:types`. 쓰는 API 목록은 `backend/spec/watch.json`, 생성 타입 `*Spec.gen.ts`는 손으로 고치지 않는다 — `backend/CLAUDE.md` "공식 명세 감시".
-  **KIS는 명세가 없어 "KIS API 검증 묶음"**: `kis:verify`(공식 예제·실제 응답 기록·코드 대조) / `kis:record`(실제 키로 응답 모양 기록, 값 없음) /
-  `kis:catalog` / `kis:types`. **모든 증권사**: 실서버 점검의 `-- --record`가 실제 응답 모양(값 없음)을 `<증권사>-live.json`에 남기고, 앱은 응답
-  필드가 그 기록과 달라지면 로그에 경고한다. 공식 명세가 바뀌면 `spec-watch.yml`이 매주 스냅샷·타입을 갱신하고 빌드·테스트 결과를 붙인
-  업데이트 PR(`bot/spec-update`)을 연다 — 앱 코드 수정과 머지는 사람이. KB는 공개 명세에서 계좌 TR이 빠져 고정 기준 커밋을 쓴다.
+- **증권사 공식 명세 감시**: `spec:check`/`spec:update`/`spec:types`(쓰는 API 목록 `backend/spec/watch.json`, 생성 타입 `*Spec.gen.ts`는 손으로 안 고침),
+  KIS는 `kis:verify`/`kis:record`, 실서버 점검 `-- --record`, 매주 `spec-watch.yml`이 업데이트 PR — 전부 `backend/CLAUDE.md` "공식 명세 감시".
 - `npm test`(백엔드 + 프론트엔드 순수 함수 + Electron 로그 가림 테스트), `npm run lint`(ESLint — 스타일이 아니라 `await` 누락·Promise 조건·React 훅
   규칙·프론트의 `toISOString().slice` 금지만, `eslint.config.mjs`), `npm run typecheck:test`(테스트 파일까지 타입 검사 — `tsx --test`는 타입을 안 본다).
   **푸시·PR마다 `.github/workflows/ci.yml`이 build → lint → typecheck:test → test → `npm audit --omit=dev`**를 돌린다 — `backend/CLAUDE.md` "자동 테스트".
   CI의 Node는 **`.nvmrc`(24 — Electron 번들 Node와 같은 메이저)** 하나로 정한다. Electron 메이저를 올리면 `.nvmrc`·`@types/node`도 같이.
-- **앱 아이콘/로고의 원본은 `build/icon.svg` 하나다.** 바꾸려면 그 SVG를 고치고
-  `npm run generate:icons`로 세 OS용 파일(`icon.icns`/`icon.ico`/`icons/`)과 런타임
-  아이콘·파비콘·워드마크를 다시 만든다 — 생성물은 직접 고치지 않는다. 상세와 함정은
-  `electron/CLAUDE.md`의 "앱 아이콘" 절 참고.
-- **화면 줌은 CSS `transform: scale`(돋보기 줌)이다** — 페이지 줌(`setZoomFactor`)이
-  아니다. 사이드바는 배율 밖이라 항상 같은 크기고, 확대하면 내용이 리플로우 없이
-  넘치며 스크롤된다. 배율의 단일 원천은 `frontend/src/useZoom.ts`의 state 하나다 —
-  `frontend/CLAUDE.md`의 "화면 줌" 절(래퍼 3겹, `position: fixed` 함정)과
-  `electron/CLAUDE.md`의 "화면 줌" 절(메뉴/페이지 줌이 겹치지 않게 막는 셋) 참고.
-- **배포용 릴리스는 GitHub Actions로 한다** — 로컬 크로스 빌드는 Apple Silicon
-  맥에서 `rcedit`(Windows)·`mksquashfs`(Linux AppImage)가 x86_64 바이너리라
-  실행되지 않는다. 버전은 루트 `version.json` 하나만 올리고 `npm run release:tag`(태그만 — push로 빌드 안 됨) →
-  `npm run release:build`(그 태그로 세 OS 빌드 + **초안** 릴리스, 노트는 `CHANGELOG.md`의 그 버전 절) —
-  `electron/CLAUDE.md`의 "GitHub Actions 릴리스" 절 참고.
-- `npm run package:mac`/`package:linux`/`package:win`으로 배포용 산출물(`.dmg`,
-  `.AppImage`, `.exe` 설치본)을 만든다 — 상세 설정과 이 모노레포 구조 때문에 필요했던
-  우회는 `electron/CLAUDE.md`의 "플랫폼별 배포용 빌드" 참고. 코드 서명/공증은 어느
-  플랫폼도 안 돼 있어 Mac은 Gatekeeper, Windows는 SmartScreen 경고가 뜬다.
+- **앱 아이콘 원본은 `build/icon.svg` 하나** — 고친 뒤 `npm run generate:icons`, 생성물은 직접 안 고침(`electron/CLAUDE.md` "앱 아이콘").
+- **화면 줌은 CSS `transform: scale`(돋보기 줌)** — 페이지 줌이 아니다. 사이드바는 배율 밖, 확대하면 리플로우 없이 스크롤. 배율의 단일 원천은
+  `frontend/src/useZoom.ts` — `frontend/CLAUDE.md`·`electron/CLAUDE.md`의 "화면 줌" 절.
+- **릴리스는 GitHub Actions**(Apple Silicon에선 Windows·Linux 크로스 빌드 불가): `version.json`만 올리고 `npm run release:tag` →
+  `release:build`(세 OS 빌드 + **초안** 릴리스, 노트는 `CHANGELOG.md`). 로컬 산출물은 `npm run package:mac|linux|win`. 코드 서명 없음 →
+  Gatekeeper·SmartScreen 경고 — `electron/CLAUDE.md` "GitHub Actions 릴리스"·"플랫폼별 배포용 빌드".
 
 ## 브로커 확장 포인트
 

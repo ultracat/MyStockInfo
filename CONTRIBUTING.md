@@ -10,9 +10,12 @@
 3. 보내기 전에 확인합니다.
 
    ```bash
-   npm run build   # backend → frontend → electron 전체 빌드
-   npm test        # 백엔드 자동 테스트
+   npm run build            # backend → frontend → electron 전체 빌드
+   npm run lint             # await 누락·Promise 조건·React 훅 규칙
+   npm run typecheck:test   # 테스트 파일까지 타입 검사
+   npm test                 # 자동 테스트(백엔드·화면·Electron)
    ```
+   Node는 `.nvmrc`의 버전(24)을 씁니다. PR마다 CI가 같은 검사를 돌립니다.
 4. `main` 브랜치로 Pull Request를 엽니다. PR 본문의 **CLA 동의 항목**에 체크해 주세요.
 
 ## 기여자 라이선스 동의서 (CLA)

@@ -26,7 +26,7 @@
     [매뉴얼의 "받은 파일 확인하기"](doc/user-manual.md#받은-파일-확인하기-선택)를 보세요.
     다음 릴리스부터는 GitHub 빌드 출처 증명도 붙어 `gh attestation verify <파일> --repo ultracat/MyStockInfo`로 확인할 수 있습니다.
 - **사용자 매뉴얼**: [`doc/user-manual.md`](doc/user-manual.md) — 화면별 사용법, API 키 발급 안내(증권사·Google·한국수출입은행), 백업/복원, 문제 해결.
-- **변경 내역**: [`CHANGELOG.md`](CHANGELOG.md) — 버전별 새 기능과 수정(최신 v1.6.0). 새 버전으로 바꿔 설치해도 데이터와 API 키는 그대로 남습니다
+- **변경 내역**: [`CHANGELOG.md`](CHANGELOG.md) — 버전별 새 기능과 수정(최신 v1.6.1). 새 버전으로 바꿔 설치해도 데이터와 API 키는 그대로 남습니다
   ([매뉴얼의 "새 버전으로 업데이트"](doc/user-manual.md#새-버전으로-업데이트)).
 - ⚠ 설치 파일은 **OS별 코드 서명 인증서로 서명되어 있지 않아** 처음 실행할 때 macOS·Windows가 막습니다.
   OS별 허용 방법(macOS 15부터는 우클릭 → 열기가 통하지 않음)은
@@ -90,12 +90,15 @@ doc/        사용자 매뉴얼과 스크린샷
 
 ### 실행·검사
 
+Node는 `.nvmrc`의 버전(24 — 앱에 들어 있는 Electron의 Node와 같은 메이저)을 씁니다.
+
 ```bash
 npm install
 npm run build:backend   # 최초 1회(electron이 backend/dist를 씀)
 npm run dev              # frontend(Vite) + electron
-npm test                 # 자동 테스트(가짜 서버, 키 불필요)
+npm test                 # 자동 테스트(백엔드·화면·Electron — 가짜 서버, 키 불필요)
 npm run lint
+npm run typecheck:test   # 테스트 파일까지 타입 검사(CI가 build → lint → typecheck:test → test → npm audit 순서로 돈다)
 npm run check:toss       # 실서버 점검(조회만, 저장된 키 사용) — check:kis / check:nh / check:kb / check:kiwoom / check:ls / check:db
                          # `-- --record`를 붙이면 실제 응답의 모양(필드 이름만, 값 없음)을 기록
 npm run spec:check       # 증권사 공식 명세가 바뀌었는지(쓰는 엔드포인트의 필드 구조만 비교)

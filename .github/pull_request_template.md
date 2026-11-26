@@ -5,6 +5,7 @@
 ## 확인한 것
 
 - [ ] `npm run build`가 통과합니다
+- [ ] `npm run lint`와 `npm run typecheck:test`가 통과합니다
 - [ ] `npm test`가 통과합니다
 - [ ] 실제 계좌번호·금액·보유 종목·API 키 같은 개인 정보가 들어 있지 않습니다
 

@@ -79,10 +79,24 @@ function sameHoldingsIgnoringUpdatedAt(a: StoredHolding[], b: StoredHolding[]): 
  *  같은 데이터로 반복 호출된다. 그때마다 전체 파일을 다시 stringify+쓰기 하는 건
  *  이 백엔드가 Electron 메인 프로세스 안에서 돈다는 점(루트 CLAUDE.md 참고)을
  *  생각하면 불필요한 비용이다 — `positions.map`이 매번 새 배열/객체를 만들어서
- *  참조 비교로는 못 거르므로, 내용을 직접 비교한다. */
-export function replaceSnapshot(broker: BrokerId, accountId: string, positions: HoldingPosition[]): void {
+ *  참조 비교로는 못 거르므로, 내용을 직접 비교한다.
+ *
+ *  `keepMarkets`(= `PortfolioOverview.failedMarkets`): 이번 조회에서 **그 시장만 실패한 부분 결과**일 때, 그 시장의
+ *  기존 저장 행은 지우지 않고 그대로 둔다(예: 해외 잔고 조회 실패 → 미국 행 유지, 국내 행만 교체). 실패한 시장의
+ *  종목이 혹시 positions에 섞여 와도 쓰지 않는다 — 그 시장의 원천은 이번엔 기존 저장 행이다. */
+export function replaceSnapshot(
+  broker: BrokerId,
+  accountId: string,
+  positions: HoldingPosition[],
+  options?: { keepMarkets?: string[] }
+): void {
+  const keep = new Set(options?.keepMarkets ?? []);
+  const isKeptMarket = (market: string | null) => market !== null && keep.has(market);
   const now = new Date().toISOString();
-  const fresh: StoredHolding[] = positions.map((p) => ({
+  const current = store().read();
+  const existing = current.filter((h) => h.broker === broker && h.accountId === accountId);
+  const kept = existing.filter((h) => isKeptMarket(h.market));
+  const replaced: StoredHolding[] = positions.filter((p) => !isKeptMarket(p.market)).map((p) => ({
     broker,
     accountId,
     symbol: p.symbol,
@@ -101,9 +115,8 @@ export function replaceSnapshot(broker: BrokerId, accountId: string, positions: 
     memo: p.memo ?? null,
     updatedAt: now,
   }));
-
-  const current = store().read();
-  const existing = current.filter((h) => h.broker === broker && h.accountId === accountId);
+  // 유지 행은 교체 행 뒤에 붙인다 — 순서가 기존과 달라 아래 비교가 "달라졌다"로 나와도 한 번 더 쓸 뿐 데이터는 같다.
+  const fresh = [...replaced, ...kept];
   if (sameHoldingsIgnoringUpdatedAt(existing, fresh)) return;
 
   store().write([...current.filter((h) => !(h.broker === broker && h.accountId === accountId)), ...fresh]);

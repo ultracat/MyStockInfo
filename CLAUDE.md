@@ -60,8 +60,10 @@ npm run dev              # frontend(Vite) + electron을 동시에 실행
   `kis:catalog` / `kis:types`. **모든 증권사**: 실서버 점검의 `-- --record`가 실제 응답 모양(값 없음)을 `<증권사>-live.json`에 남기고, 앱은 응답
   필드가 그 기록과 달라지면 로그에 경고한다. 공식 명세가 바뀌면 `spec-watch.yml`이 매주 스냅샷·타입을 갱신하고 빌드·테스트 결과를 붙인
   업데이트 PR(`bot/spec-update`)을 연다 — 앱 코드 수정과 머지는 사람이. KB는 공개 명세에서 계좌 TR이 빠져 고정 기준 커밋을 쓴다.
-- `npm test`(백엔드 + 프론트엔드 순수 함수 테스트), `npm run lint`(ESLint — 스타일이 아니라 `await` 누락·Promise 조건·React 훅
-  규칙만, `eslint.config.mjs`). **푸시·PR마다 `.github/workflows/ci.yml`이 build → lint → test**를 돌린다 — `backend/CLAUDE.md` "자동 테스트".
+- `npm test`(백엔드 + 프론트엔드 순수 함수 + Electron 로그 가림 테스트), `npm run lint`(ESLint — 스타일이 아니라 `await` 누락·Promise 조건·React 훅
+  규칙·프론트의 `toISOString().slice` 금지만, `eslint.config.mjs`), `npm run typecheck:test`(테스트 파일까지 타입 검사 — `tsx --test`는 타입을 안 본다).
+  **푸시·PR마다 `.github/workflows/ci.yml`이 build → lint → typecheck:test → test → `npm audit --omit=dev`**를 돌린다 — `backend/CLAUDE.md` "자동 테스트".
+  CI의 Node는 **`.nvmrc`(24 — Electron 번들 Node와 같은 메이저)** 하나로 정한다. Electron 메이저를 올리면 `.nvmrc`·`@types/node`도 같이.
 - **앱 아이콘/로고의 원본은 `build/icon.svg` 하나다.** 바꾸려면 그 SVG를 고치고
   `npm run generate:icons`로 세 OS용 파일(`icon.icns`/`icon.ico`/`icons/`)과 런타임
   아이콘·파비콘·워드마크를 다시 만든다 — 생성물은 직접 고치지 않는다. 상세와 함정은

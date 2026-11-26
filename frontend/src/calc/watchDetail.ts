@@ -1,12 +1,12 @@
 // 관심종목 상세(2026-11-19) 계산 — 일봉으로 이동평균·기간 수익률·52주 범위·넣은 뒤 수익률·지수 비교,
 // 내 매매 표시, "만약 샀다면", 배당수익률. 화면(pages/watchlist/)은 그리기만 한다. 테스트: frontend/test/watchDetail.test.ts.
 import type { DailyCandle, StoredTrade, SymbolDividendEvent } from '../types';
+import { formatLocalDate } from '../format';
 
-/** 날짜 문자열(YYYY-MM-DD)을 `days`일 옮긴다. */
+/** 날짜 문자열(YYYY-MM-DD)을 `days`일 옮긴다(로컬 날짜 계산 — 시간대와 상관없이 달력 날짜만 옮긴다). */
 export function shiftDate(date: string, days: number): string {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+  const [y, m, d] = date.split('-').map(Number);
+  return formatLocalDate(new Date(y, m - 1, d + days));
 }
 
 /** 종가의 단순 이동평균 — 앞쪽 `period - 1`개는 null. */

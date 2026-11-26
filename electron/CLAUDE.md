@@ -82,7 +82,8 @@ Express 서버를 구동하고(별도 프로세스 아님), 렌더러 창을 띄
   변경과 dev 워크플로를 분리하기 위해서다.
 - 이 워크스페이스는 `@mystock/backend`(`dist/index.js`)를 require한다 — **루트 `npm run dev`는 `scripts/dev-electron.cjs`가
   백엔드 `tsc -w`를 돌리며 오류 0건으로 다시 빌드될 때마다, 그리고 `electron/src/**`가 바뀔 때마다 Electron을 다시 띄운다**(2026-11-17).
-  이전 프로세스가 완전히 끝난 뒤 띄운다(단일 인스턴스 락·백엔드 포트). 사용자가 앱을 끝내면 스크립트도 끝나 `concurrently -k`가 Vite까지 내린다.
+  이전 프로세스가 완전히 끝난 뒤 띄운다(단일 인스턴스 락·백엔드 포트). 재시작 중에 들어온 변경은 버리지 않고 로그만 남긴다(`pendingReason`) —
+  새 프로세스가 이전 프로세스가 끝난 **뒤에** 떠서 그 사이 저장된 변경이 이미 실리므로, 한 번 더 띄우지 않는다(토스 토큰만 또 받게 됨). 사용자가 앱을 끝내면 스크립트도 끝나 `concurrently -k`가 Vite까지 내린다.
   ⚠ 다시 뜰 때마다 토스 토큰을 새로 받는다(메모리 토큰) — 토스 쪽을 연달아 고칠 땐 감안. dev 밖(`electron` 워크스페이스 `npm run dev`
   단독, 실서버 점검)은 여전히 `npm run build:backend`를 먼저 돌려야 dist가 최신이다.
 
@@ -271,6 +272,12 @@ plan (ubuntu)   고른 플랫폼만 담은 matrix JSON 출력
 - 기본 권한은 `contents: read`, 릴리스 잡만 `write`. `if-no-files-found: error`로
   산출물 없이 "성공"하는 것을 막고, `fail-fast: false`로 한 OS가 실패해도 나머지는 받는다.
 - 릴리스는 **초안(draft)**이다 — 되돌리기 어려운 공개 배포만 사람이 눌러서 확정한다.
+- package 잡은 `timeout-minutes: 30`(없으면 기본 360분 — 멈춘 macOS 러너가 오래 돈다).
+- **빌드 출처 증명**(2026-11-26): release 잡이 `actions/attest-build-provenance`(SHA 고정)로 `subject-checksums: artifacts/SHA256SUMS.txt`를 증명한다 —
+  공백을 `.`으로 바꾼 실제 다운로드 파일명이 대상. `id-token: write`·`attestations: write`는 그 잡에만. 브랜치 빌드는 증명하지 않는다.
+  사용자는 `gh attestation verify <파일> --repo ultracat/MyStockInfo`(매뉴얼 "받은 파일 확인하기"). v4부터 이 액션은 `actions/attest`를 감싼 것이다.
+- CI·릴리스의 Node는 `node-version-file: .nvmrc`(24 — Electron 번들 Node 메이저). **Electron 메이저를 올리면 `.nvmrc`·`@types/node`도**
+  (`ELECTRON_RUN_AS_NODE=1 npx electron -p process.versions.node`로 확인).
 
 ### 빌드에 넣는 자격증명은 없다
 예전엔 gitignore된 `backend/src/google/clientConfig.ts`(Google OAuth 클라이언트)와 `backend/src/fx/eximbankConfig.ts`(수출입은행
@@ -353,8 +360,14 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 실행 차단 판단보다 먼저 `setupFileLogging()`을 부른다.
 - 메인 프로세스(백엔드 포함)의 `console.log/info/warn/error`를 그대로 두고 `app.getPath('logs')/main.log`에도 쓴다(0600, 시작 때
   2MB 넘으면 `main.1.log`로 돌림 — 최대 약 4MB). 정보 화면 "로그 폴더 열기"가 연다(backend `routes/about.ts`).
-- **`redactLogLine`으로 가려서 쓴다**: 홈 폴더 → `~`(계정 이름), 6자리 이상 숫자열(계좌번호·금액·날짜), 이메일, `Bearer …`,
-  영문+숫자가 섞인 24자 이상 덩어리(토큰·키). 사용자가 문의에 첨부하는 파일이라 백엔드 `logRedact.ts` 위에 한 번 더 거른다.
+- **`redactLogLine`(`src/redact.ts` — electron을 import하지 않아 테스트 가능, `electron/test/redact.test.ts`)으로 가려서 쓴다**: 홈 폴더 → `~`(계정 이름),
+  숫자가 6개 이상인 숫자열(`,` `.` `-`가 끼어도 한 덩어리 — 계좌번호·금액·소수 금액·날짜·6자리 종목코드; 버전·IPv4·5자리 이하는 남김), 이메일, `Bearer …`,
+  영문+숫자가 섞인 24자 이상 덩어리(토큰·키). 숫자열 규칙은 백엔드 `maskDigitRuns`(`@mystock/backend/dist/logRedact`)를 그대로 쓴다 — 한 곳에서만 고친다
+  (테스트 전에 backend 빌드 필요). 예전 정규식 `\d[\d,-]{5,}\d`는 이름과 달리 7자부터 걸려 6자리 금액·소수 금액이 남았다.
+- **렌더러 크래시**(2026-11-26): `render-process-gone`이면 reason·exitCode를 남기고 `clean-exit`가 아니면 `reload()` — **60초에 3번**을 넘으면 그만 띄우고
+  "MyStock 화면 오류" 안내 창(무한 재시작 방지). `unresponsive`/`responsive`와 `app`의 `child-process-gone`(clean-exit 제외)은 로그만.
+- **시작 실패**: whenReady 본문은 `startApp()`이고 try/catch — 실패하면 로그 + `dialog.showErrorBox('MyStock 시작 실패', …)` + `app.exit(1)`.
+  예전엔 거부가 `unhandledRejection` 로그로만 끝나 창 없는 프로세스가 단일 인스턴스 락을 쥔 채 남았다.
 - `unhandledRejection`·`uncaughtException`을 받아 기록한다(앱은 계속 돈다 — Electron 기본 오류 창 대신). 비동기 함수가 많아져
   놓친 거부를 추적하려고. 렌더러 오류는 화면 오류 경계가 백엔드 `/api/about/client-error`로 보내 같은 파일에 남는다.
 - dev 실행에선 `app.getVersion()`이 Electron 버전이라 첫 줄에 `(dev)`로 찍는다.
@@ -432,6 +445,9 @@ Electron 기본 아이콘이 그대로 보인다. 이 런타임 PNG는 루트 `p
 - **릴리스 산출물 무결성**: 릴리스 잡이 `SHA256SUMS.txt`를 만들어 같이 올린다(공백 든 파일명은 GitHub처럼 `.`으로 바꾼 뒤 —
   `MyStock.Setup.X.exe`). 워크플로의 외부 액션은 **커밋 해시로 고정**(`@<sha> # vX.Y.Z`)하고 `.github/dependabot.yml`이
   매달 갱신 PR을 올린다. 액션을 새로 쓰면 해시로 적는다(`gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`).
+  npm은 그룹 셋(`electron` 단독 — 메이저 포함 / 나머지 `npm-minor-patch` 한 PR / 나머지 `npm-major` 한 PR) — `ignore`로 메이저를 막으면 "electron만 빼고"를 못 해
+  Electron 메이저 알림까지 끊긴다. **저장소 설정의 Dependabot 취약점 알림·보안 업데이트는 dependabot.yml과 별개**(2026-11-26 켬 — 꺼져 있으면 CVE를 알려 주는 장치가 없다).
+  CI는 `npm audit --omit=dev --audit-level=high`도 돈다(Electron은 devDependency라 여기 안 걸림 — 위 Dependabot이 본다).
 - **광고·외부 위젯을 넣는다면 이 창의 CSP를 넓히지 말고** 별도 `WebContentsView`(다른 출처, preload 없음)에 띄운다.
 
 ## 자격증명 암호화와의 관계

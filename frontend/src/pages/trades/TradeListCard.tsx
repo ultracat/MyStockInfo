@@ -155,9 +155,23 @@ export function TradeListCard({
     }
   }
 
+  // 삭제 — 되돌릴 수 없어서 한 번 묻고(Google Sheets 덮어쓰기와 같은 window.confirm), 실패하면 표 위에 알린다(2026-11-26 — 예전엔
+  // 묻지 않고 지웠고, 실패하면 거부가 그대로 묻혀 아무 반응이 없었다).
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   async function onDeleteTrade(t: DisplayTrade) {
-    await api.deleteTradeStore(t.broker, t.accountId, t.id);
-    await onDeleted(t);
+    const side = t.side === 'BUY' ? '매수' : '매도';
+    if (!window.confirm(`${t.executedAt} ${t.name ?? t.symbol} ${side} ${qtyFmt.format(t.quantity)}주 기록을 삭제할까요? 되돌릴 수 없습니다.`)) return;
+    setDeleteError(null);
+    setDeletingKey(tradeKey(t));
+    try {
+      await api.deleteTradeStore(t.broker, t.accountId, t.id);
+      await onDeleted(t);
+    } catch (e) {
+      setDeleteError(`삭제하지 못했습니다: ${(e as Error).message}`);
+    } finally {
+      setDeletingKey(null);
+    }
   }
 
   // Dividends.tsx의 배당 기록 목록과 같은 페이지네이션 패턴 — `page`를 effect로
@@ -242,6 +256,11 @@ export function TradeListCard({
           수정·삭제는 직접 입력하는 계좌(CSV 전용 증권사) 행에만 있습니다 — 증권사 API·KB 연동 행은 다음 조회 때 증권사 기록으로 되돌아가서 고칠 수 없습니다.
           체결금액은 수량 × 단가에 수수료·세금을 더한 값입니다.
         </Hint>
+        {deleteError && (
+          <p className="text-critical" style={{ whiteSpace: 'pre-wrap' }}>
+            {deleteError}
+          </p>
+        )}
         <div className="table-scroll">
         {/* 2026-11-20 표 정리: 증권사는 계좌 칸 아래 줄, 수량 × 단가는 한 칸, 수수료·세금은 체결금액 아래 작은 글씨 — 11열이 1280px 창에서 넘쳤다.
             수정 행도 같은 칸 배치에 입력칸을 위아래로 쌓는다. */}
@@ -442,8 +461,8 @@ export function TradeListCard({
                           <button className="ghost" onClick={() => startEditTrade(t)}>
                             수정
                           </button>
-                          <button className="ghost" onClick={() => onDeleteTrade(t)}>
-                            삭제
+                          <button className="ghost" onClick={() => onDeleteTrade(t)} disabled={deletingKey !== null}>
+                            {deletingKey === key ? '삭제 중...' : '삭제'}
                           </button>
                         </div>
                       )}

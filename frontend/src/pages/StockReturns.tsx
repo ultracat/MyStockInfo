@@ -1,10 +1,9 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import { effectiveRate } from '../fx';
-import { loadUsdKrwRates } from '../fxLoader';
+import { effectiveRate, monthlyRateOr, toKrw as fxToKrw } from '../fx';
+import { holdingsFailureMessage, loadAllHoldings } from '../allHoldings';
 import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { BrokerId, DividendRecord } from '../types';
-import { API_BROKER_IDS } from '../brokers';
 import { useStockLinkResolver } from '../components/StockNameLink';
 import StockCell from '../components/StockCell';
 import { formatKrwValue, formatRatePct, formatSignedKrw, qtyFmt } from '../format';
@@ -23,8 +22,6 @@ interface FlatHolding {
   marketValue: number;
 }
 
-
-
 function toneOf(v: number) {
   return v >= 0 ? 'text-good' : 'text-critical';
 }
@@ -37,6 +34,9 @@ function toneOf(v: number) {
  * **전체 브로커/계좌를 합치면서** 그 둘(보유종목 + 배당 기록)을 종목 기준으로 조인한다.
  * 새 백엔드 라우트는 없다(순수 클라이언트 집계, Overview.tsx와 같은 원칙).
  *
+ * 보유는 대시보드·리밸런싱과 같은 `loadAllHoldings()`(allHoldings.ts) 한 경로로 받는다(2026-11-26 — 예전엔 같은 규칙을 이 파일이
+ * 따로 갖고 있었고 계좌 하나가 실패하면 조용히 빠졌다). 실패한 증권사·계좌는 합계에서 빠졌다고 알린다.
+ *
  * 자동 새로고침은 없다(마운트 시 한 번 + 수동 버튼) — Overview.tsx와 같은 이유로
  * 브로커마다 계좌 목록 + 계좌마다 보유종목을 조회해 호출량이 많다.
  */
@@ -44,6 +44,8 @@ export default function StockReturns() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 일부 증권사·계좌를 못 받았을 때의 안내(나머지는 보여 준다) — 받을 때마다 새로 정한다.
+  const [partialNotice, setPartialNotice] = useState<string | null>(null);
   const [holdings, setHoldings] = useState<FlatHolding[]>([]);
   const [dividends, setDividends] = useState<DividendRecord[]>([]);
   const [manualFxRate, setManualFxRate] = useState<number | null>(null);
@@ -62,24 +64,23 @@ export default function StockReturns() {
 
   const effectiveFxRate = effectiveRate(manualFxRate, liveFxRate);
 
-  function toKrw(amount: number, currency: string | null): number | null {
-    if (currency === 'USD') return effectiveFxRate ? amount * effectiveFxRate : null;
-    return amount;
-  }
+  // 환율 규칙은 fx.ts — 메모가 부르는 헬퍼라 useCallback으로 만들고 의존성에 헬퍼 자체를 넣는다(frontend/CLAUDE.md).
+  const toKrw = useCallback((amount: number, currency: string | null) => fxToKrw(amount, currency, effectiveFxRate), [effectiveFxRate]);
 
   // 배당금만 "오늘 환율"이 아니라 지급월 평균 환율로 환산한다 — Dividends.tsx/
   // Overview.tsx와 같은 규칙(backend/CLAUDE.md의 "배당금 월평균 환율" 절 참고).
   // 그 달을 못 구했으면 오늘/수동 환율로 대체한다.
-  function dividendFxRateFor(month: string): number | null {
-    return monthlyAvgFxRates[month]?.rate ?? effectiveFxRate;
-  }
+  const dividendFxRateFor = useCallback(
+    (month: string) => monthlyRateOr(monthlyAvgFxRates, month, effectiveFxRate),
+    [monthlyAvgFxRates, effectiveFxRate]
+  );
 
   // 월평균 환율 조회는 달 수만큼 한국수출입은행 영업일 조회가 필요해서 느릴 수
   // 있으므로 loadAll()을 막지 않는다 — 응답 전까진 dividendFxRateFor가 오늘/수동
   // 환율로 대체하므로 표는 즉시 뜨고, 응답이 오면 배당금 열만 조용히 정확해진다.
   const monthlyAvgFxRequestId = useRef(0);
 
-  async function loadMonthlyAvgFxRates(divs: DividendRecord[]) {
+  const loadMonthlyAvgFxRates = useCallback(async (divs: DividendRecord[]) => {
     const requestId = ++monthlyAvgFxRequestId.current;
     const months = [...new Set(divs.filter((d) => d.currency === 'USD').map((d) => d.paidDate.slice(0, 7)))];
     if (months.length === 0) {
@@ -88,60 +89,35 @@ export default function StockReturns() {
     }
     const rates = await api.getMonthlyAvgUsdKrwRates(months).catch(() => ({}));
     if (requestId === monthlyAvgFxRequestId.current) setMonthlyAvgFxRates(rates);
-  }
+  }, []);
 
-  async function loadAll(opts: { forceRefresh?: boolean } = {}) {
-    setError(null);
+  // 보유·환율은 loadAllHoldings(진행 중 공유·30초 재사용 — `forceRefresh`는 백엔드 캐시까지, `skipCache`는 이 재사용만 건너뜀).
+  const loadAll = useCallback(
+    async (opts: { forceRefresh?: boolean; skipCache?: boolean } = {}) => {
+      setError(null);
+      const [all, divs] = await Promise.all([loadAllHoldings(opts), api.listDividends()]);
 
-    // 환율(수동·실시간, fxLoader.ts — 던지지 않음)과 증권사 목록을 동시에 받는다.
-    const [{ manual: manualRate, live: resolvedLiveFxRate }, brokers] = await Promise.all([
-      loadUsdKrwRates(opts),
-      api.listBrokers(),
-    ]);
+      setHoldings(
+        all.lines.map((r) => ({
+          broker: r.broker,
+          symbol: r.symbol,
+          name: r.name,
+          currency: r.currency,
+          quantity: r.quantity,
+          purchaseAmount: r.purchaseAmount,
+          marketValue: r.marketValue,
+        }))
+      );
+      setPartialNotice(holdingsFailureMessage(all));
+      setDividends(divs);
+      setManualFxRate(all.manualFxRate);
+      setLiveFxRate(all.liveFxRate);
+      setLastLoadedAt(new Date());
 
-    const configured = brokers.filter((b) => b.configured);
-    const flat: FlatHolding[] = [];
-
-    const [, divs] = await Promise.all([
-      Promise.all(
-        configured.map(async (b) => {
-          // API 브로커는 계좌 목록 → 계좌별 라이브 조회, CSV 전용 브로커는 로컬
-          // 저장소(Overview.tsx/Dashboard.tsx와 같은 분기).
-          const rows = API_BROKER_IDS.includes(b.id)
-            ? await api
-                .listAccounts(b.id, opts)
-                .then((accounts) =>
-                  Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id, opts).catch(() => null)))
-                )
-                .then((portfolios) =>
-                  portfolios.filter((p): p is NonNullable<typeof p> => p !== null).flatMap((p) => p.positions)
-                )
-            : await api.listHoldingsStore({ broker: b.id });
-
-          for (const r of rows) {
-            flat.push({
-              broker: b.id,
-              symbol: r.symbol,
-              name: r.name,
-              currency: r.currency,
-              quantity: r.quantity,
-              purchaseAmount: r.purchaseAmount,
-              marketValue: r.marketValue,
-            });
-          }
-        })
-      ),
-      api.listDividends(),
-    ]);
-
-    setHoldings(flat);
-    setDividends(divs);
-    setManualFxRate(manualRate);
-    setLiveFxRate(resolvedLiveFxRate);
-    setLastLoadedAt(new Date());
-
-    void loadMonthlyAvgFxRates(divs);
-  }
+      void loadMonthlyAvgFxRates(divs);
+    },
+    [loadMonthlyAvgFxRates]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -158,8 +134,7 @@ export default function StockReturns() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadAll]);
 
   async function handleRefresh() {
     setRefreshing(true);
@@ -174,10 +149,11 @@ export default function StockReturns() {
   }
 
   // 메뉴를 옮겼다 돌아오면 지금 화면을 그대로 둔 채 뒤에서 다시 받는다(pageActivity.tsx) — 실패하면 이전 값 유지.
-  const markRefreshed = useResumeRefresh(async () => {
+  // 숨긴 동안 데이터가 바뀌었으면(CSV 가져오기 등) 보유 30초 재사용도 건너뛴다.
+  const markRefreshed = useResumeRefresh(async ({ dataChanged }) => {
     setRefreshing(true);
     try {
-      await loadAll();
+      await loadAll({ skipCache: dataChanged });
     } catch {
       // 이전 화면 유지
     } finally {
@@ -239,8 +215,7 @@ export default function StockReturns() {
     }
 
     return Array.from(bySymbol.values());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [holdings, dividends, effectiveFxRate, monthlyAvgFxRates]);
+  }, [holdings, dividends, toKrw, dividendFxRateFor]);
 
   const shownRows = useMemo(() => {
     const filtered = includeSoldOut ? rows : rows.filter((r) => r.held);
@@ -311,6 +286,7 @@ export default function StockReturns() {
         </div>
       </div>
       {error && <p className="text-critical">{error}</p>}
+      {partialNotice && <p className="text-critical">{partialNotice}</p>}
 
       {loading ? (
         <p style={{ color: 'var(--text-muted)' }}>불러오는 중...</p>

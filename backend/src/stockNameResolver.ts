@@ -48,7 +48,16 @@ export async function resolveStockNames(symbols: string[]): Promise<ResolveStock
     const stillUnresolved: string[] = [];
     for (let i = 0; i < toFetch.length; i += 200) {
       const chunk = toFetch.slice(i, i + 200);
-      const infos = await fetchTossStockInfo(chunk);
+      // 토스 조회가 실패해도(토큰 만료·네트워크·응답 오류) 가져오기 전체를 깨뜨리지 않고 이 묶음을 그대로
+      // 다음 단계(KIS→KB)로 넘긴다 — 아래 KIS 단계가 건별 실패를 삼키는 것과 같은 이유.
+      let infos: Awaited<ReturnType<typeof fetchTossStockInfo>>;
+      try {
+        infos = await fetchTossStockInfo(chunk);
+      } catch (err) {
+        console.error('[stockNameResolver] 토스 종목명 조회 실패 — 다음 증권사로 넘김:', (err as Error).message);
+        stillUnresolved.push(...chunk);
+        continue;
+      }
       const found = new Set<string>();
       for (const info of infos) {
         const key = info.symbol.toUpperCase();
@@ -102,7 +111,12 @@ export async function resolveStockNames(symbols: string[]): Promise<ResolveStock
         stillUnresolved.push(symbol);
         continue;
       }
-      const name = await fetchKbStockName(symbol);
+      let name: string | null = null;
+      try {
+        name = await fetchKbStockName(symbol);
+      } catch (err) {
+        console.error('[stockNameResolver] KB 종목명 조회 실패:', (err as Error).message);
+      }
       if (name) {
         namesBySymbol[symbol] = name;
         cacheStockName({ symbol, name, market: 'KR', currency: 'KRW', cachedAt: new Date().toISOString() });

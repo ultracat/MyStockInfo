@@ -1,4 +1,6 @@
 import { getValidAccessToken, invalidateAccessToken, reconnectAndGetAccessToken } from './oauth';
+// 요청마다 15초 제한(본문까지) — http/fetchWithTimeout.ts.
+import { fetchWithTimeout } from '../http/fetchWithTimeout';
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets';
 
@@ -11,8 +13,9 @@ class SheetsApiError extends Error {
 }
 
 async function rawFetch(path: string, init: RequestInit | undefined, token: string): Promise<any> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithTimeout(`${BASE_URL}${path}`, {
     ...init,
+    label: 'Google Sheets',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
@@ -143,7 +146,7 @@ export async function findSpreadsheetByName(title: string): Promise<SpreadsheetI
     pageSize: '10',
   });
   const search = (token: string) =>
-    fetch(`${DRIVE_BASE_URL}/files?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` } });
+    fetchWithTimeout(`${DRIVE_BASE_URL}/files?${params.toString()}`, { headers: { Authorization: `Bearer ${token}` }, label: 'Google Drive' });
 
   const token = await getValidAccessToken();
   let res = await search(token);

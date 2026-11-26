@@ -5,6 +5,7 @@ import { classifyTossTransactions, toHeldShareClass, TAX_REFUND_MEMO } from '../
 import { classifyKisRights } from '../src/brokers/kis/kisDividendSync';
 import type { TossTransaction } from '../src/brokers/toss/tossClient';
 import type { KisPeriodRight } from '../src/brokers/kis/kisClient';
+import { KIS_LIVE_FIELDS } from '../src/brokers/kis/kisSpec.gen';
 import { addDividend, listDividends, replaceSyncedDividends } from '../src/db/dividends';
 import { setCredentialFields } from '../src/credentials';
 import { isDividendSyncOwned } from '../src/brokers/rowOwnership';
@@ -30,6 +31,9 @@ function tx(over: Partial<TossTransaction>): TossTransaction {
     settled: true,
     transactionTime: '2026-01-15T10:00:00+09:00',
     isCancellation: false,
+    commission: '0',
+    filledPrice: null,
+    quantity: null,
     ...over,
   };
 }
@@ -78,8 +82,11 @@ test('toHeldShareClass: API의 보통주 코드를 사용자가 보유·매매�
   assert.equal(toHeldShareClass('123450', new Set()), '123450');
 });
 
+// 기간별권리 한 줄 — 앱이 안 읽는 칸은 실제 응답 기록(KIS_LIVE_FIELDS)의 필드 목록으로 빈 문자열을 채운다(필드가 늘어도 그대로).
+const BLANK_RIGHT = Object.fromEntries(KIS_LIVE_FIELDS.CTRGA011R.output.map((k) => [k, ''])) as KisPeriodRight;
 function right(over: Partial<KisPeriodRight>): KisPeriodRight {
   return {
+    ...BLANK_RIGHT,
     rght_type_cd: '32',
     bass_dt: '20260131',
     pdno: '000002',

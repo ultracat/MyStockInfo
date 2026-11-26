@@ -3,6 +3,7 @@ import { api } from '../../api';
 import { BROKER_LABELS } from '../../brokers';
 import { markDataChanged } from '../../pageActivity';
 import type { BrokerId } from '../../types';
+import { DIVIDEND_SYNC_BROKERS, isDividendRowSyncOwned } from '../../dividendOwnership';
 
 /**
  * 배당 동기화(토스·한국투자·NH·키움). API로 배당을 받을 수 있는 증권사는 그 계좌 배당 기록을 **API 내용으로 통째로 교체**한다
@@ -43,7 +44,7 @@ export function useDividendSync(refresh: () => Promise<void>) {
       .listBrokers()
       .then((brokers) => {
         const owned = new Set(
-          brokers.filter((b) => (b.id === 'toss' || b.id === 'kis' || b.id === 'nh' || b.id === 'kiwoom' || b.id === 'ls' || b.id === 'db') && b.configured).map((b) => b.id)
+          brokers.filter((b) => DIVIDEND_SYNC_BROKERS.includes(b.id) && b.configured).map((b) => b.id)
         );
         if (cancelled || owned.size === 0) return;
         setSyncOwnedBrokers(owned);
@@ -56,9 +57,9 @@ export function useDividendSync(refresh: () => Promise<void>) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 한 행이 API 동기화 소유인가 — 한국투자증권은 국내(원화) 배당만 API로 오므로 **달러 배당은 직접 입력**한다
-  // (백엔드 rowOwnership.ts의 isDividendSyncOwned와 같은 규칙).
-  const isRowSyncOwned = (b: BrokerId, cur: string) => syncOwnedBrokers.has(b) && !(b === 'kis' && cur === 'USD');
+  // 한 행이 API 동기화 소유인가 — 한국투자증권·LS증권은 원화 배당만 API로 오므로 **달러 배당은 직접 입력**한다
+  // (규칙은 dividendOwnership.ts 한 곳 — 백엔드 rowOwnership.ts의 isDividendSyncOwned와 같다).
+  const isRowSyncOwned = (b: BrokerId, cur: string) => isDividendRowSyncOwned(syncOwnedBrokers, b, cur);
 
   return { syncOwnedBrokers, dividendSyncing, dividendSyncNotice, runDividendSync, isRowSyncOwned };
 }

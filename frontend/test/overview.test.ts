@@ -106,3 +106,14 @@ test('월별 투자금: 오늘 평단가 × 그 달 수량, 평가는 그 달 �
   assert.ok(Math.abs((cmp[1].kospi ?? 0) - 0.1) < 1e-9);
   assert.equal(cmp[2].kospi, null);
 });
+
+test('월별 투자금: 같은 종목을 여러 계좌에 들고 있으면 평단가는 전 계좌 매입금액 합 ÷ 수량 합', () => {
+  // 계좌 1: 1주 100원, 계좌 2: 3주 900원 → 평단 1000 / 4 = 250(첫 계좌 평단 100만 쓰면 400이 된다).
+  const holdings = [
+    h({ symbol: 'A', accountId: '1', quantity: 1, lastPrice: 300, purchaseAmount: 100 }),
+    h({ symbol: 'A', accountId: '2', quantity: 3, lastPrice: 300, purchaseAmount: 900 }),
+  ];
+  const trades = [trade('A', 'BUY', 4, '2026-04-01')];
+  const rows = monthlyAmountRows(holdings, trades, {}, toKrw, new Date('2026-04-15T00:00:00'));
+  assert.deepEqual(rows, [{ month: '2026-04', investedKrw: 1000, currentKrw: 1200 }]);
+});

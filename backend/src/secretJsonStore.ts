@@ -19,7 +19,8 @@ export class SecretJsonStore<T extends object> {
   private readonly filePath: string;
 
   constructor(fileName: string, dataDir: string) {
-    this.inner = new JsonStore<unknown>(fileName, dataDir, null);
+    // 토큰은 캐시라 손상되면 격리 후 새로 발급(jsonStore.ts의 'reset') — 'block'이면 그 증권사 조회가 통째로 막힌다.
+    this.inner = new JsonStore<unknown>(fileName, dataDir, null, { onCorrupt: 'reset' });
     this.filePath = path.join(dataDir, fileName);
   }
 

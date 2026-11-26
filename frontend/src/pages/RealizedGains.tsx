@@ -8,21 +8,23 @@ import { RESUME_REFRESH_MS, useResumeRefresh } from '../pageActivity';
 import type { AccountLabel, AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredHolding, StoredTrade } from '../types';
 import { BROKER_LABELS, BROKER_ORDER } from '../brokers';
 import { accountLabelKey } from '../accountLabels';
-import { formatKrwValue, localToday } from '../format';
+import { currentYear, formatKrwValue, localToday, recentYears } from '../format';
 import { usePlanner } from '../usePlanner';
 import { TaxAccountLimitsCard } from './realized/TaxAccountLimitsCard';
 import OfficialRealizedCompare from '../components/OfficialRealizedCompare';
 import {
   computeRealizedSales,
+  dividendIncomeSummary,
   estimateOverseasCapitalGainsTax,
   FINANCIAL_INCOME_THRESHOLD_KRW,
+  generalGrossDividendKrwForYear,
+  isaRealizedSales,
+  overseasGeneralGainForYear,
   type RealizedSale,
 } from '../calc/realizedGains';
 import Hint from '../components/Hint';
 import SectionNav from '../components/SectionNav';
 
-const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => CURRENT_YEAR - i);
 
 /**
  * 매도 건별 실현손익 — 이동평균법(원가를 종목별로 누적하다 매도마다 평균단가 ×
@@ -75,7 +77,9 @@ export default function RealizedGains() {
   const [holdings, setHoldings] = useState<StoredHolding[]>([]);
   const plannerState = usePlanner();
 
-  const [year, setYear] = useState(CURRENT_YEAR);
+  // 올해 — 모듈 상수로 두면 앱을 켜 둔 채 해가 바뀌어도 옛 연도로 남아서 렌더마다 계산한다(2026-11-26).
+  const thisYear = currentYear();
+  const [year, setYear] = useState(thisYear);
   const [broker, setBroker] = useState<'ALL' | BrokerId>('ALL');
 
   useEffect(() => {
@@ -215,76 +219,25 @@ export default function RealizedGains() {
     [dividendAccountOf, taxTypeFor]
   );
 
-  const dividendSummary = useMemo(() => {
-    const rows = allDividends.filter(
-      (d) =>
-        d.paidDate.slice(0, 4) === String(year) &&
-        (broker === 'ALL' || d.broker === broker) &&
-        dividendTaxType(d) === 'GENERAL'
-    );
-    let krwTotal = 0;
-    let usdTotal = 0;
-    let convertedKrw = 0;
-    let grossKrw = 0; // 금융소득 종합과세 기준(2,000만원)은 세전 — 기록 금액(세후) + 세금
-    let unconvertedCount = 0;
-    const byBroker = new Map<BrokerId, { krw: number; usd: number; totalKrw: number; count: number }>();
-    for (const d of rows) {
-      const entry = byBroker.get(d.broker) ?? { krw: 0, usd: 0, totalKrw: 0, count: 0 };
-      entry.count += 1;
-      if (d.currency === 'USD') {
-        usdTotal += d.amount;
-        entry.usd += d.amount;
-        const rate = monthlyRateFor(d.paidDate.slice(0, 7));
-        if (rate === null) {
-          unconvertedCount += 1;
-        } else {
-          convertedKrw += d.amount * rate;
-          grossKrw += (d.amount + (d.tax ?? 0)) * rate;
-          entry.totalKrw += d.amount * rate;
-        }
-      } else {
-        krwTotal += d.amount;
-        entry.krw += d.amount;
-        convertedKrw += d.amount;
-        grossKrw += d.amount + (d.tax ?? 0);
-        entry.totalKrw += d.amount;
-      }
-      byBroker.set(d.broker, entry);
-    }
-    const brokerRows = BROKER_ORDER.filter((b) => byBroker.has(b)).map((b) => ({ broker: b, ...byBroker.get(b)! }));
-    return { count: rows.length, krwTotal, usdTotal, convertedKrw, grossKrw, unconvertedCount, brokerRows };
-  }, [allDividends, year, broker, dividendTaxType, monthlyRateFor]);
+  // 배당소득 카드·연말 절세·ISA 한도의 합계는 calc/realizedGains.ts(순수 함수, frontend/test/realizedGains.test.ts).
+  const dividendSummary = useMemo(
+    () => dividendIncomeSummary(allDividends, { year, broker, taxTypeOf: dividendTaxType, rateFor: monthlyRateFor }),
+    [allDividends, year, broker, dividendTaxType, monthlyRateFor]
+  );
   const dividendRatio = dividendSummary.grossKrw / FINANCIAL_INCOME_THRESHOLD_KRW;
 
+  const isGeneralAccount = useCallback((b: string, accountId: string) => taxTypeFor(b as BrokerId, accountId) === 'GENERAL', [taxTypeFor]);
   // 연말 절세 도우미 — 고른 연도·증권사와 상관없이 **올해** 전체(일반 계좌) 기준.
   const thisYearOverseasGainKrw = useMemo(
-    () =>
-      sales
-        .filter((s) => s.date.slice(0, 4) === String(CURRENT_YEAR) && s.currency !== 'KRW' && taxTypeFor(s.broker, s.accountId) === 'GENERAL')
-        .reduce((sum, s) => sum + s.gainKrw, 0),
-    [sales, taxTypeFor]
+    () => overseasGeneralGainForYear(sales, thisYear, isGeneralAccount),
+    [sales, thisYear, isGeneralAccount]
   );
-  const thisYearDividendKrw = useMemo(() => {
-    let total = 0;
-    for (const d of allDividends) {
-      if (d.paidDate.slice(0, 4) !== String(CURRENT_YEAR) || dividendTaxType(d) !== 'GENERAL') continue;
-      const rate = d.currency === 'USD' ? monthlyRateFor(d.paidDate.slice(0, 7)) : 1;
-      if (rate) total += (d.amount + (d.tax ?? 0)) * rate; // 종합과세 기준은 세전
-    }
-    return total;
-  }, [allDividends, dividendTaxType, monthlyRateFor]);
-  // ISA 한도용 매매손익 — 계좌마다 따로 이동평균한다(종목 단위로 섞으면 다른 계좌의 매입가가 ISA 손익에 섞인다, 2026-11-17 점검).
-  // 해외주식 양도세 계산(위 sales)은 예전처럼 종목 단위 그대로.
-  const isaSales = useMemo(() => {
-    const out: RealizedSale[] = [];
-    for (const t of taxTypes) {
-      if (t.taxType !== 'ISA') continue;
-      const own = allTrades.filter((x) => x.broker === t.broker && x.accountId === t.accountId);
-      if (own.length) out.push(...computeRealizedSales(own, monthlyRateFor).sales);
-    }
-    return out;
-  }, [taxTypes, allTrades, monthlyRateFor]);
-  const isGeneralAccount = useCallback((b: string, accountId: string) => taxTypeFor(b as BrokerId, accountId) === 'GENERAL', [taxTypeFor]);
+  const thisYearDividendKrw = useMemo(
+    () => generalGrossDividendKrwForYear(allDividends, thisYear, dividendTaxType, monthlyRateFor),
+    [allDividends, thisYear, dividendTaxType, monthlyRateFor]
+  );
+  // ISA 한도용 매매손익 — 계좌마다 따로 이동평균(calc/realizedGains.ts isaRealizedSales).
+  const isaSales = useMemo(() => isaRealizedSales(taxTypes, allTrades, monthlyRateFor), [taxTypes, allTrades, monthlyRateFor]);
 
   // 특정 증권사를 골랐으면 모든 행이 같은 값이라 증권사/계좌 컬럼 자체가
   // 불필요하다 — Trades.tsx의 "전체" 모드에서만 증권사/계좌 컬럼을 보여주는
@@ -338,7 +291,7 @@ export default function RealizedGains() {
         isGeneral={isGeneralAccount}
         usdRate={effectiveFxRate}
         dividendIncomeKrw={thisYearDividendKrw}
-        year={CURRENT_YEAR}
+        year={thisYear}
       />
 
       <div id="rg-overseas" className="section-anchor" />
@@ -347,7 +300,7 @@ export default function RealizedGains() {
           <div className="form-row" style={{ marginBottom: 0 }}>
             <label>연도</label>
             <select value={year} onChange={(e) => setYear(Number(e.target.value))}>
-              {YEAR_OPTIONS.map((y) => (
+              {recentYears(5, thisYear).map((y) => (
                 <option key={y} value={y}>
                   {y}년
                 </option>

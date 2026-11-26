@@ -32,6 +32,16 @@ export function useHoldings() {
   const [liveFxRate, setLiveFxRate] = useState<number | null>(null);
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
 
+  // 지금 화면의 선택(증권사·계좌) — 늦게 온 비동기 응답(KB 동기화·로컬 저장소 읽기·다시 보일 때 갱신·수동 새로고침)이
+  // 그 사이 다른 증권사·계좌로 옮긴 화면을 덮어쓰지 않게, 반영하기 직전에 요청 때의 선택과 비교한다.
+  // kbSyncRequestId는 KB 동기화끼리의 순서만 가린다 — 클로저가 붙잡은 옛 selectedBroker/accountId까지는 못 막는다.
+  const selectionRef = useRef({ broker: selectedBroker, accountId });
+  selectionRef.current = { broker: selectedBroker, accountId };
+  const isSelected = useCallback(
+    (broker: BrokerId | null, accId: string | null) => selectionRef.current.broker === broker && selectionRef.current.accountId === accId,
+    []
+  );
+
   // 국내·미국 장 상태(토스 장 운영 정보) — 둘 다 닫혀 있으면 1분 자동 새로고침을 쉰다(시세가 안 움직여서
   // 호출만 낭비). 인터벌 콜백이 최신 값을 보도록 ref로 들고 있는다. 토스 미연동이면 anyMarketOpen이 true라 예전과 같다.
   const marketStatus = useMarketStatus();
@@ -198,28 +208,37 @@ export function useHoldings() {
   // CSV 전용 브로커는 로컬 저장소를 그 자리에서 PortfolioOverview 모양으로 합성한다
   // (buildPortfolioFromStored) — CSV 가져오기 성공 직후에도 재선택 없이 화면을
   // 갱신하려고 effect 밖에서도 부를 수 있게 함수로 뺐다.
-  async function loadStoredPortfolio(broker: BrokerId, accId: string) {
-    const rows = await api.listHoldingsStore({ broker, accountId: accId });
-    setPortfolio(buildPortfolioFromStored(broker, accId, rows));
-    setLastFetchedAt(Date.now());
-  }
+  // 한 번만 만든다(선택은 ref로 본다) — 아래 조회 effect의 의존성에 넣어도 다시 돌지 않게.
+  const loadStoredPortfolio = useCallback(
+    async (broker: BrokerId, accId: string) => {
+      const rows = await api.listHoldingsStore({ broker, accountId: accId });
+      if (!isSelected(broker, accId)) return; // 읽는 사이 다른 증권사·계좌로 옮겼다
+      setPortfolio(buildPortfolioFromStored(broker, accId, rows));
+      setLastFetchedAt(Date.now());
+    },
+    [isSelected]
+  );
 
   // "전체 계좌"(CSV 전용 브로커) — 로컬 저장소 전체를 한 번에 받아 계좌별로 묶은 뒤
   // buildPortfolioFromStored로 각각 만들고 mergePortfolios로 합친다.
-  async function loadStoredPortfolioAll(broker: BrokerId) {
-    const rows = await api.listHoldingsStore({ broker });
-    const byAccount = new Map<string, StoredHolding[]>();
-    for (const r of rows) {
-      if (!byAccount.has(r.accountId)) byAccount.set(r.accountId, []);
-      byAccount.get(r.accountId)!.push(r);
-    }
-    const parts = Array.from(byAccount.entries()).map(([accId, accRows]) => ({
-      accountId: accId,
-      overview: buildPortfolioFromStored(broker, accId, accRows),
-    }));
-    setPortfolio(mergePortfolios(broker, parts));
-    setLastFetchedAt(Date.now());
-  }
+  const loadStoredPortfolioAll = useCallback(
+    async (broker: BrokerId) => {
+      const rows = await api.listHoldingsStore({ broker });
+      if (!isSelected(broker, ALL_ACCOUNTS)) return; // 읽는 사이 다른 증권사·계좌로 옮겼다
+      const byAccount = new Map<string, StoredHolding[]>();
+      for (const r of rows) {
+        if (!byAccount.has(r.accountId)) byAccount.set(r.accountId, []);
+        byAccount.get(r.accountId)!.push(r);
+      }
+      const parts = Array.from(byAccount.entries()).map(([accId, accRows]) => ({
+        accountId: accId,
+        overview: buildPortfolioFromStored(broker, accId, accRows),
+      }));
+      setPortfolio(mergePortfolios(broker, parts));
+      setLastFetchedAt(Date.now());
+    },
+    [isSelected]
+  );
 
   // "전체 계좌"(API 브로커) — 계좌마다 실시간 조회를 병렬로 호출해 합친다. 계좌 수가
   // 몇 개뿐이라(KB증권 기준 3개) 초당 4~5건 한도에 걸릴 걱정은 없다.
@@ -254,9 +273,10 @@ export function useHoldings() {
     setKbSyncNotice(null);
     try {
       await api.syncKbHoldings(linkedId);
-      if (kbSyncRequestId.current !== myRequestId) return; // 그 사이 다른 브로커/계좌로 이동함
-      if (accountId === ALL_ACCOUNTS) await loadStoredPortfolioAll('kb');
-      else if (accountId === linkedId) await loadStoredPortfolio('kb', linkedId);
+      if (kbSyncRequestId.current !== myRequestId) return; // 그 사이 다른 KB 동기화가 시작됨
+      // 지금 선택을 ref로 본다 — 동기화를 기다리는 사이 다른 증권사·계좌로 옮겼으면 아무것도 안 그린다.
+      if (isSelected('kb', ALL_ACCOUNTS)) await loadStoredPortfolioAll('kb');
+      else if (isSelected('kb', linkedId)) await loadStoredPortfolio('kb', linkedId);
     } catch (e) {
       if (kbSyncRequestId.current === myRequestId) {
         setKbSyncNotice(`KB증권 최신 데이터를 가져오지 못했습니다: ${(e as Error).message}`);
@@ -332,7 +352,7 @@ export function useHoldings() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [selectedBroker, accountId, loadLivePortfolioAll]);
+  }, [selectedBroker, accountId, loadLivePortfolioAll, loadStoredPortfolio, loadStoredPortfolioAll]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
@@ -367,13 +387,15 @@ export function useHoldings() {
           }
         }
       }
-      if (!selectedBroker || !accountId) return;
-      if (!API_BROKER_IDS.includes(selectedBroker)) {
-        if (accountId === ALL_ACCOUNTS) await loadStoredPortfolioAll(selectedBroker);
-        else await loadStoredPortfolio(selectedBroker, accountId);
+      // 위 await 사이에 선택이 바뀌었을 수 있다 — 클로저 값이 아니라 지금 선택(ref)으로 받고, 받는 사이 또 바뀌면 버린다.
+      const { broker, accountId: accId } = selectionRef.current;
+      if (!broker || !accId) return;
+      if (!API_BROKER_IDS.includes(broker)) {
+        if (accId === ALL_ACCOUNTS) await loadStoredPortfolioAll(broker);
+        else await loadStoredPortfolio(broker, accId);
       } else {
-        const data =
-          accountId === ALL_ACCOUNTS ? await loadLivePortfolioAll(selectedBroker) : await api.getPortfolio(selectedBroker, accountId);
+        const data = accId === ALL_ACCOUNTS ? await loadLivePortfolioAll(broker) : await api.getPortfolio(broker, accId);
+        if (!isSelected(broker, accId)) return;
         setPortfolio(data);
         setLastFetchedAt(Date.now());
       }
@@ -406,15 +428,18 @@ export function useHoldings() {
 
     setRefreshing(true);
     setError(null);
+    const broker = selectedBroker;
+    const accId = accountId;
     try {
       const data =
-        accountId === ALL_ACCOUNTS
-          ? await loadLivePortfolioAll(selectedBroker, { forceRefresh: true })
-          : await api.getPortfolio(selectedBroker, accountId, { forceRefresh: true });
+        accId === ALL_ACCOUNTS
+          ? await loadLivePortfolioAll(broker, { forceRefresh: true })
+          : await api.getPortfolio(broker, accId, { forceRefresh: true });
+      if (!isSelected(broker, accId)) return; // 받는 사이 다른 증권사·계좌로 옮겼다
       setPortfolio(data);
       setLastFetchedAt(Date.now());
     } catch (e) {
-      setError((e as Error).message);
+      if (isSelected(broker, accId)) setError((e as Error).message);
     } finally {
       setRefreshing(false);
     }

@@ -57,10 +57,12 @@ const inFlight = new Map<string, Promise<unknown>>();
  * first one resolves (see `inFlight` above).
  * Pass `forceRefresh: true` (e.g. from the Dashboard's refresh button) to
  * bypass both and always issue a fresh call.
+ * `ttlMs`는 받은 값에 따라 달리 줄 수도 있다(함수) — 예: 일부만 받은 결과는 짧게(fx/eximbankClient.ts의 월평균).
+ * 0 이하면 캐시하지 않는다(진행 중 요청 공유는 그대로).
  */
 export async function withCache<T>(
   key: string,
-  ttlMs: number,
+  ttlMs: number | ((value: T) => number),
   fetcher: () => Promise<T>,
   opts: { forceRefresh?: boolean } = {}
 ): Promise<T> {
@@ -72,17 +74,24 @@ export async function withCache<T>(
     if (pending) return pending as Promise<T>;
   }
 
-  const promise = (async () => {
-    try {
-      const value = await fetcher();
-      const now = Date.now();
-      sweepExpired(now);
-      cache.set(key, { value, expiresAt: now + ttlMs });
+  // forceRefresh는 진행 중인 요청을 기다리지 않고 새 요청을 inFlight에 올린다 — 그 뒤에 먼저 시작한 요청이 끝나면
+  // (1) 새 요청의 inFlight 항목을 지우거나 (2) 더 오래된 응답으로 캐시를 덮어쓰면 안 된다. 그래서 둘 다
+  // "inFlight의 지금 항목이 이 요청일 때만" 한다. fetcher는 다음 틱에 부른다(`Promise.resolve().then`) — 동기로 던지는
+  // fetcher도 `promise`가 정해진 뒤에 정리 코드가 돌게.
+  const promise: Promise<T> = Promise.resolve()
+    .then(fetcher)
+    .then((value) => {
+      const ttl = typeof ttlMs === 'function' ? ttlMs(value) : ttlMs;
+      if (inFlight.get(key) === promise && ttl > 0) {
+        const now = Date.now();
+        sweepExpired(now);
+        cache.set(key, { value, expiresAt: now + ttl });
+      }
       return value;
-    } finally {
-      inFlight.delete(key);
-    }
-  })();
+    })
+    .finally(() => {
+      if (inFlight.get(key) === promise) inFlight.delete(key);
+    });
   inFlight.set(key, promise);
   return promise;
 }

@@ -1,6 +1,7 @@
 import { getDataDir } from './paths';
 import { JsonStore } from './jsonStore';
 import type { BrokerId } from './brokers/types';
+import { invalidateBrokerTokens } from './brokers/tokenManager';
 import { getSecureStorageState, openJson, sealJson, type StoredEnvelope } from './secureStorage';
 
 // 봉투 형식·암호화 가능 여부 판단은 secureStorage.ts가 한다(google/store.ts와 공용).
@@ -20,7 +21,26 @@ export async function setCredentialFields(broker: BrokerId, fields: Record<strin
   // 키링 없는 Linux 등 안전하게 암호화할 수 없으면 여기서 던진다
   // (SecureStorageUnavailableError — routes/settings.ts가 409로 바꾼다).
   const stored = await sealJson(JSON.stringify(fields));
+  const changed = await changedFromStored(broker, fields);
   store().update((current) => ({ ...current, [broker]: stored }));
+  // 값이 바뀌었으면 이전 키로 받은 접속 토큰(메모리·<브로커>-token.json)을 버린다 — brokers/tokenManager.ts.
+  // 같은 값을 다시 저장한 것뿐이면 그대로 둔다(NH는 재발급마다 계좌주에게 보안 알림, KIS·DB는 발급 빈도 제한).
+  // 저장된 값이 없던 경우(처음 입력)도 그대로 둔다 — 지울 때(clearCredential) 이미 무효화했고, 남은 토큰이 있어도
+  // 토큰 관리자가 앱키 해시로 다른 키의 토큰을 거른다.
+  if (changed) invalidateBrokerTokens(broker);
+}
+
+async function changedFromStored(broker: BrokerId, fields: Record<string, string>): Promise<boolean> {
+  if (!hasCredential(broker)) return false;
+  try {
+    const prev = await getCredentialFields(broker);
+    if (!prev) return false;
+    const keys = new Set([...Object.keys(prev), ...Object.keys(fields)]);
+    for (const k of keys) if (prev[k] !== fields[k]) return true;
+    return false;
+  } catch {
+    return true; // 풀 수 없으면 바뀐 것으로 본다
+  }
 }
 
 /** 안전하지 않게 저장돼 있을 수 있는 브로커 — 설정 화면 경고용(routes/settings.ts).
@@ -80,6 +100,8 @@ export function clearCredential(broker: BrokerId): void {
     delete next[broker];
     return next;
   });
+  // 키를 지우면 그 키로 받은 접속 토큰도 메모리·디스크에서 지운다(brokers/tokenManager.ts).
+  invalidateBrokerTokens(broker);
 }
 
 export function listConfiguredBrokers(): BrokerId[] {

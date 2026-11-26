@@ -2,8 +2,8 @@
 // kisClient.ts를 2026-11-17 네 파일로 나눴다(kisCore·kisDomestic·kisStockDetail·kisOverseas). 다른 코드는 계속 kisClient.ts에서 import한다.
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
-import { getDataDir } from '../../paths';
-import { SecretJsonStore } from '../../secretJsonStore';
+import { createTokenManager } from '../tokenManager';
+import { fetchWithTimeout } from '../../http/fetchWithTimeout';
 import type { KisParamNames, KisResponses } from './kisSpec.gen';
 import { noteKisResponse } from './kisResponseShape';
 
@@ -99,80 +99,45 @@ export async function requireCredentials() {
   return creds;
 }
 
-interface StoredKisToken {
-  accessToken: string;
-  expiresAt: number;
-}
-
 // KIS caps token issuance at 1 per minute (EGW00133) and tokens are valid up
 // to ~24h, so — unlike a plain in-memory cache — this must survive a backend
 // restart: this project's dev workflow requires rebuilding + restarting
 // Electron on every backend change (see CLAUDE.md), which previously reset
 // an in-memory-only cache and immediately re-hit the 1/min limit on the next
 // holdings load.
-const tokenStore = () => new SecretJsonStore<StoredKisToken>('kis-token.json', getDataDir());
-let cachedToken: StoredKisToken | null = null;
+// 파일(kis-token.json) 저장·동시 발급 공유·401 재발급 경쟁 방지(staleToken)·앱키 해시·자격증명 변경 시 무효화는 공용
+// tokenManager.ts(2026-11-26). 예전엔 401마다 무조건 재발급해서 동시에 401을 받은 요청이 각자 발급해 EGW00133에 걸릴 수 있었고,
+// 앱키를 바꾸거나 지워도 파일의 옛 토큰을 계속 썼다. 해시가 없는 예전 파일은 한 번 받아들인다(업그레이드만으로 재발급하지 않게).
+const tokens = createTokenManager({
+  broker: 'kis',
+  persist: true,
+  loadCreds: requireCredentials,
+  keyOf: (creds) => creds.appKey,
+  async issue(creds) {
+    const res = await kisLimiter.schedule(() =>
+      fetchWithTimeout(`${BASE_URL}/oauth2/tokenP`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'client_credentials',
+          appkey: creds.appKey,
+          appsecret: creds.appSecret,
+        }),
+        label: '한국투자증권',
+      })
+    );
 
-async function loadCachedToken(): Promise<StoredKisToken | null> {
-  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken;
-  const persisted = await tokenStore().read();
-  if (persisted && persisted.expiresAt > Date.now()) {
-    cachedToken = persisted;
-    return cachedToken;
-  }
-  return null;
-}
+    const text = await res.text();
+    if (!res.ok) {
+      throw new KisApiError('한국투자증권 토큰 발급 실패', res.status, text);
+    }
 
-async function fetchTokenUncached(): Promise<string> {
-  const creds = await requireCredentials();
-
-  const res = await kisLimiter.schedule(() =>
-    fetch(`${BASE_URL}/oauth2/tokenP`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'client_credentials',
-        appkey: creds.appKey,
-        appsecret: creds.appSecret,
-      }),
-    })
-  );
-
-  const text = await res.text();
-  if (!res.ok) {
-    throw new KisApiError('한국투자증권 토큰 발급 실패', res.status, text);
-  }
-
-  const data = JSON.parse(text) as KisTokenResponse;
-  const expiresInSec = data.expires_in ?? 86400;
-  // 60s safety buffer before expiry.
-  cachedToken = { accessToken: data.access_token, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
-  await tokenStore().write(cachedToken);
-  return cachedToken.accessToken;
-}
-
-// 캐시된 토큰이 만료/부재 상태일 때 동시에 들어온 호출들이 각자 fetchTokenUncached를
-// 부르면 KIS 토큰을 중복 발급하게 된다 — 문서화된 "1일 1회 발급 제한"(EGW00133,
-// kis-token.json 주석 참고)에 걸리면 그날 하루 종일 API가 막힌다. in-flight
-// 프로미스를 공유해서 동시 요청이 실제 발급 요청 하나만 타게 한다.
-let inFlightFetch: Promise<string> | null = null;
-
-function fetchToken(): Promise<string> {
-  if (!inFlightFetch) {
-    inFlightFetch = fetchTokenUncached().finally(() => {
-      inFlightFetch = null;
-    });
-  }
-  return inFlightFetch;
-}
-
-async function getToken(forceRefresh = false): Promise<string> {
-  if (!forceRefresh) {
-    const token = await loadCachedToken();
-    if (token) return token.accessToken;
-  }
-  return fetchToken();
-}
+    const data = JSON.parse(text) as KisTokenResponse;
+    const expiresInSec = data.expires_in ?? 86400;
+    // 60s safety buffer before expiry.
+    return { accessToken: data.access_token, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
+  },
+});
 
 /**
  * KIS reports application-level errors inside a 200 response body
@@ -203,7 +168,8 @@ export async function kisGet<T extends KisTrId>(
   const query = new URLSearchParams(params as Record<string, string>);
 
   const doFetch = async (token: string) =>
-    fetch(`${BASE_URL}${path}?${query}`, {
+    fetchWithTimeout(`${BASE_URL}${path}?${query}`, {
+      label: '한국투자증권',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
         Accept: 'text/plain',
@@ -217,13 +183,14 @@ export async function kisGet<T extends KisTrId>(
     });
 
   return limiter.schedule(async () => {
-    let token = await getToken();
+    let token = await tokens.getToken();
 
     for (let attempt = 0; ; attempt++) {
       let res = await doFetch(token);
 
       if (res.status === 401) {
-        token = await getToken(true);
+        // 실패한 토큰을 넘긴다 — 그새 다른 요청이 이미 새로 받았으면 그걸 쓴다(발급 빈도 제한 EGW00133 보호).
+        token = await tokens.getToken(token);
         res = await doFetch(token);
       }
 

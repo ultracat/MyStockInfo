@@ -20,9 +20,8 @@ function store() {
 }
 
 export function listSnapshots(): SnapshotRecord[] {
-  return store()
-    .read()
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  // read()는 JsonStore 캐시와 공유되는 배열이라 제자리 정렬하면 캐시가 바뀐다 — 복사해서 정렬한다.
+  return [...store().read()].sort((a, b) => (a.date < b.date ? -1 : 1));
 }
 
 /** 같은 날짜가 이미 있으면 덮어쓴다 — 하루에 앱을 여러 번 열어도 그 날짜 한

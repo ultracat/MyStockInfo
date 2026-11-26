@@ -65,9 +65,23 @@ export function formatDividendMeta(count: number, quantity: number | undefined):
   return quantity ? `배당 ${count}건 · 보유 ${quantity}주` : `배당 ${count}건`;
 }
 
-/** 오늘(이 PC 날짜) YYYY-MM-DD — toISOString은 UTC라 한국 오전 9시 전엔 어제가 된다. */
-export function localToday(): string {
-  const d = new Date();
+/** 이 PC 시간대 기준 YYYY-MM-DD — `toISOString().slice(0, 10)`은 UTC라 한국 오전 9시 전엔 하루 전 날짜가 된다(ESLint가 막는다). */
+export function formatLocalDate(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** 오늘(이 PC 날짜) YYYY-MM-DD — toISOString은 UTC라 한국 오전 9시 전엔 어제가 된다. */
+export function localToday(): string {
+  return formatLocalDate(new Date());
+}
+
+/** 올해(이 PC 날짜) — 모듈 상수로 두면 앱을 켜 둔 채 해가 바뀌어도 옛 연도로 남아서, 쓸 때마다 부른다(2026-11-26). */
+export function currentYear(): number {
+  return new Date().getFullYear();
+}
+
+/** 연도 선택지 — 올해부터 `count`년 거꾸로(렌더 때 부른다). */
+export function recentYears(count = 5, from = currentYear()): number[] {
+  return Array.from({ length: count }, (_, i) => from - i);
 }

@@ -1,4 +1,5 @@
-import type { BrokerId, StoredTrade } from '../types';
+import type { AccountTaxType, AccountTaxTypeEntry, BrokerId, DividendRecord, StoredTrade } from '../types';
+import { BROKER_ORDER } from '../brokers';
 import { sortByText, sortByValue } from './sort';
 
 // 실현손익 계산(순수 함수) — RealizedGains.tsx에서 옮겼다(2026-11-17, 테스트: frontend/test/realizedGains.test.ts).
@@ -140,4 +141,118 @@ export function realizedTotals(rows: RealizedSale[]): { proceedsKrw: number; cos
     gainKrw: 0,
   });
   return { ...t, rate: t.costKrw > 0 ? t.gainKrw / t.costKrw : null };
+}
+
+// ---- 실현손익 화면의 연도별 합계(2026-11-26 RealizedGains.tsx에서 옮김 — 동작 그대로) ----------------------------------------
+
+export interface DividendIncomeSummary {
+  count: number;
+  /** 원화 배당 합(세후). */
+  krwTotal: number;
+  /** 달러 배당 합(세후, 달러). */
+  usdTotal: number;
+  /** 원화 환산 합(세후) — 환율을 못 구한 달러 배당은 빠진다. */
+  convertedKrw: number;
+  /** 원화 환산 세전 합(기록 금액 + 세금) — 금융소득종합과세 기준(2,000만원)은 세전이다. */
+  grossKrw: number;
+  /** 환율을 못 구해 환산에서 빠진 달러 배당 건수. */
+  unconvertedCount: number;
+  brokerRows: { broker: BrokerId; krw: number; usd: number; totalKrw: number; count: number }[];
+}
+
+/**
+ * 배당소득 카드 — 고른 연도·증권사의 **일반 계좌** 배당 합계(증권사별 행은 BROKER_ORDER 순서). 달러는 지급월 환율(`rateFor`).
+ * `taxTypeOf`는 배당 기록 하나의 계좌 세금 유형(표시 번호로 적힌 계좌는 호출부가 내부 id로 되돌린다).
+ */
+export function dividendIncomeSummary(
+  dividends: DividendRecord[],
+  opts: {
+    year: number;
+    broker: 'ALL' | BrokerId;
+    taxTypeOf: (d: DividendRecord) => AccountTaxType;
+    rateFor: (month: string) => number | null;
+  }
+): DividendIncomeSummary {
+  const rows = dividends.filter(
+    (d) =>
+      d.paidDate.slice(0, 4) === String(opts.year) &&
+      (opts.broker === 'ALL' || d.broker === opts.broker) &&
+      opts.taxTypeOf(d) === 'GENERAL'
+  );
+  let krwTotal = 0;
+  let usdTotal = 0;
+  let convertedKrw = 0;
+  let grossKrw = 0;
+  let unconvertedCount = 0;
+  const byBroker = new Map<BrokerId, { krw: number; usd: number; totalKrw: number; count: number }>();
+  for (const d of rows) {
+    const entry = byBroker.get(d.broker) ?? { krw: 0, usd: 0, totalKrw: 0, count: 0 };
+    entry.count += 1;
+    if (d.currency === 'USD') {
+      usdTotal += d.amount;
+      entry.usd += d.amount;
+      const rate = opts.rateFor(d.paidDate.slice(0, 7));
+      if (rate === null) {
+        unconvertedCount += 1;
+      } else {
+        convertedKrw += d.amount * rate;
+        grossKrw += (d.amount + (d.tax ?? 0)) * rate;
+        entry.totalKrw += d.amount * rate;
+      }
+    } else {
+      krwTotal += d.amount;
+      entry.krw += d.amount;
+      convertedKrw += d.amount;
+      grossKrw += d.amount + (d.tax ?? 0);
+      entry.totalKrw += d.amount;
+    }
+    byBroker.set(d.broker, entry);
+  }
+  const brokerRows = BROKER_ORDER.filter((b) => byBroker.has(b)).map((b) => ({ broker: b, ...byBroker.get(b)! }));
+  return { count: rows.length, krwTotal, usdTotal, convertedKrw, grossKrw, unconvertedCount, brokerRows };
+}
+
+/** 연말 절세 도우미 — 그 해 일반 계좌의 해외 상장(원화 아닌) 매도 실현손익 합(증권사 필터와 상관없이 전체). */
+export function overseasGeneralGainForYear(
+  sales: RealizedSale[],
+  year: number,
+  isGeneral: (broker: BrokerId, accountId: string) => boolean
+): number {
+  return sales
+    .filter((s) => s.date.slice(0, 4) === String(year) && s.currency !== 'KRW' && isGeneral(s.broker, s.accountId))
+    .reduce((sum, s) => sum + s.gainKrw, 0);
+}
+
+/** 연말 절세 도우미 — 그 해 일반 계좌 배당의 **세전** 원화 합(종합과세 기준). 환율을 못 구한 달러 배당은 빠진다. */
+export function generalGrossDividendKrwForYear(
+  dividends: DividendRecord[],
+  year: number,
+  taxTypeOf: (d: DividendRecord) => AccountTaxType,
+  rateFor: (month: string) => number | null
+): number {
+  let total = 0;
+  for (const d of dividends) {
+    if (d.paidDate.slice(0, 4) !== String(year) || taxTypeOf(d) !== 'GENERAL') continue;
+    const rate = d.currency === 'USD' ? rateFor(d.paidDate.slice(0, 7)) : 1;
+    if (rate) total += (d.amount + (d.tax ?? 0)) * rate;
+  }
+  return total;
+}
+
+/**
+ * ISA 한도용 매매손익 — **계좌마다 따로** 이동평균한다(종목 단위로 섞으면 다른 계좌의 매입가가 ISA 손익에 섞인다, 2026-11-17 점검).
+ * 해외주식 양도세 계산(computeRealizedSales를 전체 매매에 한 번)은 예전처럼 종목 단위 그대로.
+ */
+export function isaRealizedSales(
+  taxTypes: AccountTaxTypeEntry[],
+  trades: StoredTrade[],
+  rateFor: (month: string) => number | null
+): RealizedSale[] {
+  const out: RealizedSale[] = [];
+  for (const t of taxTypes) {
+    if (t.taxType !== 'ISA') continue;
+    const own = trades.filter((x) => x.broker === t.broker && x.accountId === t.accountId);
+    if (own.length) out.push(...computeRealizedSales(own, rateFor).sales);
+  }
+  return out;
 }

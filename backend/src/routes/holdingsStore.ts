@@ -211,10 +211,15 @@ export async function importHoldingsRecords(
   return { added: toUpsert.length, failed, skipped };
 }
 
-holdingsStoreRouter.post('/import', async (req, res) => {
+// Express 4는 async 핸들러의 예외를 잡지 않는다 — next(err)로 server.ts 전역 오류 처리기에 넘긴다.
+holdingsStoreRouter.post('/import', async (req, res, next) => {
   const records = (req.body as { records?: unknown })?.records;
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
   }
-  res.json(await importHoldingsRecords(records));
+  try {
+    res.json(await importHoldingsRecords(records));
+  } catch (err) {
+    next(err);
+  }
 });

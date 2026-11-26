@@ -5,10 +5,9 @@
 //   - 숫자: 정수 금액은 JSON 숫자, 소수(가격·비율·외화)는 소수 문자열로 온다(두 회사 공식 응답 예시) → xNum이 둘 다 읽는다.
 //   - 계좌 거래내역 CDPCQ04700(양쪽 같은 TR·필드): 매매·입출금·배당이 한 표 — 매매·배당 해석을 여기서 같이 한다.
 // ⚠⚠ 두 회사 모두 **실제 키로 한 번도 호출하지 않았다**(2026-11-17, 개발자에게 계좌가 없음). 키를 받으면 `npm run check:ls`/`check:db`부터.
-import crypto from 'node:crypto';
 import { getCredentialFields } from '../credentials';
-import { getDataDir } from '../paths';
-import { SecretJsonStore } from '../secretJsonStore';
+import { fetchWithTimeout } from '../http/fetchWithTimeout';
+import { createTokenManager, type IssuedToken } from './tokenManager';
 import type { RateLimiter } from './rateLimiter';
 import type { BrokerId, TradeRecord } from './types';
 
@@ -54,12 +53,6 @@ export function yearWindows(from: string, to: string): Array<[string, string]> {
 }
 
 // ── 토큰 ───────────────────────────────────────────────────────────────────────
-interface StoredToken {
-  accessToken: string;
-  expiresAt: number;
-  keyHash: string;
-}
-
 export class XingTokenError extends Error {
   constructor(message: string, readonly status: number, readonly body: string) {
     super(message);
@@ -71,28 +64,23 @@ export class XingTokenError extends Error {
  * 토큰 캐시 — `<브로커>-token.json`(SecretJsonStore, 백업에서 빠지는 이름 규칙)에 저장해 재시작 뒤에도 쓰고, 동시 요청은 발급
  * 하나를 공유하고, 앱키를 바꾸면(키 해시) 이전 토큰을 쓰지 않는다. DB는 발급이 **1분에 1건**이고 유효기간 안의 재발급은 같은 토큰을
  * 준다(공식) — 그래서 재발급은 만료·401(무효)일 때만. `getToken(stale)`: 무효라고 본 토큰이 이미 바뀌었으면 또 발급하지 않는다.
+ * 캐시·공유·비교·자격증명 변경 시 무효화는 공용 tokenManager.ts(2026-11-26), 여기엔 두 회사 공통의 발급 요청 모양만 남았다.
  */
 export function createXingTokenCache(opts: { broker: BrokerId; label: string; tokenUrl: string; limiter: RateLimiter }) {
-  const store = () => new SecretJsonStore<StoredToken>(`${opts.broker}-token.json`, getDataDir());
-  let cached: StoredToken | null = null;
-  let inFlight: Promise<string> | null = null;
-  const keyHash = (k: string) => crypto.createHash('sha256').update(k).digest('hex').slice(0, 16);
-
   async function creds() {
     const c = await getCredentialFields(opts.broker);
     if (!c?.appKey || !c?.appSecret) throw new Error(`${opts.label} API 키가 설정되지 않았습니다. 설정 화면에서 앱키/시크릿키를 입력해주세요.`);
     return c;
   }
 
-  async function issue(): Promise<string> {
-    const c = await creds();
+  async function issue(c: Record<string, string>): Promise<IssuedToken> {
     const body = new URLSearchParams({ grant_type: 'client_credentials', appkey: c.appKey, appsecretkey: c.appSecret, scope: 'oob' });
     const res = await opts.limiter.schedule(() =>
-      fetch(opts.tokenUrl, {
+      fetchWithTimeout(opts.tokenUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body,
-        signal: AbortSignal.timeout(15_000),
+        label: opts.label,
       })
     );
     const text = await res.text();
@@ -106,22 +94,10 @@ export function createXingTokenCache(opts: { broker: BrokerId; label: string; to
     const token = xStr(data.access_token ?? data.token);
     if (!token) throw new XingTokenError(`${opts.label} 토큰 응답에 access_token이 없습니다`, res.status, text);
     const sec = xNum(data.expires_in ?? data.expire_in) || 86400;
-    cached = { accessToken: token, expiresAt: Date.now() + (sec - 60) * 1000, keyHash: keyHash(c.appKey) };
-    await store().write(cached);
-    return token;
+    return { accessToken: token, expiresAt: Date.now() + (sec - 60) * 1000 };
   }
 
-  return {
-    creds,
-    async getToken(staleToken?: string): Promise<string> {
-      const hash = keyHash((await creds()).appKey);
-      const valid = (t: StoredToken | null) => !!t && t.keyHash === hash && t.expiresAt > Date.now();
-      if (!valid(cached)) cached = (await store().read()) ?? null;
-      if (valid(cached) && cached!.accessToken !== staleToken) return cached!.accessToken;
-      if (!inFlight) inFlight = issue().finally(() => (inFlight = null));
-      return inFlight;
-    },
-  };
+  return createTokenManager({ broker: opts.broker, persist: true, loadCreds: creds, keyOf: (c) => c.appKey, issue });
 }
 
 // ── 계좌 거래내역(CDPCQ04700) 해석 — LS·DB 같은 TR·필드 ────────────────────────────

@@ -6,7 +6,7 @@ import { PORTFOLIO_TTL_MS, withCache } from '../responseCache';
 import type { FetchOpts } from '../types';
 import { KisEnvelope, KisParams, KisRow, MAX_PAGES, kisDailyCcldLimiter, kisGet, kisLimiter, requireCredentials } from './kisCore';
 import type { KisResponses } from './kisSpec.gen';
-import { kstToday } from './kisDomestic';
+import { kstToday } from '../../kstDate';
 import { asRows } from './kisStockDetail';
 // ---------------------------------------------------------------- 해외주식(미국, 계좌)
 // 공식 예제 examples_llm/overseas_stock/{inquire_present_balance,inquire_ccnl,inquire_period_profit}(2026-11-09 확인).
@@ -34,8 +34,8 @@ async function fetchAllPages200<T extends 'TTTS3035R' | 'TTTS3039R', R>(
     const ctx = res as unknown as Record<string, unknown>;
     fk = String(ctx.ctx_area_fk200 ?? '').trim();
     nk = String(ctx.ctx_area_nk200 ?? '').trim();
-    // 이미 받은 연속조회 키로 되돌아오면 멈춘다(NH·토스와 같은 방어).
-    if (seen.has(nk)) return { rows };
+    // 이미 받은 연속조회 키로 되돌아오면 던진다 — 받은 데까지만 돌려주면 아래 상한처럼 잘린 목록이 저장된다.
+    if (seen.has(nk)) throw new Error(`한국투자증권 연속조회 키가 반복돼 끝까지 받지 못했습니다: ${trId}`);
     seen.add(nk);
     trCont = 'N';
   }
@@ -247,7 +247,7 @@ interface StoredOverseasProductTypes {
   [symbol: string]: { code: string | null; checkedOn: string };
 }
 const productTypeStore = () =>
-  new JsonStore<StoredOverseasProductTypes>('kis-overseas-product-types.json', getDataDir(), {});
+  new JsonStore<StoredOverseasProductTypes>('kis-overseas-product-types.json', getDataDir(), {}, { onCorrupt: 'reset' }) /* 다시 받으면 되는 캐시 — 손상되면 격리 후 비운 채로(jsonStore.ts) */;
 /** 못 찾은 종목은 이 기간 동안 다시 찾지 않는다(배당이 없는 종목마다 3번씩 부르지 않게). */
 const PRODUCT_TYPE_MISS_RETRY_DAYS = 7;
 

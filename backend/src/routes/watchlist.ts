@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncRoute } from './asyncRoute';
 import { listWatchlist, removeWatchlistEntry, setWatchlistMemo, upsertWatchlistEntry } from '../db/watchlist';
 import { getCachedStockName } from '../db/stockNames';
 import { resolveStockNames, resolveStockPrices } from '../stockNameResolver';
@@ -18,7 +19,7 @@ const SYMBOL_PATTERN = /^[A-Za-z0-9.,-]{1,20}$/;
 // 등록된 종목 전체의 현재가를 매 조회마다 라이브로 채운다 — 보유종목 CSV의
 // lastPrice 자동조회(stockNameResolver.ts)와 같은 원칙으로, 가격은 저장소에
 // 저장하지 않는다(시시각각 바뀌는 값이라 저장해두면 바로 stale해짐).
-watchlistRouter.get('/', async (req, res) => {
+watchlistRouter.get('/', asyncRoute(async (req, res) => {
   const entries = listWatchlist();
   // `?prices=0` — 저장된 목록만(종목 검색 창·종목 링크 화면처럼 코드·이름만 쓰는 곳, 2026-11-19 성능 리뷰: 열 때마다 시세·등락률 호출이 나갔다)
   if (entries.length === 0 || req.query.prices === '0') return res.json(entries);
@@ -57,9 +58,9 @@ watchlistRouter.get('/', async (req, res) => {
       changeRate: changeRateBySymbol[e.symbol.toUpperCase()] ?? null,
     }))
   );
-});
+}));
 
-watchlistRouter.post('/', async (req, res) => {
+watchlistRouter.post('/', asyncRoute(async (req, res) => {
   const { symbol } = (req.body ?? {}) as Record<string, unknown>;
   if (typeof symbol !== 'string' || !symbol.trim()) {
     return res.status(400).json({ error: 'symbol이 필요합니다.' });
@@ -94,7 +95,7 @@ watchlistRouter.post('/', async (req, res) => {
     addedPrice: pricesBySymbol[trimmed] ?? null,
   });
   res.status(201).json(entry);
-});
+}));
 
 // ---- 상세 화면(2026-11-19) ------------------------------------------------------------------------------------------
 // 일봉(차트·이동평균·기간 수익률·52주 범위·비교), 배당 이력·다음 배당, 미국 종목 정보, 메모. 관심종목이 아닌 종목(비교 기준 지수 ETF)도

@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { itemsFromSnapshot, overseasScheduleRows, parseKsdDate, planSymbolDividends } from '../src/upcomingDividends';
 import type { UpcomingDividend } from '../src/upcomingDividends';
+import type { KisOverseasIceRight, KisOverseasPeriodRight } from '../src/brokers/kis/kisClient';
+import { KIS_LIVE_FIELDS } from '../src/brokers/kis/kisSpec.gen';
 
 // 예탁원 배당일정(HHKDB669102C0) 행 — 기준일은 YYYYMMDD, 지급일은 YYYY/MM/DD로 온다(2026-11-10 실측). 값은 지어낸 것.
 const row = (record: string, per: number, pay = '') => ({ record_date: record, per_sto_divi_amt: String(per), divi_pay_dt: pay });
@@ -134,8 +136,14 @@ test('planSymbolDividends: 주기가 일정하지 않거나 기록이 부족하�
 });
 
 // --- 미국(달러): ICE 일정(HHDFS78330900) + 해외 기간별권리(CTRGT011R) 주당 금액 — 2026-11-16 실측 모양, 값은 지어낸 것 ---
-const ice = (record: string, pay: string, title = '현금배당') => ({ anno_dt: '', ca_title: title, div_lock_dt: record, pay_dt: pay, record_dt: record });
-const right = (record: string, per: string, type = '03') => ({ pdno: 'X', rght_type_cd: type, acpl_bass_dt: record, alct_frcr_unpr: per, crcy_cd: 'USD', dfnt_yn: 'Y' });
+// ICE 응답 한 줄 — 앱이 안 읽는 날짜 칸은 빈 문자열(실제 응답도 대개 비어 있다).
+const ice = (record: string, pay: string, title = '현금배당'): KisOverseasIceRight => ({
+  anno_dt: '', ca_title: title, div_lock_dt: record, pay_dt: pay, record_dt: record,
+  delist_dt: '', early_redempt_dt: '', effective_dt: '', local_end_dt: '', lock_dt: '', redempt_dt: '', validity_dt: '',
+});
+// 해외 기간별권리 한 줄 — 앱이 안 읽는 칸은 실제 응답 기록(KIS_LIVE_FIELDS)의 필드 목록으로 빈 문자열을 채운다.
+const BLANK_OVERSEAS_RIGHT = Object.fromEntries(KIS_LIVE_FIELDS.CTRGT011R.output.map((k) => [k, ''])) as KisOverseasPeriodRight;
+const right = (record: string, per: string, type = '03'): KisOverseasPeriodRight => ({ ...BLANK_OVERSEAS_RIGHT, pdno: 'X', rght_type_cd: type, acpl_bass_dt: record, alct_frcr_unpr: per, crcy_cd: 'USD', dfnt_yn: 'Y' });
 
 test('overseasScheduleRows: ICE 날짜에 기간별권리 주당 금액을 붙이고, 금액 없는 발표 건은 0(미정), 지난 권리는 지급일 없이 더한다', () => {
   const rows = overseasScheduleRows(

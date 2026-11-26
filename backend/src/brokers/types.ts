@@ -51,6 +51,11 @@ export interface PortfolioOverview {
   cashBalanceKrw: number | null;
   cashBalanceUsd: number | null;
   positions: HoldingPosition[];
+  /** 일부 시장 조회만 실패한 **부분 결과**일 때 실패한 시장(`HoldingPosition.market` 값, 지금은 해외 잔고의 'US')
+   *  — 국내만 성공하고 해외 잔고 조회가 실패하면 `positions`엔 그 시장 종목이 아예 없다. 이 표시가 없으면
+   *  write-through(routes/holdings.ts → `replaceSnapshot`)가 "미국 종목을 다 팔았다"로 읽어 로컬 저장소의 미국 행을
+   *  지워 버린다 — 그래서 이 시장의 기존 저장 행은 그대로 둔다. 전부 성공하면 필드 자체를 넣지 않는다. */
+  failedMarkets?: string[];
 }
 
 export interface ExchangeRate {

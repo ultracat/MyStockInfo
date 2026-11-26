@@ -26,8 +26,7 @@ import { DividendYieldCard } from './dividends/DividendYieldCard';
 import { usePlanner } from '../usePlanner';
 import Hint from '../components/Hint';
 import SectionNav from '../components/SectionNav';
-
-const CURRENT_YEAR = new Date().getFullYear();
+import { currentYear } from '../format';
 
 // 배당금 화면 — 2026-11-17 나눴다: 데이터 훅(dividends/use*.ts), 계산(calc/dividends.ts), 카드(dividends/*Card.tsx).
 // 여기엔 여러 카드가 같이 쓰는 것만 둔다 — 배당 기록, 연도 필터, 환율(오늘·지급월 평균), 계좌 별칭, 상단 총합계.
@@ -180,11 +179,13 @@ export default function Dividends() {
     return result;
   }, [year, investedByBroker, avgCostByBroker, tradesByBroker]);
 
+  // 올해는 렌더 때 계산한다(모듈 상수면 앱을 켜 둔 채 해가 바뀌어도 옛 연도로 남았다).
+  const thisYear = currentYear();
   const yearOptions = useMemo(() => {
-    const years = new Set<number>([CURRENT_YEAR]);
+    const years = new Set<number>([thisYear]);
     for (const r of records) years.add(Number(r.paidDate.slice(0, 4)));
     return Array.from(years).sort((a, b) => b - a);
-  }, [records]);
+  }, [records, thisYear]);
 
   // 연도 선택은 배당 기록(과거 데이터)에만 적용된다 — investedByBroker는
   // "지금 시점의 보유 투자금"이라 연도별로 나뉘는 값이 아니어서 그대로 둔다.
@@ -229,9 +230,10 @@ export default function Dividends() {
         ]}
       />
       <Hint card>
-        토스증권·한국투자증권은 API 키가 등록돼 있으면 이 화면에 들어올 때 배당(국내 ETF 분배금, 외화세금환급 포함)을
-        API 내용으로 자동으로 맞춥니다 — 그 증권사 기록은 직접 고칠 수 없습니다. 그 밖의 증권사는 입금된 배당을
-        조회하는 API가 없어 지급 시 직접 입력합니다. 배당금은 세후 실수령액이고, 세금은 따로 적습니다.
+        토스·한국투자·NH·키움·LS·DB증권은 API 키가 등록돼 있으면 이 화면에 들어올 때 배당(국내 ETF 분배금, 외화세금환급 포함)을
+        API 내용으로 자동으로 맞춥니다 — 그 증권사 기록은 직접 고칠 수 없습니다(한국투자·LS증권의 달러 배당은 API로 오지 않아
+        직접 입력합니다). 그 밖의 증권사는 입금된 배당을 조회하는 API가 없어 지급 시 직접 입력합니다. 배당금은 세후 실수령액이고,
+        세금은 따로 적습니다.
       </Hint>
       {eximbankConfigured === false && records.some((r) => r.currency === 'USD') && (
         <div className="notice">

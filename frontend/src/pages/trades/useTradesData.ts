@@ -7,9 +7,7 @@ import type { AccountLabel, BrokerAccount, BrokerId, BrokerSummary, StoredTrade,
 import { mapStoredTrade, type DisplayTrade } from '../../calc/trades';
 import { API_BROKER_IDS } from '../../brokers';
 import { getKbLinkStatus, type KbLinkStatus } from '../../kbSync';
-
-const today = () => new Date().toISOString().slice(0, 10);
-const CURRENT_YEAR = new Date().getFullYear();
+import { currentYear, localToday } from '../../format';
 
 /** 위쪽 증권사 select의 값 — 개별 브로커 하나 또는 "전체"(여러 브로커/계좌를
  *  한 화면에서 합쳐서 봄, 계좌 개념 없음). */
@@ -29,6 +27,15 @@ export function useTradesData(year: number) {
   const [accountId, setAccountId] = useState<string | null>(null);
   const [accountLabels, setAccountLabels] = useState<AccountLabel[]>([]);
   const [trades, setTrades] = useState<TradeRecord[]>([]);
+
+  // 지금 화면의 선택(증권사·계좌·연도) — 늦게 온 비동기 응답(KB 동기화·다시 보일 때 갱신)이 그 사이 다른 증권사·계좌로
+  // 옮긴 화면을 덮어쓰지 않게, 응답을 반영하기 직전에 이 ref와 요청 때의 선택을 비교한다(클로저는 요청 때 값을 붙잡고 있다).
+  const selectionRef = useRef({ broker: selectedBroker, accountId, year });
+  selectionRef.current = { broker: selectedBroker, accountId, year };
+  const isSelected = (broker: BrokerSelection | null, accId: string | null, yr?: number) =>
+    selectionRef.current.broker === broker &&
+    selectionRef.current.accountId === accId &&
+    (yr === undefined || selectionRef.current.year === yr);
 
   // "전체" 모드(selectedBroker === 'ALL')의 유일한 데이터 소스 — 로컬 저장소
   // 전체(trades-store, 모든 브로커/계좌)를 받아온다. 로컬 저장소는 write-through
@@ -215,12 +222,13 @@ export function useTradesData(year: number) {
     setKbSyncing(true);
     setKbSyncNotice(null);
     try {
-      await api.syncKbTrades(`${CURRENT_YEAR}-01-01`, today(), linkedId);
-      if (kbSyncRequestId.current !== myRequestId) return; // 그 사이 다른 브로커/계좌로 이동함
+      await api.syncKbTrades(`${currentYear()}-01-01`, localToday(), linkedId);
+      if (kbSyncRequestId.current !== myRequestId) return; // 그 사이 다른 KB 동기화가 시작됨
       await refreshAllTrades();
-      if (selectedBroker === 'kb' && accountId === linkedId) {
+      // 지금 선택을 ref로 본다 — 이 함수가 만들어질 때의 selectedBroker/accountId는 동기화를 기다리는 사이 바뀌었을 수 있다.
+      if (isSelected('kb', linkedId)) {
         const stored = await api.listTradesStore({ broker: 'kb', accountId: linkedId });
-        if (kbSyncRequestId.current === myRequestId) setTrades(stored.map(mapStoredTrade));
+        if (kbSyncRequestId.current === myRequestId && isSelected('kb', linkedId)) setTrades(stored.map(mapStoredTrade));
       }
     } catch (e) {
       if (kbSyncRequestId.current === myRequestId) {
@@ -247,9 +255,8 @@ export function useTradesData(year: number) {
         setLoading(true);
         setError(null);
         if (API_BROKER_IDS.includes(selectedBroker)) {
-          const today = new Date().toISOString().slice(0, 10);
           const from = `${year}-01-01`;
-          const to = year === CURRENT_YEAR ? today : `${year}-12-31`;
+          const to = year === currentYear() ? localToday() : `${year}-12-31`;
           const data = await api.getTradeHistory(selectedBroker, accountId, from, to);
           if (!cancelled) setTrades(data);
         } else {
@@ -276,13 +283,18 @@ export function useTradesData(year: number) {
     api.listAccountLabels().then(setAccountLabels).catch(() => {});
     if (dataChanged) api.listBrokers().then(setBrokers).catch(() => {});
     if (!selectedBroker || selectedBroker === 'ALL' || !accountId) return;
+    const broker = selectedBroker;
+    const accId = accountId;
+    const yr = year;
     try {
-      if (API_BROKER_IDS.includes(selectedBroker)) {
-        const today = new Date().toISOString().slice(0, 10);
-        const to = year === CURRENT_YEAR ? today : `${year}-12-31`;
-        setTrades(await api.getTradeHistory(selectedBroker, accountId, `${year}-01-01`, to));
+      // 응답을 기다리는 사이 다른 증권사·계좌·연도로 옮겼으면 버린다(selectionRef).
+      if (API_BROKER_IDS.includes(broker)) {
+        const to = yr === currentYear() ? localToday() : `${yr}-12-31`;
+        const data = await api.getTradeHistory(broker, accId, `${yr}-01-01`, to);
+        if (isSelected(broker, accId, yr)) setTrades(data);
       } else {
-        setTrades((await api.listTradesStore({ broker: selectedBroker, accountId })).map(mapStoredTrade));
+        const data = (await api.listTradesStore({ broker, accountId: accId })).map(mapStoredTrade);
+        if (isSelected(broker, accId, yr)) setTrades(data);
       }
     } catch {
       // 이전 화면 유지

@@ -340,7 +340,7 @@ export type MonthlyCloses = Record<string, { month: string; closePrice: number; 
 /**
  * 매월 보유종목 투자금·평가금액(최근 12개월). 지금 보유 중인 종목만, 그 매매내역을 시간순으로 훑어 "그 달 말
  * 기준 누적 보유수량"만 재구성한다(거래가 없던 달은 직전 수량을 이어감). 투자금 = 그 수량 × **오늘 기준 평단가**
- * (오늘 매입금액 ÷ 오늘 수량 — 매매내역에서 원가를 재구성하면 다 안 모인 계좌 때문에 상단 "총 매입금액"과 어긋나서),
+ * (전 계좌 오늘 매입금액 합 ÷ 오늘 수량 합 — 매매내역에서 원가를 재구성하면 다 안 모인 계좌 때문에 상단 "총 매입금액"과 어긋나서),
  * 평가금액 = 그 수량 × 그 달 실제 종가(없으면 오늘 현재가). `now`는 마지막 달(테스트용).
  */
 export function monthlyAmountRows(
@@ -351,13 +351,21 @@ export function monthlyAmountRows(
   now: Date = new Date()
 ): MonthlyInvestmentRow[] {
   const lastPriceBySymbol = new Map<string, { lastPrice: number; currency: string | null }>();
-  const avgCostKrwBySymbol = new Map<string, number>();
+  // 평단가는 종목 단위로 Σ매입금액(원화) ÷ Σ수량 — 같은 종목을 여러 계좌에 들고 있으면 계좌마다 평단가가 달라서, 예전처럼
+  // 첫 계좌 것만 쓰면 투자금이 그 계좌 평단가 × 전체 수량이 됐다(2026-11-26). 원화로 못 바꾸는 줄(환율 없음)은 빼고 합친다.
+  const costSumBySymbol = new Map<string, { investedKrw: number; quantity: number }>();
   for (const h of holdings) {
     if (h.lastPrice > 0 && !lastPriceBySymbol.has(h.symbol)) lastPriceBySymbol.set(h.symbol, { lastPrice: h.lastPrice, currency: h.currency });
-    if (h.quantity <= 0 || avgCostKrwBySymbol.has(h.symbol)) continue;
+    if (h.quantity <= 0) continue;
     const investedKrw = toKrw(h.purchaseAmount, h.currency);
-    if (investedKrw !== null) avgCostKrwBySymbol.set(h.symbol, investedKrw / h.quantity);
+    if (investedKrw === null) continue;
+    const sum = costSumBySymbol.get(h.symbol) ?? { investedKrw: 0, quantity: 0 };
+    sum.investedKrw += investedKrw;
+    sum.quantity += h.quantity;
+    costSumBySymbol.set(h.symbol, sum);
   }
+  const avgCostKrwBySymbol = new Map<string, number>();
+  for (const [symbol, sum] of costSumBySymbol) avgCostKrwBySymbol.set(symbol, sum.investedKrw / sum.quantity);
   const closeBySymbolMonth = new Map<string, Map<string, { closePrice: number; currency: string }>>();
   for (const [symbol, rows] of Object.entries(monthlyCloses)) {
     closeBySymbolMonth.set(symbol, new Map(rows.map((r) => [r.month, { closePrice: r.closePrice, currency: r.currency }])));

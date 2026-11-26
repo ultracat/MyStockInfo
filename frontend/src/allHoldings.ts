@@ -1,5 +1,5 @@
 import { api } from './api';
-import { API_BROKER_IDS } from './brokers';
+import { API_BROKER_IDS, BROKER_LABELS } from './brokers';
 import { loadUsdKrwRates } from './fxLoader';
 import { effectiveRate } from './fx';
 import type { BrokerId } from './types';
@@ -34,6 +34,20 @@ export interface AllHoldings {
   liveFxRate: number | null;
   /** 계좌 목록·보유 조회가 실패한 증권사 — 나머지는 그대로 보여 주고 화면이 알린다. */
   failedBrokers: BrokerId[];
+  /**
+   * 계좌 목록은 받았지만 그 계좌의 보유 조회만 실패한 것(2026-11-26) — 예전엔 조용히 빠져 대시보드 합계가 줄어든 채
+   * 순자산 기록에 남았다. 증권사 전체가 실패하면 `failedBrokers`에만 들어간다.
+   */
+  failedAccounts: { broker: BrokerId; accountId: string }[];
+}
+
+/** 일부 증권사·계좌를 못 받았을 때 화면에 띄울 문구(합계에서 빠졌다는 안내) — 다 받았으면 null. */
+export function holdingsFailureMessage(all: Pick<AllHoldings, 'failedBrokers' | 'failedAccounts'>): string | null {
+  const parts = all.failedBrokers.map((b) => BROKER_LABELS[b]);
+  const accountCounts = new Map<BrokerId, number>();
+  for (const f of all.failedAccounts) accountCounts.set(f.broker, (accountCounts.get(f.broker) ?? 0) + 1);
+  for (const [b, n] of accountCounts) parts.push(`${BROKER_LABELS[b]} 계좌 ${n}개`);
+  return parts.length ? `${parts.join('·')} 보유를 불러오지 못해 합계에서 빠졌습니다.` : null;
 }
 
 let cached: { at: number; value: AllHoldings } | null = null;
@@ -67,6 +81,7 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<AllHo
   const [{ manual, live }, brokers] = await Promise.all([loadUsdKrwRates(opts), api.listBrokers()]);
   const lines: HoldingLine[] = [];
   const failedBrokers: BrokerId[] = [];
+  const failedAccounts: { broker: BrokerId; accountId: string }[] = [];
   await Promise.all(
     brokers
       .filter((b) => b.configured)
@@ -74,7 +89,16 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<AllHo
         const rows = API_BROKER_IDS.includes(b.id)
           ? await api
               .listAccounts(b.id, opts)
-              .then((accounts) => Promise.all(accounts.map((a) => api.getPortfolio(b.id, a.id, opts).catch(() => null))))
+              .then((accounts) =>
+                Promise.all(
+                  accounts.map((a) =>
+                    api.getPortfolio(b.id, a.id, opts).catch(() => {
+                      failedAccounts.push({ broker: b.id, accountId: a.id });
+                      return null;
+                    })
+                  )
+                )
+              )
               .then((ps) =>
                 ps.filter((p): p is NonNullable<typeof p> => p !== null).flatMap((p) => p.positions.map((pos) => ({ ...pos, accountId: p.accountId })))
               )
@@ -102,5 +126,5 @@ async function fetchAllHoldings(opts: { forceRefresh?: boolean }): Promise<AllHo
         }
       })
   );
-  return { lines, fxRate: effectiveRate(manual, live), manualFxRate: manual, liveFxRate: live, failedBrokers };
+  return { lines, fxRate: effectiveRate(manual, live), manualFxRate: manual, liveFxRate: live, failedBrokers, failedAccounts };
 }

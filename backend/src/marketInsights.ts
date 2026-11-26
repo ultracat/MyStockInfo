@@ -187,8 +187,8 @@ interface EtfSectorCache {
   etfBySymbol: Record<string, string[]>;
 }
 
-const sectorStore = () => new JsonStore<SectorCache | null>('toss-sector-cache.json', getDataDir(), null);
-const etfSectorStore = () => new JsonStore<EtfSectorCache | null>('toss-sector-etf-cache.json', getDataDir(), null);
+const sectorStore = () => new JsonStore<SectorCache | null>('toss-sector-cache.json', getDataDir(), null, { onCorrupt: 'reset' }); /* 다시 받으면 되는 캐시 — 손상되면 격리 후 비운 채로(jsonStore.ts) */
+const etfSectorStore = () => new JsonStore<EtfSectorCache | null>('toss-sector-etf-cache.json', getDataDir(), null, { onCorrupt: 'reset' }); /* 다시 받으면 되는 캐시 — 손상되면 격리 후 비운 채로(jsonStore.ts) */
 let sectorBuild: Promise<SectorCache> | null = null;
 let etfSectorBuild: Promise<EtfSectorCache> | null = null;
 

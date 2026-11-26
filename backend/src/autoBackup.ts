@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { getDataDir } from './paths';
 import { createBackupZip } from './backup';
+import { blockedDataFiles } from './jsonStore';
 
 // 자동 로컬 백업(2026-11-16) — 예전엔 사용자가 "백업 다운로드"를 눌러야만 백업이 생겼다. CSV·Sheets 가져오기로 덮어쓰기를
 // 잘못하거나 파일이 깨지면 되돌릴 방법이 없었다.
@@ -62,6 +63,12 @@ export function readAutoBackup(name: string): Buffer {
 }
 
 async function runIfDue(): Promise<void> {
+  // 손상돼 격리된 사용자 데이터가 복원 전이면 건너뛴다 — 그 파일이 빠진 백업이 쌓여 손상 전 정상 백업을 밀어내지 않게.
+  const blocked = blockedDataFiles(getDataDir());
+  if (blocked.length > 0) {
+    console.warn(`[autoBackup] 손상돼 격리된 데이터(${blocked.join(', ')})가 복원 전이라 자동 백업을 건너뜁니다.`);
+    return;
+  }
   const latest = listAutoBackups().find((e) => !e.beforeRestore);
   if (latest && Date.now() - new Date(latest.createdAt).getTime() < MIN_INTERVAL_MS) return;
   await createAutoBackup('daily');

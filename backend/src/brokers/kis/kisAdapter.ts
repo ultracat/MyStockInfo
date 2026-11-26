@@ -7,6 +7,7 @@ import type {
   TradeRecord,
 } from '../types';
 import { getCredentialFields } from '../../credentials';
+import { shapeForLog } from '../../logRedact';
 import {
   fetchKisBalance,
   fetchKisOverseasBalance,
@@ -42,10 +43,18 @@ function num(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** 국내 체결의 저장 id — `주문일자-주문번호`. KIS 주문번호(odno)는 **영업일마다 새로 매겨져** 날짜가 다른 체결끼리
+ *  같은 번호가 나온다 — 예전처럼 odno만 쓰면 trades.json의 upsert 키((broker, accountId, id))가 겹쳐 다른 날 체결이
+ *  서로를 덮어썼다. 해외 체결은 처음부터 `ovrs-주문일자-주문번호`(kisOverseas.ts)라 같은 꼴로 맞춘다. 예전 odno만인
+ *  저장 행은 db/tradesStore.ts의 `migrateKisDomesticTradeIds`가 한 번 옮긴다. */
+export function kisDomesticTradeId(orderDate: string, odno: string): string {
+  return `${orderDate}-${odno}`;
+}
+
 function mapTrade(item: KisDailyCcldItem): TradeRecord {
   const orderDate = String(item.ord_dt);
   return {
-    id: String(item.odno),
+    id: kisDomesticTradeId(orderDate, String(item.odno)),
     symbol: String(item.pdno),
     name: String(item.prdt_name),
     // sll_buy_dvsn_cd: 01 매도(SELL) / 02 매수(BUY), per the API's SLL_BUY_DVSN_CD param docs.
@@ -117,6 +126,8 @@ export const kisAdapter: BrokerAdapter = {
       ),
     ]);
     const overseas = overseasResult?.positions ?? [];
+    // 해외 잔고 조회가 실패하면 positions에 미국 종목이 없다 — "다 팔았다"와 구분하려고 부분 결과로 표시한다(types.ts).
+    const failedMarkets = overseasResult === null ? ['US'] : undefined;
     const sumUsd = (k: 'purchaseAmount' | 'marketValue' | 'profitLossAmount') =>
       overseas.length > 0 ? overseas.reduce((s, p) => s + p[k], 0) : null;
 
@@ -143,15 +154,14 @@ export const kisAdapter: BrokerAdapter = {
         cashBalanceKrw: num(summary.dnca_tot_amt),
         cashBalanceUsd: overseasResult?.cashUsd ?? null,
         positions: [...items.map(mapPosition), ...overseas.map(mapOverseasPosition)],
+        ...(failedMarkets ? { failedMarkets } : {}),
       };
     } catch (err) {
-      console.error(
-        '[kis] Failed to map inquire-balance response:',
-        JSON.stringify({ items, summary }, null, 2)
-      );
+      // 원본 응답엔 계좌 보유 수량·금액이 들어 있다 — 값은 버리고 모양만 남긴다(logRedact.ts, 프로젝트 규칙).
+      console.error('[kis] Failed to map inquire-balance response (shape):', shapeForLog({ items, summary }));
       throw new Error(
         `한국투자증권 보유 종목 응답을 처리하는 중 오류가 발생했습니다 (${(err as Error).message}). ` +
-          '백엔드를 실행한 터미널에 원본 응답을 출력했습니다.'
+          '백엔드를 실행한 터미널에 응답 모양(값 제외)을 출력했습니다.'
       );
     }
   },

@@ -23,6 +23,10 @@ const tscBin = require.resolve('typescript/bin/tsc', { paths: [path.join(root, '
 
 let child = null;
 let restarting = false;
+// 다시 띄우는 중(이전 프로세스 종료를 기다리는 동안)에 또 바뀐 것. 예전엔 그냥 버렸다(`if (restarting) return`).
+// 새 프로세스는 그 대기가 끝난 **뒤에** 뜨므로 그때 디스크에 있는 변경은 자동으로 실린다 — 그래서 한 번 더 끄고 켜지 않고
+// (토스 토큰을 또 받게 된다) 기록만 남긴다. 새 프로세스를 띄운 뒤 들어온 변경은 restarting=false라 평소처럼 다시 띄운다.
+let pendingReason = null;
 let started = false;
 
 function log(msg) {
@@ -41,7 +45,10 @@ function startElectron() {
 
 async function restart(reason) {
   if (!started) return;
-  if (restarting) return;
+  if (restarting) {
+    pendingReason = reason; // 여러 번 와도 한 번만 더 — 마지막 이유로
+    return;
+  }
   restarting = true;
   log(`${reason} → Electron을 다시 띄웁니다.`);
   if (child) {
@@ -53,6 +60,11 @@ async function restart(reason) {
     });
   }
   restarting = false;
+  if (pendingReason !== null) {
+    // 기다리는 동안 들어온 변경 — 지금 띄우는 프로세스가 그 파일을 읽는다(위 pendingReason 주석).
+    log(`다시 띄우는 동안 들어온 변경(${pendingReason})도 함께 반영합니다.`);
+    pendingReason = null;
+  }
   startElectron();
 }
 

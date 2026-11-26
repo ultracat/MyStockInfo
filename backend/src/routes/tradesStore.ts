@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncRoute } from './asyncRoute';
 import {
   deleteTrade,
   listTrades,
@@ -30,7 +31,7 @@ tradesStoreRouter.get('/', (req, res) => {
 // 이름을 버렸음)이나, 그때는 연동이 없어서 못 채웠던 행을 위한 일괄 백필용 —
 // 토스/KIS/KB 어느 것도 연동 안 돼 있으면(resolveStockNames가 아무것도 못 찾음)
 // 그냥 0건 갱신으로 끝난다(에러 아님).
-tradesStoreRouter.post('/refresh-names', async (_req, res) => {
+tradesStoreRouter.post('/refresh-names', asyncRoute(async (_req, res) => {
   const records = listTrades();
   const uniqueSymbols = Array.from(new Set(records.filter((t) => !t.name).map((t) => t.symbol)));
   if (uniqueSymbols.length === 0) {
@@ -40,7 +41,7 @@ tradesStoreRouter.post('/refresh-names', async (_req, res) => {
   const { namesBySymbol, unresolved } = await resolveStockNames(uniqueSymbols);
   const updated = updateTradeNames(namesBySymbol);
   res.json({ updated, resolved: Object.keys(namesBySymbol).length, failed: Array.from(unresolved) });
-});
+}));
 
 function parseImportRowShape(body: unknown): { input: ImportTradeInput } | { error: string } {
   const { broker, accountId, id, symbol, name, side, quantity, price, amount, currency, commission, tax, executedAt } =
@@ -147,12 +148,17 @@ export async function importTradesRecords(
   return { added: inserted.length, failed, skipped };
 }
 
-tradesStoreRouter.post('/import', async (req, res) => {
+// Express 4는 async 핸들러의 예외를 잡지 않는다 — next(err)로 server.ts 전역 오류 처리기에 넘긴다.
+tradesStoreRouter.post('/import', async (req, res, next) => {
   const records = (req.body as { records?: unknown })?.records;
   if (!Array.isArray(records) || records.length === 0) {
     return res.status(400).json({ error: 'records(배열)가 필요합니다.' });
   }
-  res.json(await importTradesRecords(records));
+  try {
+    res.json(await importTradesRecords(records));
+  } catch (err) {
+    next(err);
+  }
 });
 
 tradesStoreRouter.delete('/:broker/:accountId/:id', (req, res) => {

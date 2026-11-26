@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { asyncRoute } from './asyncRoute';
 import {
   fetchKisEtfComponents,
   fetchKisEtfPrice,
@@ -11,7 +12,7 @@ import {
   getKisAccountId,
   isKisConfigured,
 } from '../brokers/kis/kisClient';
-import { todayKst } from '../marketInsights';
+import { kstToday } from '../kstDate';
 import { withCache } from '../brokers/responseCache';
 import { handleBrokerApiError } from '../brokers/errors';
 
@@ -142,7 +143,7 @@ kisReportsRouter.get('/stock-detail/:symbol', async (req, res) => {
       });
     }
 
-    const today = todayKst();
+    const today = kstToday();
     const sixMonthsAgo = new Date(Date.parse(`${today}T00:00:00Z`) - 183 * 864e5).toISOString().slice(0, 10);
     const [fin, opinions, val] = await Promise.all([
       settle(fetchKisFinancialRatio(symbol)),
@@ -194,7 +195,7 @@ kisReportsRouter.get('/stock-detail/:symbol', async (req, res) => {
 // ETF 구성 종목(상위 30, `FHKST121600C0`) 여러 개 — 대시보드 "ETF 포함 실질 보유 비중" 카드가 보유 국내 ETF의 구성을 펼쳐 같은 종목을
 // 합친다(화면 calc/lookThrough.ts). 주식이면 구성이 비어 와서 그 종목은 응답에서 빠진다. 종목마다 따로 실패해도 나머지는 준다.
 // 구성은 6시간 캐시(kisStockDetail.ts). 국내 6자리만, 한 번에 60종목까지.
-kisReportsRouter.get('/etf-lookthrough', async (req, res) => {
+kisReportsRouter.get('/etf-lookthrough', asyncRoute(async (req, res) => {
   if (!isKisConfigured()) return res.status(409).json({ error: '한국투자증권 API 키가 설정되지 않았습니다.' });
   const symbols = [...new Set(String(req.query.symbols ?? '').split(',').map((s) => s.trim().toUpperCase()))]
     .filter((s) => DOMESTIC_RE.test(s))
@@ -210,4 +211,4 @@ kisReportsRouter.get('/etf-lookthrough', async (req, res) => {
     })
   );
   res.json({ etfs });
-});
+}));

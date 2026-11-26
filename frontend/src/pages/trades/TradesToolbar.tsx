@@ -5,6 +5,7 @@ import { formatImportResult } from '../../importResult';
 import type { BrokerId } from '../../types';
 import type { useTradesData } from './useTradesData';
 import ActionMenu from '../../components/ActionMenu';
+import { localToday } from '../../format';
 
 // id는 브로커 고유 체결번호라 CSV 입력행엔 없고 없으면 서버가 새로 발급한다.
 // name(종목명)은 선택 컬럼 — 비워두면 백엔드가 토스→KIS→KB 순으로 자동조회해서
@@ -85,7 +86,7 @@ export function TradesToolbar({ data }: { data: ReturnType<typeof useTradesData>
         t.id,
       ]),
     ];
-    downloadCsv(`trades-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+    downloadCsv(`trades-${localToday()}.csv`, rows);
   }
 
   function onImportClick() {

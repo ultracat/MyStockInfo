@@ -1,7 +1,7 @@
 import { getCredentialFields, hasCredential } from '../../credentials';
 import { RateLimiter } from '../rateLimiter';
-import { getDataDir } from '../../paths';
-import { SecretJsonStore } from '../../secretJsonStore';
+import { createTokenManager } from '../tokenManager';
+import { fetchWithTimeout } from '../../http/fetchWithTimeout';
 import type { HoldingPosition, TradeRecord } from '../types';
 import { noteResponse } from '../responseShape';
 import type { KbRequests, KbResponses } from './kbSpec.gen';
@@ -51,28 +51,6 @@ export async function getKbLinkedAccountId(): Promise<string | null> {
   return accountId ? accountId : null;
 }
 
-interface StoredKbToken {
-  accessToken: string;
-  expiresAt: number;
-}
-
-// kis-token.json과 같은 이유로 파일에 영속화한다 — 이 프로젝트 dev 워크플로가
-// 백엔드를 고칠 때마다 Electron을 재시작하므로, 메모리 캐시만 쓰면 재시작마다
-// 토큰을 새로 발급받게 된다. KB의 토큰 발급 빈도 제한은 공식 문서에 수치가 없어
-// (KIS의 EGW00133 1일 1회 같은 규정은 확인 못함) 일단 안전하게 영속화해둔다.
-const tokenStore = () => new SecretJsonStore<StoredKbToken>('kb-token.json', getDataDir());
-let cachedToken: StoredKbToken | null = null;
-
-async function loadCachedToken(): Promise<StoredKbToken | null> {
-  if (cachedToken && cachedToken.expiresAt > Date.now()) return cachedToken;
-  const persisted = await tokenStore().read();
-  if (persisted && persisted.expiresAt > Date.now()) {
-    cachedToken = persisted;
-    return cachedToken;
-  }
-  return null;
-}
-
 interface KbTokenResponseBody {
   access_token?: string;
   accessToken?: string;
@@ -90,72 +68,58 @@ interface KbEnvelope<T = Record<string, unknown>> {
 // example/python/README.md(공식): 토큰 발급 요청도 dataHeader(ipAddr/macAddr만
 // 사용) + dataBody({appKey, appSecret, grantType:"client_credentials"}) 포맷으로
 // 감싼다. 응답의 access_token은 dataBody.access_token 경로.
-async function fetchTokenUncached(): Promise<string> {
-  const creds = await requireCredentials();
+//
+// kis-token.json과 같은 이유로 kb-token.json에 영속화한다 — 이 프로젝트 dev 워크플로가 백엔드를 고칠 때마다 Electron을
+// 재시작하므로, 메모리 캐시만 쓰면 재시작마다 토큰을 새로 발급받게 된다. KB의 토큰 발급 빈도 제한은 공식 문서에 수치가
+// 없어(KIS의 EGW00133 같은 규정은 확인 못함) 일단 안전하게 영속화해둔다. 동시 발급 공유·401 재발급 경쟁 방지(staleToken)·
+// 앱키 해시·자격증명 변경 시 무효화는 공용 tokenManager.ts(2026-11-26 — 예전엔 401마다 무조건 재발급, 키를 바꿔도 옛 토큰 사용).
+const tokens = createTokenManager({
+  broker: 'kb',
+  persist: true,
+  loadCreds: requireCredentials,
+  keyOf: (creds) => creds.appKey,
+  async issue(creds) {
+    const res = await kbLimiter.schedule(() =>
+      fetchWithTimeout(`${BASE_URL}/oauth2/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataHeader: { ipAddr: '', macAddr: '' },
+          dataBody: {
+            appKey: creds.appKey,
+            appSecret: creds.appSecret,
+            grantType: 'client_credentials',
+          },
+        }),
+        label: 'KB증권',
+      })
+    );
 
-  const res = await kbLimiter.schedule(() =>
-    fetch(`${BASE_URL}/oauth2/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dataHeader: { ipAddr: '', macAddr: '' },
-        dataBody: {
-          appKey: creds.appKey,
-          appSecret: creds.appSecret,
-          grantType: 'client_credentials',
-        },
-      }),
-    })
-  );
+    const text = await res.text();
+    if (!res.ok) {
+      throw new KbApiError('KB증권 토큰 발급 실패', res.status, text);
+    }
 
-  const text = await res.text();
-  if (!res.ok) {
-    throw new KbApiError('KB증권 토큰 발급 실패', res.status, text);
-  }
+    let parsed: KbEnvelope<KbTokenResponseBody>;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new KbApiError('KB증권 토큰 발급 응답이 JSON이 아닙니다', res.status, text);
+    }
 
-  let parsed: KbEnvelope<KbTokenResponseBody>;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new KbApiError('KB증권 토큰 발급 응답이 JSON이 아닙니다', res.status, text);
-  }
+    const body = parsed.dataBody ?? (parsed as unknown as KbTokenResponseBody);
+    const accessToken = body.access_token ?? body.accessToken;
+    if (!accessToken) {
+      throw new KbApiError('KB증권 토큰 발급 응답에서 access_token을 찾지 못했습니다', res.status, text);
+    }
 
-  const body = parsed.dataBody ?? (parsed as unknown as KbTokenResponseBody);
-  const accessToken = body.access_token ?? body.accessToken;
-  if (!accessToken) {
-    throw new KbApiError('KB증권 토큰 발급 응답에서 access_token을 찾지 못했습니다', res.status, text);
-  }
-
-  // expires_in이 응답에 없을 수 있어(공식 example에 명시 안 됨) 55분을 보수적
-  // 기본값으로 쓴다 — 실제 값이 이보다 짧으면 API 호출 시 401을 받게 되는데,
-  // kbPost가 401을 만나면 토큰을 강제 재발급하고 한 번 재시도한다.
-  const expiresInSec = body.expires_in ?? body.expiresIn ?? 55 * 60;
-  cachedToken = { accessToken, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
-  await tokenStore().write(cachedToken);
-  return cachedToken.accessToken;
-}
-
-// kisClient.ts와 같은 이유 — 캐시된 토큰이 만료/부재일 때 동시 호출이 각자
-// 발급을 시도하면 중복 발급된다(KB는 빈도 제한 수치가 공식 문서에 없지만,
-// KIS의 EGW00133 같은 제약이 없다고 확인된 것도 아니라 똑같이 방어해둔다).
-let inFlightFetch: Promise<string> | null = null;
-
-function fetchToken(): Promise<string> {
-  if (!inFlightFetch) {
-    inFlightFetch = fetchTokenUncached().finally(() => {
-      inFlightFetch = null;
-    });
-  }
-  return inFlightFetch;
-}
-
-async function getToken(forceRefresh = false): Promise<string> {
-  if (!forceRefresh) {
-    const token = await loadCachedToken();
-    if (token) return token.accessToken;
-  }
-  return fetchToken();
-}
+    // expires_in이 응답에 없을 수 있어(공식 example에 명시 안 됨) 55분을 보수적
+    // 기본값으로 쓴다 — 실제 값이 이보다 짧으면 API 호출 시 401을 받게 되는데,
+    // kbPost가 401을 만나면 토큰을 다시 받아 한 번 재시도한다.
+    const expiresInSec = body.expires_in ?? body.expiresIn ?? 55 * 60;
+    return { accessToken, expiresAt: Date.now() + (expiresInSec - 60) * 1000 };
+  },
+});
 
 // example/python/README.md(공식): 일반 TR 조회는 dataHeader(토큰 발급과 동일하게
 // ipAddr/macAddr만) + dataBody(TR별 조회조건)로 감싸고, 헤더에 appKey와
@@ -178,8 +142,9 @@ export async function kbPost<T extends KbTr>(
   const endpoint = `/api/v1/${tr.toLowerCase()}`;
 
   const doFetch = async (token: string) =>
-    fetch(`${BASE_URL}${endpoint}`, {
+    fetchWithTimeout(`${BASE_URL}${endpoint}`, {
       method: 'POST',
+      label: 'KB증권',
       headers: {
         'Content-Type': 'application/json',
         appKey: creds.appKey,
@@ -192,11 +157,12 @@ export async function kbPost<T extends KbTr>(
     });
 
   return kbLimiter.schedule(async () => {
-    let token = await getToken();
+    let token = await tokens.getToken();
     let res = await doFetch(token);
 
     if (res.status === 401) {
-      token = await getToken(true);
+      // 실패한 토큰을 넘긴다 — 그새 다른 요청이 이미 새로 받았으면 또 발급하지 않고 그걸 쓴다.
+      token = await tokens.getToken(token);
       res = await doFetch(token);
     }
 

@@ -303,7 +303,7 @@ export interface UpcomingDividendsResult {
   refreshing: boolean;
 }
 
-const snapshotStore = () => new JsonStore<UpcomingSnapshot | null>('upcoming-dividends.json', getDataDir(), null);
+const snapshotStore = () => new JsonStore<UpcomingSnapshot | null>('upcoming-dividends.json', getDataDir(), null, { onCorrupt: 'reset' }); /* 다시 받으면 되는 캐시 — 손상되면 격리 후 비운 채로(jsonStore.ts) */
 
 type HoldingRow = ReturnType<typeof listHoldings>[number];
 

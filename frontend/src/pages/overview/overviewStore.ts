@@ -1,7 +1,7 @@
 import { api } from '../../api';
 import { effectiveRate, toKrw as fxToKrw } from '../../fx';
-import { loadAllHoldings, resetAllHoldingsCache } from '../../allHoldings';
-import { BROKER_LABELS } from '../../brokers';
+import { holdingsFailureMessage, loadAllHoldings, resetAllHoldingsCache } from '../../allHoldings';
+import { localToday } from '../../format';
 import type { AccountLabel, DividendRecord, SnapshotRecord, StoredTrade } from '../../types';
 import type { FlatHolding, IndexCloses, MonthlyCloses } from '../../calc/overview';
 
@@ -87,10 +87,6 @@ export function resetOverviewStore(): void {
   listeners.forEach((l) => l());
 }
 
-function todayDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 // ---- 뒤에서 채우는 것(화면을 막지 않음) ----------------------------------------------------------------------------------
 
 let closeRequestId = 0;
@@ -158,10 +154,8 @@ async function fetchAll(opts: { forceRefresh?: boolean; skipCache?: boolean }): 
     purchaseKrw += pv;
     marketKrw += mv;
   }
-  // 증권사 하나가 실패해도 나머지는 보여 주고 알린다. 합계가 줄어든 값이라 그날 순자산 기록은 남기지 않는다.
-  const partialError = all.failedBrokers.length
-    ? `${all.failedBrokers.map((b) => BROKER_LABELS[b]).join('·')} 보유를 불러오지 못해 합계에서 빠졌습니다.`
-    : null;
+  // 증권사나 계좌 하나가 실패해도 나머지는 보여 주고 알린다. 합계가 줄어든 값이라 그날 순자산 기록은 남기지 않는다.
+  const partialError = holdingsFailureMessage(all);
 
   set({
     holdings: flat,
@@ -188,9 +182,11 @@ async function fetchAll(opts: { forceRefresh?: boolean; skipCache?: boolean }): 
   // 순자산 기록 — 오늘 날짜로 덮어쓴다(서버 upsert). 실패해도 이력 조회는 따로 한다.
   void (async () => {
     try {
-      if (partialError) throw new Error('일부 증권사 실패 — 기록 건너뜀');
+      if (partialError) throw new Error('일부 증권사·계좌 실패 — 기록 건너뜀');
+      // 환율이 없어 달러 보유가 합계에서 빠졌으면(unconverted) 그 값도 줄어든 합계다 — 순자산 기록을 남기지 않는다.
+      if (unconverted) throw new Error('환율 없음 — 기록 건너뜀');
       await api.capturePortfolioSnapshot({
-        date: todayDate(),
+        date: localToday(),
         totalMarketValueKrw: marketKrw,
         totalPurchaseAmountKrw: purchaseKrw,
         totalProfitLossKrw: marketKrw - purchaseKrw,
